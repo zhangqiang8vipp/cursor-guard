@@ -88,6 +88,13 @@ const I18N = {
     'drawer.field.hash':    'Commit Hash',
     'drawer.field.path':    'Path',
     'drawer.field.message': 'Message',
+    'drawer.field.filesChanged': 'Files Changed',
+    'drawer.field.summary': 'Change Summary',
+    'drawer.field.trigger': 'Trigger',
+    'trigger.auto':         'Auto (scheduled)',
+    'trigger.manual':       'Manual (agent)',
+    'trigger.pre-restore':  'Pre-Restore',
+    'backups.col.summary':  'Changes',
 
     'error.fetchFailed':    'Failed to fetch data',
     'error.sectionFailed':  'This section failed to load',
@@ -254,6 +261,13 @@ const I18N = {
     'drawer.field.hash':    '提交 Hash',
     'drawer.field.path':    '路径',
     'drawer.field.message': '消息',
+    'drawer.field.filesChanged': '变更文件数',
+    'drawer.field.summary': '变更摘要',
+    'drawer.field.trigger': '触发方式',
+    'trigger.auto':         '自动（定时）',
+    'trigger.manual':       '手动（Agent）',
+    'trigger.pre-restore':  '恢复前快照',
+    'backups.col.summary':  '变更',
 
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
@@ -779,6 +793,17 @@ function renderFilterBar() {
   ).join('');
 }
 
+function formatSummaryCell(b) {
+  const parts = [];
+  if (b.filesChanged != null) parts.push(`<span class="text-sm">${b.filesChanged} files</span>`);
+  if (b.trigger) parts.push(`<span class="badge badge-trigger">${t('trigger.' + b.trigger)}</span>`);
+  if (b.summary) {
+    const short = b.summary.length > 60 ? b.summary.substring(0, 57) + '...' : b.summary;
+    parts.push(`<span class="text-muted text-sm">${esc(short)}</span>`);
+  }
+  return parts.length > 0 ? parts.join(' ') : '<span class="text-muted text-sm">-</span>';
+}
+
 function renderBackupTable(backups) {
   if (!Array.isArray(backups)) {
     $('#backup-table-wrap').innerHTML = `<div class="error-panel">${t('error.sectionFailed')}</div>`;
@@ -795,10 +820,12 @@ function renderBackupTable(backups) {
 
   const rows = state.filteredBackups.map((b, i) => {
     const badgeClass = b.type.startsWith('git') ? (b.type.includes('pre') ? 'badge-pre' : 'badge-git') : (b.type.includes('pre') ? 'badge-pre' : 'badge-shadow');
+    const summaryCell = formatSummaryCell(b);
     return `<tr data-bi="${i}">
       <td><div>${esc(formatTime(b.timestamp))}</div><div class="text-muted text-sm">${esc(relativeTime(b.timestamp))}</div></td>
       <td><span class="badge ${badgeClass}">${t('type.' + b.type)}</span></td>
       <td class="text-mono">${esc(b.shortHash || b.timestamp || '-')}</td>
+      <td class="backup-summary-cell">${summaryCell}</td>
     </tr>`;
   }).join('');
 
@@ -808,6 +835,7 @@ function renderBackupTable(backups) {
         <th>${t('backups.col.time')}</th>
         <th>${t('backups.col.type')}</th>
         <th>${t('backups.col.ref')}</th>
+        <th>${t('backups.col.summary')}</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -895,10 +923,13 @@ function openRestoreDrawer(backup) {
     { key: 'drawer.field.time', val: formatTime(backup.timestamp) },
     { key: 'drawer.field.type', val: t('type.' + backup.type) },
   ];
+  if (backup.trigger) fields.push({ key: 'drawer.field.trigger', val: t('trigger.' + backup.trigger) });
+  if (backup.filesChanged != null) fields.push({ key: 'drawer.field.filesChanged', val: String(backup.filesChanged) });
   if (backup.ref) fields.push({ key: 'drawer.field.ref', val: backup.ref });
   if (backup.commitHash) fields.push({ key: 'drawer.field.hash', val: backup.commitHash });
   if (backup.path) fields.push({ key: 'drawer.field.path', val: backup.path });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
+  if (backup.summary) fields.push({ key: 'drawer.field.summary', val: backup.summary });
 
   const refText = backup.ref || backup.shortHash || backup.timestamp || '';
   const jsonText = JSON.stringify(backup, null, 2);

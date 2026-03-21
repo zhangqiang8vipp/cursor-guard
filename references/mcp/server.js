@@ -112,6 +112,7 @@ server.tool(
       results.git = createGitSnapshot(resolved, cfg, {
         branchRef: 'refs/guard/snapshot',
         message: message || `guard: manual snapshot ${new Date().toISOString()}`,
+        context: { trigger: 'manual' },
       });
     }
 

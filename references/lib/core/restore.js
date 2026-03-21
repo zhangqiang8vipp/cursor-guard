@@ -370,8 +370,10 @@ function createPreRestoreSnapshot(projectDir, scope) {
       return { status: 'skipped', reason: 'no changes to preserve' };
     }
 
+    let msg = `guard: pre-restore snapshot ${ts}`;
+    msg += '\n\nTrigger: pre-restore';
     const commitHash = execFileSync('git', [
-      'commit-tree', tree, '-p', head, '-m', `guard: pre-restore snapshot ${ts}`,
+      'commit-tree', tree, '-p', head, '-m', msg,
     ], { cwd, stdio: 'pipe', encoding: 'utf-8' }).trim();
 
     if (!commitHash) return { status: 'error', error: 'commit-tree returned empty' };

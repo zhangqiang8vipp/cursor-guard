@@ -41,6 +41,20 @@ function entryToMs(entry) {
   return d ? d.getTime() : 0;
 }
 
+function parseCommitTrailers(body) {
+  if (!body) return {};
+  const result = {};
+  for (const line of body.split('\n')) {
+    const m = line.match(/^(Files-Changed|Summary|Trigger):\s*(.+)$/);
+    if (m) {
+      const key = m[1] === 'Files-Changed' ? 'filesChanged'
+        : m[1] === 'Summary' ? 'summary' : 'trigger';
+      result[key] = key === 'filesChanged' ? parseInt(m[2], 10) : m[2];
+    }
+  }
+  return result;
+}
+
 // ── List backups ────────────────────────────────────────────────
 
 /**
@@ -52,7 +66,7 @@ function entryToMs(entry) {
  * @param {string} [opts.file] - Filter to commits touching this relative path
  * @param {string} [opts.before] - Time boundary (e.g. '10 minutes ago', ISO string)
  * @param {number} [opts.limit=20] - Max total results
- * @returns {{ sources: Array<{type: string, ref?: string, commitHash?: string, shortHash?: string, timestamp?: string, message?: string, path?: string}> }}
+ * @returns {{ sources: Array<{type: string, ref?: string, commitHash?: string, shortHash?: string, timestamp?: string, message?: string, path?: string, filesChanged?: number, summary?: string, trigger?: string}> }}
  */
 function listBackups(projectDir, opts = {}) {
   const limit = opts.limit || 20;
@@ -74,24 +88,27 @@ function listBackups(projectDir, opts = {}) {
     const autoRef = 'refs/guard/auto-backup';
     const autoExists = git(['rev-parse', '--verify', autoRef], { cwd: projectDir, allowFail: true });
     if (autoExists) {
-      const logArgs = ['log', autoRef, `--format=%H %aI %s`, `-${limit}`, '--grep=^guard:'];
+      const logArgs = ['log', autoRef, '--format=%H\x1f%aI\x1f%B\x1e', `-${limit}`, '--grep=^guard:'];
       if (opts.before) logArgs.push(`--before=${opts.before}`);
       if (opts.file) logArgs.push('--', opts.file);
       const out = git(logArgs, { cwd: projectDir, allowFail: true });
       if (out) {
-        for (const line of out.split('\n').filter(Boolean)) {
-          const firstSpace = line.indexOf(' ');
-          const secondSpace = line.indexOf(' ', firstSpace + 1);
-          const hash = line.substring(0, firstSpace);
-          const timestamp = line.substring(firstSpace + 1, secondSpace);
-          const message = line.substring(secondSpace + 1);
+        for (const record of out.split('\x1e').filter(r => r.trim())) {
+          const parts = record.split('\x1f');
+          if (parts.length < 3) continue;
+          const hash = parts[0].trim();
+          const timestamp = parts[1];
+          const body = parts[2];
+          const subject = body.split('\n')[0];
+          const trailers = parseCommitTrailers(body);
           sources.push({
             type: 'git-auto-backup',
             ref: autoRef,
             commitHash: hash,
             shortHash: hash.substring(0, 7),
             timestamp,
-            message,
+            message: subject,
+            ...trailers,
           });
         }
       }
@@ -112,20 +129,32 @@ function listBackups(projectDir, opts = {}) {
           const ms = Date.parse(timestamp);
           if (!isNaN(ms) && ms > beforeDate.getTime()) continue;
         }
-        sources.push({
+        const entry = {
           type: 'git-pre-restore',
           ref,
           commitHash: hash,
           shortHash: hash.substring(0, 7),
           timestamp,
-        });
+        };
+        const prBody = git(['log', '-1', '--format=%B', hash], { cwd: projectDir, allowFail: true });
+        if (prBody) {
+          const prSubject = prBody.split('\n')[0];
+          if (prSubject) entry.message = prSubject;
+          Object.assign(entry, parseCommitTrailers(prBody));
+        }
+        sources.push(entry);
       }
     }
 
     // Agent snapshot ref
     const snapshotHash = git(['rev-parse', '--verify', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
     if (snapshotHash) {
-      const ts = git(['log', '-1', '--format=%aI', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
+      const snapLog = git(['log', '-1', '--format=%aI\x1f%B', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
+      const snapParts = snapLog ? snapLog.split('\x1f') : [];
+      const ts = snapParts[0] || null;
+      const snapBody = snapParts[1] || '';
+      const snapTrailers = parseCommitTrailers(snapBody);
+      const snapSubject = snapBody.split('\n')[0] || '';
       const include = !beforeDate || (ts && Date.parse(ts) <= beforeDate.getTime());
       if (include) {
         sources.push({
@@ -133,7 +162,9 @@ function listBackups(projectDir, opts = {}) {
           ref: 'refs/guard/snapshot',
           commitHash: snapshotHash,
           shortHash: snapshotHash.substring(0, 7),
-          timestamp: ts || null,
+          timestamp: ts,
+          message: snapSubject || undefined,
+          ...snapTrailers,
         });
       }
     }

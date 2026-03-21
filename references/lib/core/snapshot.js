@@ -52,6 +52,24 @@ function removeSecretsFromIndex(secretsPatterns, cwd, env) {
   return excluded;
 }
 
+// ── Commit message builder ──────────────────────────────────────
+
+function buildCommitMessage(ts, opts) {
+  if (opts.message && !opts.context) return opts.message;
+
+  const ctx = opts.context || {};
+  const countTag = ctx.changedFileCount ? ` (${ctx.changedFileCount} files)` : '';
+  const subject = opts.message || `guard: auto-backup ${ts}${countTag}`;
+
+  const trailers = [];
+  if (ctx.changedFileCount != null) trailers.push(`Files-Changed: ${ctx.changedFileCount}`);
+  if (ctx.summary) trailers.push(`Summary: ${ctx.summary}`);
+  if (ctx.trigger) trailers.push(`Trigger: ${ctx.trigger}`);
+
+  if (trailers.length === 0) return subject;
+  return subject + '\n\n' + trailers.join('\n');
+}
+
 // ── Git snapshot ────────────────────────────────────────────────
 
 /**
@@ -63,6 +81,10 @@ function removeSecretsFromIndex(secretsPatterns, cwd, env) {
  * @param {object} [opts]
  * @param {string} [opts.branchRef='refs/guard/auto-backup']
  * @param {string} [opts.message] - Commit message (auto-generated if omitted)
+ * @param {object} [opts.context] - Backup context metadata
+ * @param {string} [opts.context.trigger] - 'auto' | 'manual' | 'pre-restore'
+ * @param {number} [opts.context.changedFileCount] - Number of changed files
+ * @param {string} [opts.context.summary] - Short change summary (e.g. "M src/app.js, A new.ts")
  * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[] }}
  */
 function createGitSnapshot(projectDir, cfg, opts = {}) {
@@ -109,7 +131,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     }
 
     const ts = formatTimestamp(new Date());
-    const msg = opts.message || `guard: auto-backup ${ts}`;
+    const msg = buildCommitMessage(ts, opts);
     const commitArgs = parentHash
       ? ['commit-tree', newTree, '-p', parentHash, '-m', msg]
       : ['commit-tree', newTree, '-m', msg];

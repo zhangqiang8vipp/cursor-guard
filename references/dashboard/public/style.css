@@ -244,9 +244,14 @@ main {
 .badge-warn { background: var(--yellow-bg); color: var(--yellow); }
 .badge-fail { background: var(--red-bg); color: var(--red); }
 
-.badge-git    { background: var(--blue-bg); color: var(--blue); }
-.badge-shadow { background: var(--amber-bg); color: var(--amber); }
-.badge-pre    { background: var(--purple-bg); color: var(--purple); }
+.badge-git     { background: var(--blue-bg); color: var(--blue); }
+.badge-shadow  { background: var(--amber-bg); color: var(--amber); }
+.badge-pre     { background: var(--purple-bg); color: var(--purple); }
+.badge-trigger { background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.7rem; }
+
+.backup-summary-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backup-summary-cell .badge-trigger { margin-right: 4px; }
+.backup-summary-cell .text-sm { font-size: 0.75rem; }
 
 /* ── Stats Row ────────────────────────────────────────────── */
 

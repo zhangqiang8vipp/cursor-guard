@@ -210,10 +210,10 @@ async function runBackup(projectDir, intervalOverride) {
 
     // V4: Record change event and check for anomalies
     let changedFileCount = 0;
+    let porcelain = '';
     if (repo) {
       // Use execFileSync directly — git() helper's trim() strips leading spaces
       // from porcelain output, corrupting the first line when it starts with ' '.
-      let porcelain = '';
       try {
         porcelain = execFileSync('git', ['status', '--porcelain'], {
           cwd: projectDir, stdio: 'pipe', encoding: 'utf-8',
@@ -260,7 +260,12 @@ async function runBackup(projectDir, intervalOverride) {
 
     // Git snapshot via Core
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
-      const snapResult = createGitSnapshot(projectDir, cfg, { branchRef });
+      const context = { trigger: 'auto', changedFileCount };
+      if (porcelain) {
+        const pLines = porcelain.split('\n').filter(Boolean).slice(0, 20);
+        context.summary = pLines.map(l => l.substring(0, 2).trim() + ' ' + l.substring(3)).join(', ');
+      }
+      const snapResult = createGitSnapshot(projectDir, cfg, { branchRef, context });
       if (snapResult.status === 'created') {
         let msg = `Git snapshot ${snapResult.shortHash} (${snapResult.fileCount} files)`;
         if (snapResult.secretsExcluded) {
