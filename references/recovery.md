@@ -34,21 +34,40 @@ git restore --source=<commit> -- <path/to/file>
 
 ## Undo uncommitted changes (entire repo) — **destructive**
 
+**Always preview first / 务必先预览：**
+
 ```bash
+# Step 1: Preview what will be reverted / 预览将要还原的内容
+git diff
+
+# Step 2: Preview what untracked files would be removed / 预览将被删除的未跟踪文件
+git clean -fdn   # dry-run: shows what WOULD be deleted
+
+# Step 3: Only after user confirms / 用户确认后再执行
 git restore .
-git clean -fd   # removes untracked files/dirs — DANGEROUS
 ```
 
-Only suggest `git clean -fd` if the user explicitly wants untracked removal; warn about data loss.
+Only suggest `git clean -fd` if the user explicitly wants untracked removal; warn about data loss:
+
+```bash
+# DANGEROUS: removes untracked files — only after explicit confirmation
+# 危险：删除未跟踪文件——仅在用户明确确认后执行
+git clean -fd
+```
 
 ## Recover "lost" commits / after reset
 
 ```bash
+# Step 1: Find the lost commit / 找到丢失的提交
 git reflog
-# find the commit hash, then:
+
+# Step 2: Create a recovery branch (safe, non-destructive) / 创建恢复分支（安全）
 git branch recover-branch <hash>
-# or (destructive — discards uncommitted work):
-git reset --hard <hash>
+
+# Step 3 (alternative): Hard reset — DESTRUCTIVE, preview first
+# 硬重置——破坏性操作，先预览
+git diff HEAD <hash> --stat   # preview what changes
+git reset --hard <hash>       # only after confirmation
 ```
 
 ## Restore deleted file from HEAD (if it was committed)
@@ -67,21 +86,25 @@ git stash pop
 
 ## Restore to N minutes/hours ago / 恢复到 N 分钟/小时前
 
+The goal is to find the **latest commit AT or BEFORE** the target time.
+
+目标是找到目标时间点**之前（含）最近的一次提交**。
+
 ```bash
-# Find commits from the last N minutes
-# 查找最近 N 分钟内的提交
-git log --oneline --since="5 minutes ago" -- <file>
+# Find the most recent commit BEFORE N minutes ago
+# 查找 N 分钟前之前最近的提交
+git log --oneline --before="5 minutes ago" -5 -- <file>
 
-# Find commits from the last N hours
-# 查找最近 N 小时内的提交
-git log --oneline --since="2 hours ago" -- <file>
+# Find the most recent commit BEFORE N hours ago
+# 查找 N 小时前之前最近的提交
+git log --oneline --before="2 hours ago" -5 -- <file>
 
-# Also check reflog (captures resets, amends, etc.)
-# 同时检查 reflog（能捕获 reset、amend 等操作）
-git reflog --since="5 minutes ago"
+# Reflog as fallback (captures resets, amends, etc.)
+# Reflog 作为兜底（能捕获 reset、amend 等操作）
+git reflog --before="5 minutes ago" -5
 
-# Restore file to a specific commit found above
-# 恢复文件到上面找到的某个提交
+# Restore file to the first (closest) commit found above
+# 恢复到上面找到的第一个（最近的）提交
 git restore --source=<commit-hash> -- <file>
 ```
 
@@ -170,9 +193,9 @@ git restore --source=<commit-hash> -- <path/to/file>
 # Diff your working copy against the auto-backup version
 git diff cursor-guard/auto-backup -- <path/to/file>
 
-# Time-based: find auto-backup snapshot from N minutes ago
-# 按时间查找：N 分钟前的自动备份快照
-git log cursor-guard/auto-backup --oneline --since="5 minutes ago" -- <path/to/file>
+# Time-based: find auto-backup snapshot from before N minutes ago
+# 按时间查找：N 分钟前之前最近的自动备份快照
+git log cursor-guard/auto-backup --oneline --before="5 minutes ago" -5 -- <path/to/file>
 
 # Version-based: list recent N auto-backup snapshots
 # 按版本查找：最近 N 个自动备份快照

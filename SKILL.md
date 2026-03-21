@@ -34,6 +34,9 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
   "protect": ["src/**", "lib/**", "package.json"],
   "ignore": ["node_modules/**", "dist/**", "*.log"],
 
+  // "git": auto-backup to a dedicated branch (default)
+  // "shadow": file copies to .cursor-guard-backup/<timestamp>/
+  // "both": git branch snapshot + shadow copies
   "backup_strategy": "git",
   "auto_backup_interval_seconds": 60,
 
@@ -88,15 +91,46 @@ When the target file of an edit **falls outside the protected scope**, the agent
 
 **Before any High-risk operation on a protected file:**
 
+Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
+
+```bash
+# 1. Create temp index from HEAD
+GIT_INDEX_FILE=.git/guard-snapshot-index git read-tree HEAD
+
+# 2. Stage working-tree files into temp index
+GIT_INDEX_FILE=.git/guard-snapshot-index git add -A
+
+# 3. Write tree and create commit on a guard ref (not on the user's branch)
+TREE=$(GIT_INDEX_FILE=.git/guard-snapshot-index git write-tree)
+COMMIT=$(git commit-tree $TREE -p HEAD -m "guard: snapshot before ai edit")
+git update-ref refs/guard/snapshot $COMMIT
+
+# 4. Cleanup
+rm .git/guard-snapshot-index
 ```
-git add -A && git commit -m "guard: snapshot before ai edit" --no-verify
+
+**PowerShell equivalent** (for agent Shell calls):
+
+```powershell
+$guardIdx = Join-Path (git rev-parse --git-dir) "guard-snapshot-index"
+$env:GIT_INDEX_FILE = $guardIdx
+git read-tree HEAD
+git add -A
+$tree = git write-tree
+$env:GIT_INDEX_FILE = $null
+Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
+$commit = git commit-tree $tree -p HEAD -m "guard: snapshot before ai edit"
+git update-ref refs/guard/snapshot $commit
 ```
 
 - Run this via Shell tool BEFORE the first Write / StrReplace / Delete call.
-- If `.cursor-guard.json` exists with `protect` patterns, the agent may scope the commit: `git add <protected-paths>` instead of `-A` to keep the snapshot focused.
-- If `git status` shows nothing to commit, that's fine — the existing HEAD is the rollback point.
+- The user's index (staged files) and current branch are **never modified**.
+- If `.cursor-guard.json` exists with `protect` patterns, scope `git add` to those paths instead of `-A`.
 - Record the commit hash (short) and report it to the user.
-- Before committing, check staged files against `secrets_patterns` (§0). Exclude any matches and warn the user.
+- To restore: `git restore --source=refs/guard/snapshot -- <file>`.
+- Before writing the tree, check staged files against `secrets_patterns` (§0). Exclude any matches and warn the user.
+
+**Simplified fallback**: If the plumbing approach fails (e.g. `commit-tree` not available), the agent MAY fall back to `git stash push -m "guard: snapshot" --keep-index` + `git stash pop` to shelter and restore the user's state. Report which method was used in the status block.
 
 **Before any Medium-risk operation:**
 
@@ -152,14 +186,26 @@ When editing 3+ files in one task:
 
 ## 4. Backup Strategy (Priority)
 
-1. **Git local commits** — primary safety net. Short WIP commits before risky AI runs.
-2. **Shadow copy** (`.cursor-guard-backup/`) — fallback for non-git or when user wants extra insurance.
-3. **Auto-backup script** — see [references/auto-backup.ps1](references/auto-backup.ps1) for a PowerShell watcher that auto-commits on file change.
+There are two distinct backup mechanisms. Do not confuse them:
+
+| | **Git branch snapshot** | **Shadow copy** |
+|---|---|---|
+| **What** | Commits to `cursor-guard/auto-backup` branch via plumbing | File copies to `.cursor-guard-backup/<timestamp>/` |
+| **Who creates** | `auto-backup.ps1` (when `backup_strategy` = `git` or `both`) | `auto-backup.ps1` (when `backup_strategy` = `shadow` or `both`); or the agent manually (§2b) |
+| **Who cleans up** | Manual: `git branch -D cursor-guard/auto-backup` | `auto-backup.ps1` per `retention` config; or manual |
+| **Restore** | `git restore --source=cursor-guard/auto-backup -- <file>` | `Copy-Item ".cursor-guard-backup/<ts>/<file>" "<path>"` |
+| **Requires Git** | Yes | No (fallback for non-git repos) |
+
+**Priority order for the agent:**
+
+1. **Guard ref snapshot** (`refs/guard/snapshot`) — agent creates before each high-risk edit using temp index (§2a). Does not pollute user's branch or staging area.
+2. **Git branch auto-backup** (`cursor-guard/auto-backup`) — periodic snapshots by `auto-backup.ps1`.
+3. **Shadow copy** (`.cursor-guard-backup/`) — fallback for non-git repos, or as extra insurance when `backup_strategy = "both"`.
 4. **Editor habits** — Ctrl+S frequently; optional extensions are user-configured, mention only if asked.
 
 **Hard default:** Do NOT `git push` unless the user explicitly asks. Scope = **local only**.
 
-**Retention:** Shadow copies are auto-cleaned by `auto-backup.ps1` per the `retention` config (default: keep 30 days). For manual cleanup of the backup branch, see [references/recovery.md](references/recovery.md).
+**Retention:** The `retention` config in `.cursor-guard.json` controls cleanup of **shadow copy directories** only. Git branch snapshots are not subject to retention; clean them manually (see [references/recovery.md](references/recovery.md)).
 
 ---
 
@@ -197,24 +243,26 @@ If unclear, ask: "你想恢复哪个文件？还是整个项目？" / "Which fil
 
 ### Step 2: Find Matching Commits
 
-**For time-based requests**, search both main branch and auto-backup branch:
+**For time-based requests**, the goal is to find the **latest commit AT or BEFORE the target time** — not commits after it.
 
 ```bash
-# Main branch: commits around the target time
-git log --oneline --after="<time-expr>" --before="now" -- <file>
+# "恢复到5分钟前" → find the most recent commit BEFORE that point
+git log --oneline --before="5 minutes ago" -5 -- <file>
 
 # Auto-backup branch (if exists)
-git log cursor-guard/auto-backup --oneline --after="<time-expr>" -- <file>
+git log cursor-guard/auto-backup --oneline --before="5 minutes ago" -5 -- <file>
 
-# Reflog (captures all HEAD movements including resets)
-git reflog --since="<time-expr>"
+# Reflog as fallback (shows all HEAD movements)
+git reflog --before="5 minutes ago" -5
 ```
 
-Time expression mapping:
-- "5分钟前" / "5 minutes ago" → `--after="5 minutes ago"`
-- "1小时前" / "1 hour ago" → `--after="1 hour ago"`
-- "今天下午3点" → `--after="today 15:00" --before="today 15:05"` (find closest)
-- "昨天" / "yesterday" → `--after="yesterday 00:00" --before="yesterday 23:59"`
+Time expression mapping (always use `--before` to find the state AT that point):
+- "5分钟前" / "5 minutes ago" → `--before="5 minutes ago"`
+- "1小时前" / "1 hour ago" → `--before="1 hour ago"`
+- "今天下午3点" → `--before="today 15:00"`
+- "昨天" / "yesterday" → `--before="yesterday 23:59"`
+
+**Key rule**: the first result from `--before` is the closest commit at or before the target time — that is the correct restore point.
 
 **For version-based requests**, use commit offset:
 
@@ -231,24 +279,28 @@ git log cursor-guard/auto-backup --oneline -<N+5> -- <file>
 
 ### Step 3: Present Candidates to User
 
+**Selection rule**: prefer the **latest commit AT or BEFORE the target time**. This is always candidate #1 in the `--before` results. Only if no commit exists before the target time, inform the user and offer the closest commit after it as an approximation.
+
 Show a numbered list of matching commits with timestamps:
 
 ```
 Found these snapshots / 找到以下快照:
 
-1. [abc1234] 2026-03-21 16:05:32 — guard: snapshot before ai edit
-2. [def5678] 2026-03-21 16:02:15 — guard: auto-backup 2026-03-21 16:02:15
-3. [ghi9012] 2026-03-21 15:58:40 — feat: add login page
+→ 1. [abc1234] 2026-03-21 16:05:32 — guard: snapshot before ai edit  ← closest before target
+  2. [def5678] 2026-03-21 16:02:15 — guard: auto-backup 2026-03-21 16:02:15
+  3. [ghi9012] 2026-03-21 15:58:40 — feat: add login page
 
-Which one to restore? / 恢复到哪个版本？(enter number)
+Recommended: #1 (closest to target time). Restore this one? / 推荐 #1（最接近目标时间）。恢复这个？
 ```
 
-If only ONE candidate is found, confirm with the user before restoring.
-
-If NO candidates are found:
-- Check if auto-backup branch exists: `git rev-parse --verify cursor-guard/auto-backup`
-- Check shadow copies: `Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending`
-- Report what was searched and suggest alternatives.
+**Rules**:
+- If only ONE candidate is found, confirm with the user before restoring.
+- If MULTIPLE candidates, pre-select #1 (closest before target) but let the user pick another.
+- If NO candidates before the target time:
+  - Check auto-backup branch: `git rev-parse --verify cursor-guard/auto-backup`
+  - Check shadow copies: `Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending`
+  - If still nothing, report clearly: "No snapshot found before that time. The earliest available is [hash] at [time]. Do you want to use it?"
+- **Never silently pick a version.** Always show and confirm.
 
 ### Step 4: Execute Recovery
 

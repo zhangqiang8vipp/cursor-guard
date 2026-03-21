@@ -214,6 +214,16 @@ The skill activates on these signals:
 
 ---
 
+## Known Limitations
+
+- **Binary files**: Git diffs and snapshots work on text files. Binary files (images, compiled assets) are stored but cannot be meaningfully diffed or partially restored.
+- **Untracked files**: Files never committed to Git cannot be recovered from Git history. Shadow copy (`backup_strategy: "shadow"` or `"both"`) is the only safety net for untracked files.
+- **Concurrent agents**: If multiple AI agent threads write to the same file simultaneously, snapshots cannot prevent race conditions. Avoid parallel edits to the same file.
+- **External tools modifying the index**: Tools that alter Git's index (e.g. other Git GUIs, IDE Git integrations) while `auto-backup.ps1` is running may conflict. The script uses a temporary index to minimize this, but edge cases exist.
+- **Git worktree**: The auto-backup script supports worktree layouts (`git rev-parse --git-dir`), but has not been tested with all exotic setups (e.g. `--separate-git-dir`).
+- **Cursor terminal interference**: Cursor's integrated terminal injects `--trailer` flags into `git commit` commands, which breaks plumbing commands like `commit-tree`. Always run `auto-backup.ps1` in a **separate PowerShell window**.
+- **Large repos**: For very large repositories, `git add -A` in the backup loop may be slow. Use `protect` patterns in `.cursor-guard.json` to narrow scope.
+
 ## Requirements
 
 - **Git** — for primary backup strategy
