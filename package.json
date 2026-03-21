@@ -1,6 +1,6 @@
 {
   "name": "cursor-guard",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Protects code from accidental AI overwrite or deletion in Cursor IDE — mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | 保护代码免受 Cursor AI 代理意外覆写或删除——强制写前快照、预览再执行、本地 Git 安全网、确定性恢复。",
   "keywords": [
     "cursor",
