@@ -20,8 +20,10 @@
 - **可配置保护范围** — 通过 `.cursor-guard.json` 配置文件只保护你关心的文件
 - **敏感文件过滤** — `.env`、密钥、证书等敏感文件自动排除备份
 - **自动备份脚本** — 跨平台 (Node.js) 定期快照到独立 Git 分支，不干扰工作区
-- **MCP 工具调用（可选）** — 7 个标准化工具（诊断、快照、恢复、状态等），结构化 JSON 返回，低 token 消耗
+- **MCP 工具调用（可选）** — 9 个标准化工具（诊断、快照、恢复、状态、看板、告警等），结构化 JSON 返回，低 token 消耗
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
+- **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
+- **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
 
 ---
 
@@ -103,9 +105,11 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       ├── snapshot.js             # Git 快照 + 影子拷贝
     │       ├── backups.js              # 备份列表 + 留存清理
     │       ├── restore.js              # 单文件/全项目恢复
-    │       └── status.js               # 备份系统状态
+    │       ├── status.js               # 备份系统状态
+    │       ├── anomaly.js             # V4：变更频率检测
+    │       └── dashboard.js           # V4：健康看板聚合
     ├── mcp/
-    │   └── server.js                   # MCP Server（7 个工具）
+    │   └── server.js                   # MCP Server（9 个工具）
     ├── bin/
     │   ├── cursor-guard-backup.js      # CLI：npx cursor-guard-backup
     │   ├── cursor-guard-doctor.js      # CLI：npx cursor-guard-doctor
@@ -154,7 +158,7 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 }
 ```
 
-启用后 AI 代理可直接调用 7 个结构化工具（诊断、快照、恢复等），无需拼接 shell 命令，更快更省 token。不启用也完全不影响使用。
+启用后 AI 代理可直接调用 9 个结构化工具（诊断、快照、恢复、看板、告警等），无需拼接 shell 命令，更快更省 token。不启用也完全不影响使用。
 
 6. **（可选）运行自动备份** — 在独立终端运行：
 
@@ -296,6 +300,8 @@ npx cursor-guard-doctor --path /my/project
 - 健康检查："guard doctor"、"自检"、"诊断guard"、"MCP 能用吗"
 - 自动修复："guard fix"、"修复配置"、"自动修复"
 - 备份状态："备份状态"、"guard status"、"watcher 在跑吗"
+- 健康看板："看板"、"dashboard"、"备份总览"、"健康状态"
+- 告警检查："有告警吗"、"变更异常"、"风险提示"
 
 ---
 
@@ -305,8 +311,8 @@ npx cursor-guard-doctor --path /my/project
 |------|------|
 | `SKILL.md` | AI 代理的主要技能指令（含 MCP 双路径逻辑） |
 | `ROADMAP.md` | 版本演进规划书（V2-V7） |
-| `references/lib/core/` | Core 层：6 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status） |
-| `references/mcp/server.js` | MCP Server：7 个标准化工具（可选） |
+| `references/lib/core/` | Core 层：8 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status / anomaly / dashboard） |
+| `references/mcp/server.js` | MCP Server：9 个标准化工具（可选） |
 | `references/lib/auto-backup.js` | 自动备份 watcher（调用 Core） |
 | `references/lib/guard-doctor.js` | 健康检查 CLI 壳（调用 Core） |
 | `references/lib/utils.js` | 共享工具库（配置、glob、git、manifest） |

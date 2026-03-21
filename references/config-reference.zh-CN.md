@@ -173,3 +173,43 @@
   "max_count": 200
 }
 ```
+
+---
+
+## `proactive_alert`
+
+- **类型**：`boolean`
+- **默认值**：`true`
+
+启用 V4 主动变更频率检测。开启后，自动备份 watcher 会监控文件变更频率，当检测到异常模式（如 10 秒内 20+ 文件被修改）时发出告警。告警会持久化到文件，以便 MCP 工具在响应中附加风险提示。
+
+设为 `false` 可完全禁用主动监控。
+
+```json
+"proactive_alert": true
+```
+
+---
+
+## `alert_thresholds`
+
+- **类型**：`object`
+- **默认值**：`{ "files_per_window": 20, "window_seconds": 10, "cooldown_seconds": 60 }`
+
+主动变更频率告警的阈值配置。仅在 `proactive_alert` 为 `true` 时生效。
+
+### 子字段
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `files_per_window` | `integer` | `20` | 时间窗口内触发告警的文件变更数量 |
+| `window_seconds` | `integer` | `10` | 统计文件变更的滑动时间窗口（秒） |
+| `cooldown_seconds` | `integer` | `60` | 连续告警之间的最小间隔（秒），避免噪声 |
+
+```json
+"alert_thresholds": {
+  "files_per_window": 20,
+  "window_seconds": 10,
+  "cooldown_seconds": 60
+}
+```

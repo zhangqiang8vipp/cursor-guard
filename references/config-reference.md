@@ -173,3 +173,43 @@ Retention policy for the **`refs/guard/auto-backup` Git ref**. By default, auto-
   "max_count": 200
 }
 ```
+
+---
+
+## `proactive_alert`
+
+- **Type**: `boolean`
+- **Default**: `true`
+
+Enable V4 proactive change-velocity detection. When enabled, the auto-backup watcher monitors file change frequency and raises alerts when abnormal patterns are detected (e.g. 20+ files modified in 10 seconds). Alerts are persisted to a file so the MCP server can include them in tool responses.
+
+Set to `false` to disable proactive monitoring entirely.
+
+```json
+"proactive_alert": true
+```
+
+---
+
+## `alert_thresholds`
+
+- **Type**: `object`
+- **Default**: `{ "files_per_window": 20, "window_seconds": 10, "cooldown_seconds": 60 }`
+
+Thresholds for proactive change-velocity alerts. Only effective when `proactive_alert` is `true`.
+
+### Sub-fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `files_per_window` | `integer` | `20` | Number of file changes within the time window that triggers an alert |
+| `window_seconds` | `integer` | `10` | Sliding time window in seconds for counting file changes |
+| `cooldown_seconds` | `integer` | `60` | Minimum seconds between consecutive alerts to avoid noise |
+
+```json
+"alert_thresholds": {
+  "files_per_window": 20,
+  "window_seconds": 10,
+  "cooldown_seconds": 60
+}
+```

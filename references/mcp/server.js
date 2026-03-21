@@ -12,8 +12,25 @@ const { listBackups } = require('../lib/core/backups');
 const { restoreFile, previewProjectRestore, executeProjectRestore } = require('../lib/core/restore');
 const { runFixes } = require('../lib/core/doctor-fix');
 const { getBackupStatus } = require('../lib/core/status');
+const { getDashboard } = require('../lib/core/dashboard');
+const { loadActiveAlert } = require('../lib/core/anomaly');
 
 const pkg = require('../../package.json');
+
+// ── Alert injection helper ──────────────────────────────────────
+
+function injectAlert(projectPath, result) {
+  const alert = loadActiveAlert(projectPath);
+  if (alert) {
+    result._activeAlert = {
+      type: alert.type,
+      message: alert.recommendation || `${alert.fileCount} files changed in ${alert.windowSeconds}s`,
+      timestamp: alert.timestamp,
+      expiresAt: alert.expiresAt,
+    };
+  }
+  return result;
+}
 
 // ── Server ──────────────────────────────────────────────────────
 
@@ -32,7 +49,7 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
-    const result = runDiagnostics(resolved);
+    const result = injectAlert(resolved, runDiagnostics(resolved));
     return {
       content: [{
         type: 'text',
@@ -55,7 +72,7 @@ server.tool(
   },
   async ({ path: projectPath, file, before, limit }) => {
     const resolved = path.resolve(projectPath);
-    const result = listBackups(resolved, { file, before, limit });
+    const result = injectAlert(resolved, listBackups(resolved, { file, before, limit }));
     return {
       content: [{
         type: 'text',
@@ -94,6 +111,8 @@ server.tool(
       results.shadow = createShadowCopy(resolved, cfg);
     }
 
+    injectAlert(resolved, results);
+
     return {
       content: [{
         type: 'text',
@@ -116,9 +135,9 @@ server.tool(
   },
   async ({ path: projectPath, file, source, preserve_current }) => {
     const resolved = path.resolve(projectPath);
-    const result = restoreFile(resolved, file, source, {
+    const result = injectAlert(resolved, restoreFile(resolved, file, source, {
       preserveCurrent: preserve_current,
-    });
+    }));
     return {
       content: [{
         type: 'text',
@@ -132,24 +151,26 @@ server.tool(
 
 server.tool(
   'restore_project',
-  'Preview or execute a full project restore to a given backup point. In preview mode (default), shows affected files without changes. In execute mode, creates a pre-restore snapshot then restores all files.',
+  'Preview or execute a full project restore to a given backup point. In preview mode (default), shows affected files (including untracked) without changes. In execute mode, creates a pre-restore snapshot then restores all tracked files and cleans untracked files.',
   {
     path: z.string().describe('Absolute path to the project directory'),
     source: z.string().describe('Backup source: git commit hash or ref name'),
     preview: z.boolean().optional().describe('If true (default), only show what would change. If false, execute the restore.'),
     preserve_current: z.boolean().optional().describe('Create pre-restore snapshot before executing (default true, only used when preview=false)'),
+    clean_untracked: z.boolean().optional().describe('Remove untracked non-ignored files after restore (default true, only used when preview=false)'),
   },
-  async ({ path: projectPath, source, preview, preserve_current }) => {
+  async ({ path: projectPath, source, preview, preserve_current, clean_untracked }) => {
     const resolved = path.resolve(projectPath);
 
     if (preview !== false) {
-      const result = previewProjectRestore(resolved, source);
+      const result = injectAlert(resolved, previewProjectRestore(resolved, source));
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
 
-    const result = executeProjectRestore(resolved, source, {
+    const result = injectAlert(resolved, executeProjectRestore(resolved, source, {
       preserveCurrent: preserve_current,
-    });
+      cleanUntracked: clean_untracked,
+    }));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -165,7 +186,7 @@ server.tool(
   },
   async ({ path: projectPath, dry_run }) => {
     const resolved = path.resolve(projectPath);
-    const result = runFixes(resolved, { dryRun: !!dry_run });
+    const result = injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run }));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -180,7 +201,40 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
-    const result = getBackupStatus(resolved);
+    const result = injectAlert(resolved, getBackupStatus(resolved));
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+// ── Tool 8: dashboard ───────────────────────────────────────────
+
+server.tool(
+  'dashboard',
+  'Get a comprehensive backup health dashboard: strategy, last backup time, backup counts, disk usage breakdown, protection scope, health assessment, and active alerts. Combines status + analytics in one call.',
+  {
+    path: z.string().describe('Absolute path to the project directory'),
+  },
+  async ({ path: projectPath }) => {
+    const resolved = path.resolve(projectPath);
+    const result = injectAlert(resolved, getDashboard(resolved));
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+// ── Tool 9: alert_status ────────────────────────────────────────
+
+server.tool(
+  'alert_status',
+  'Check if there is an active change-velocity alert (V4 proactive detection). Returns the alert details if active, or confirms no alert. Read-only, safe to call anytime.',
+  {
+    path: z.string().describe('Absolute path to the project directory'),
+  },
+  async ({ path: projectPath }) => {
+    const resolved = path.resolve(projectPath);
+    const alert = loadActiveAlert(resolved);
+    const result = alert
+      ? { active: true, alert }
+      : { active: false, message: 'No active alerts' };
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );

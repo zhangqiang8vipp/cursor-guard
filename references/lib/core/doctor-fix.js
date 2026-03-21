@@ -183,7 +183,7 @@ function runFixes(projectDir, opts = {}) {
     let stale = false;
     try {
       const content = fs.readFileSync(lockFile, 'utf-8').trim();
-      const pidMatch = content.match(/pid[:\s]+(\d+)/i);
+      const pidMatch = content.match(/pid[=:\s]+(\d+)/i);
       if (pidMatch) {
         const pid = parseInt(pidMatch[1], 10);
         try { process.kill(pid, 0); } catch { stale = true; }

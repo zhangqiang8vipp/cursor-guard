@@ -113,12 +113,12 @@ async function run() {
   // List tools
   const toolsResp = await rpc('tools/list', {});
 
-  await test('lists 7 tools', () => {
+  await test('lists 9 tools', () => {
     const tools = toolsResp.result.tools;
     if (!tools) throw new Error('no tools');
-    if (tools.length !== 7) throw new Error(`expected 7 tools, got ${tools.length}`);
+    if (tools.length !== 9) throw new Error(`expected 9 tools, got ${tools.length}`);
     const names = tools.map(t => t.name).sort();
-    const expected = ['backup_status', 'doctor', 'doctor_fix', 'list_backups', 'restore_file', 'restore_project', 'snapshot_now'].sort();
+    const expected = ['alert_status', 'backup_status', 'dashboard', 'doctor', 'doctor_fix', 'list_backups', 'restore_file', 'restore_project', 'snapshot_now'].sort();
     if (JSON.stringify(names) !== JSON.stringify(expected)) {
       throw new Error(`tool names mismatch: ${JSON.stringify(names)}`);
     }
@@ -263,6 +263,101 @@ async function run() {
     if (!Array.isArray(data.actions)) throw new Error('actions not an array');
     if (typeof data.totalFixed !== 'number') throw new Error('totalFixed missing');
   });
+
+  // Call dashboard
+  const dashResp = await rpc('tools/call', {
+    name: 'dashboard',
+    arguments: { path: tmpDir },
+  });
+
+  await test('dashboard returns comprehensive health data', () => {
+    const content = dashResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (typeof data.strategy !== 'string') throw new Error('no strategy');
+    if (typeof data.counts !== 'object') throw new Error('no counts');
+    if (typeof data.diskUsage !== 'object') throw new Error('no diskUsage');
+    if (typeof data.protectionScope !== 'object') throw new Error('no protectionScope');
+    if (typeof data.health !== 'object') throw new Error('no health');
+    if (!['healthy', 'warning', 'critical'].includes(data.health.status)) throw new Error(`invalid health: ${data.health.status}`);
+    if (typeof data.alerts !== 'object') throw new Error('no alerts');
+    if (typeof data.watcher !== 'object') throw new Error('no watcher');
+  });
+
+  // Call alert_status
+  const alertResp = await rpc('tools/call', {
+    name: 'alert_status',
+    arguments: { path: tmpDir },
+  });
+
+  await test('alert_status returns alert info', () => {
+    const content = alertResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (typeof data.active !== 'boolean') throw new Error('no active field');
+    if (data.active && !data.alert) throw new Error('active but no alert');
+    if (!data.active && !data.message) throw new Error('inactive but no message');
+  });
+
+  // ── injectAlert verification ──────────────────────────────────
+  // Write an active alert file so all tools should return _activeAlert
+  const gitDir = path.join(tmpDir, '.git');
+  const alertFile = path.join(gitDir, 'cursor-guard-alert.json');
+  const fakeAlert = {
+    type: 'high_change_velocity',
+    detectedAt: Date.now(),
+    timestamp: new Date().toISOString(),
+    fileCount: 30,
+    windowSeconds: 10,
+    threshold: 20,
+    expiresAt: new Date(Date.now() + 300000).toISOString(),
+    recommendation: 'Test alert for injection verification',
+  };
+  fs.writeFileSync(alertFile, JSON.stringify(fakeAlert, null, 2));
+
+  const toolsWithAlert = ['doctor', 'list_backups', 'backup_status', 'dashboard', 'doctor_fix', 'snapshot_now'];
+  for (const toolName of toolsWithAlert) {
+    const resp = await rpc('tools/call', {
+      name: toolName,
+      arguments: { path: tmpDir, ...(toolName === 'doctor_fix' ? { dry_run: true } : {}), ...(toolName === 'snapshot_now' ? { strategy: 'git' } : {}) },
+    });
+    await test(`${toolName} response contains _activeAlert when alert exists`, () => {
+      const content = resp.result.content[0].text;
+      const data = JSON.parse(content);
+      if (!data._activeAlert) throw new Error(`_activeAlert missing from ${toolName} response`);
+      if (data._activeAlert.type !== 'high_change_velocity') throw new Error(`wrong alert type: ${data._activeAlert.type}`);
+    });
+  }
+
+  // Verify restore_file also injects
+  fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'pre-alert-test');
+  execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+  execFileSync('git', ['commit', '-m', 'for alert test', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+  const alertHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+  fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'post-alert-test');
+  execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+  execFileSync('git', ['commit', '-m', 'for alert test 2', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+
+  const restoreAlertResp = await rpc('tools/call', {
+    name: 'restore_file',
+    arguments: { path: tmpDir, file: 'hello.txt', source: alertHead, preserve_current: false },
+  });
+  await test('restore_file response contains _activeAlert', () => {
+    const content = restoreAlertResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (!data._activeAlert) throw new Error('_activeAlert missing from restore_file');
+  });
+
+  const rpResp = await rpc('tools/call', {
+    name: 'restore_project',
+    arguments: { path: tmpDir, source: alertHead, preview: true },
+  });
+  await test('restore_project response contains _activeAlert', () => {
+    const content = rpResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (!data._activeAlert) throw new Error('_activeAlert missing from restore_project');
+  });
+
+  // Clean up alert file
+  try { fs.unlinkSync(alertFile); } catch { /* ignore */ }
 
   // Cleanup
   serverProcess.kill();

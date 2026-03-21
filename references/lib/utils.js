@@ -46,6 +46,48 @@ function matchesAny(patterns, relPath) {
   return false;
 }
 
+/**
+ * Unquote a Git C-quoted pathname.
+ * Paths containing spaces, non-ASCII, or special chars are wrapped in double
+ * quotes with backslash escapes.  Octal escapes represent raw UTF-8 bytes,
+ * so we collect into a byte buffer and decode the whole thing.
+ */
+function unquoteGitPath(p) {
+  if (!p.startsWith('"') || !p.endsWith('"')) return p;
+  const inner = p.slice(1, -1);
+  const bytes = [];
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '\\' && i + 1 < inner.length) {
+      const c = inner[i + 1];
+      if (c === '\\') { bytes.push(0x5C); i++; }
+      else if (c === '"')  { bytes.push(0x22); i++; }
+      else if (c === 'a')  { bytes.push(0x07); i++; }
+      else if (c === 'b')  { bytes.push(0x08); i++; }
+      else if (c === 'f')  { bytes.push(0x0C); i++; }
+      else if (c === 'n')  { bytes.push(0x0A); i++; }
+      else if (c === 'r')  { bytes.push(0x0D); i++; }
+      else if (c === 't')  { bytes.push(0x09); i++; }
+      else if (c === 'v')  { bytes.push(0x0B); i++; }
+      else if (c >= '0' && c <= '7') {
+        let octal = c;
+        if (i + 2 < inner.length && inner[i + 2] >= '0' && inner[i + 2] <= '7') {
+          octal += inner[i + 2];
+          if (i + 3 < inner.length && inner[i + 3] >= '0' && inner[i + 3] <= '7') {
+            octal += inner[i + 3];
+          }
+        }
+        bytes.push(parseInt(octal, 8));
+        i += octal.length;
+      } else {
+        bytes.push(inner.charCodeAt(i));
+      }
+    } else {
+      bytes.push(inner.charCodeAt(i));
+    }
+  }
+  return Buffer.from(bytes).toString('utf-8');
+}
+
 // ── File traversal (recursive, no external deps) ────────────────
 
 const ALWAYS_SKIP = /[/\\](\.git|\.cursor-guard-backup|node_modules)[/\\]/;
@@ -91,6 +133,8 @@ const DEFAULT_CONFIG = {
   pre_restore_backup: 'always',
   retention: { mode: 'days', days: 30, max_count: 100, max_size_mb: 500 },
   git_retention: { enabled: false, mode: 'count', days: 30, max_count: 200 },
+  proactive_alert: true,
+  alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
 };
 
 function loadConfig(projectDir) {
@@ -98,19 +142,28 @@ function loadConfig(projectDir) {
   const cfg = { ...DEFAULT_CONFIG };
   cfg.retention = { ...DEFAULT_CONFIG.retention };
   cfg.git_retention = { ...DEFAULT_CONFIG.git_retention };
+  cfg.alert_thresholds = { ...DEFAULT_CONFIG.alert_thresholds };
 
   if (!fs.existsSync(cfgPath)) return { cfg, loaded: false, error: null };
 
   try {
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-    if (Array.isArray(raw.protect))          cfg.protect = raw.protect;
-    if (Array.isArray(raw.ignore))           cfg.ignore = raw.ignore;
-    if (Array.isArray(raw.secrets_patterns)) cfg.secrets_patterns = raw.secrets_patterns;
+    const warnings = [];
+    function sanitizeStringArray(arr, fieldName) {
+      const clean = arr.filter(item => typeof item === 'string');
+      if (clean.length < arr.length) {
+        warnings.push(`${fieldName} contains ${arr.length - clean.length} non-string element(s) — ignored`);
+      }
+      return clean;
+    }
+    if (Array.isArray(raw.protect))          cfg.protect = sanitizeStringArray(raw.protect, 'protect');
+    if (Array.isArray(raw.ignore))           cfg.ignore = sanitizeStringArray(raw.ignore, 'ignore');
+    if (Array.isArray(raw.secrets_patterns)) cfg.secrets_patterns = sanitizeStringArray(raw.secrets_patterns, 'secrets_patterns');
     if (Array.isArray(raw.secrets_patterns_extra)) {
-      const merged = [...new Set([...cfg.secrets_patterns, ...raw.secrets_patterns_extra])];
+      const cleaned = sanitizeStringArray(raw.secrets_patterns_extra, 'secrets_patterns_extra');
+      const merged = [...new Set([...cfg.secrets_patterns, ...cleaned])];
       cfg.secrets_patterns = merged;
     }
-    const warnings = [];
     if (typeof raw.backup_strategy === 'string') {
       if (VALID_STRATEGIES.includes(raw.backup_strategy)) {
         cfg.backup_strategy = raw.backup_strategy;
@@ -149,6 +202,19 @@ function loadConfig(projectDir) {
       }
       if (typeof raw.git_retention.days === 'number')      cfg.git_retention.days = raw.git_retention.days;
       if (typeof raw.git_retention.max_count === 'number') cfg.git_retention.max_count = raw.git_retention.max_count;
+    }
+    if (raw.proactive_alert === false) {
+      cfg.proactive_alert = false;
+    } else if (raw.proactive_alert !== undefined && raw.proactive_alert !== true) {
+      warnings.push(`proactive_alert should be a boolean, got ${JSON.stringify(raw.proactive_alert)} — using default (true)`);
+    }
+    if (raw.alert_thresholds) {
+      if (typeof raw.alert_thresholds.files_per_window === 'number' && raw.alert_thresholds.files_per_window > 0)
+        cfg.alert_thresholds.files_per_window = raw.alert_thresholds.files_per_window;
+      if (typeof raw.alert_thresholds.window_seconds === 'number' && raw.alert_thresholds.window_seconds > 0)
+        cfg.alert_thresholds.window_seconds = raw.alert_thresholds.window_seconds;
+      if (typeof raw.alert_thresholds.cooldown_seconds === 'number' && raw.alert_thresholds.cooldown_seconds > 0)
+        cfg.alert_thresholds.cooldown_seconds = raw.alert_thresholds.cooldown_seconds;
     }
     return { cfg, loaded: true, error: null, warnings };
   } catch (e) {
@@ -368,4 +434,5 @@ module.exports = {
   createLogger,
   parseArgs,
   filterFiles,
+  unquoteGitPath,
 };

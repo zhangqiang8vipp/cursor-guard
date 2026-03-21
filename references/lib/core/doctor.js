@@ -111,7 +111,7 @@ function runDiagnostics(projectDir) {
     let totalBytes = 0;
     try {
       const dirs = fs.readdirSync(backupDir, { withFileTypes: true })
-        .filter(d => d.isDirectory() && (/^\d{8}_\d{6}$/.test(d.name) || d.name.startsWith('pre-restore-')));
+        .filter(d => d.isDirectory() && (/^\d{8}_\d{6}(_\d{3})?$/.test(d.name) || d.name.startsWith('pre-restore-')));
       snapCount = dirs.length;
     } catch { /* ignore */ }
     try {

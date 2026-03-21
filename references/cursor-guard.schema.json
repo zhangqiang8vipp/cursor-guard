@@ -102,6 +102,36 @@
         }
       },
       "additionalProperties": false
+    },
+    "proactive_alert": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable V4 proactive change-velocity detection. When true, the auto-backup watcher monitors file change frequency and raises alerts when abnormal patterns are detected."
+    },
+    "alert_thresholds": {
+      "type": "object",
+      "description": "Thresholds for proactive change-velocity alerts (V4). Only effective when proactive_alert is true.",
+      "properties": {
+        "files_per_window": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20,
+          "description": "Number of file changes within the time window that triggers an alert."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Sliding time window in seconds for counting file changes."
+        },
+        "cooldown_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60,
+          "description": "Minimum seconds between consecutive alerts to avoid noise."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
