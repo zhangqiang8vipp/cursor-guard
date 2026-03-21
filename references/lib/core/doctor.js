@@ -217,16 +217,17 @@ function runDiagnostics(projectDir) {
 
   let mcpSdkAvailable = false;
   let mcpSdkVersion = null;
-  // Try resolving SDK from the skill package's own node_modules first,
-  // then fall back to the running process's require paths.
   const skillRoot = path.resolve(__dirname, '../../..');
+  // Search multiple candidate locations for SDK package.json
   const sdkCandidates = [
     path.join(skillRoot, 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json'),
+    path.join(__dirname, '..', '..', '..', 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json'),
   ];
   for (const candidate of sdkCandidates) {
     try {
-      if (fs.existsSync(candidate)) {
-        const mcpPkg = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+      const resolved = path.resolve(candidate);
+      if (fs.existsSync(resolved)) {
+        const mcpPkg = JSON.parse(fs.readFileSync(resolved, 'utf-8'));
         mcpSdkAvailable = true;
         mcpSdkVersion = mcpPkg.version;
         break;
@@ -234,11 +235,18 @@ function runDiagnostics(projectDir) {
     } catch { /* ignore */ }
   }
   if (!mcpSdkAvailable) {
+    // Fallback: try require.resolve from Node's module paths.
+    // Some SDK versions restrict subpath access via exports, so try
+    // the main entry first and derive the package.json from it.
     try {
-      const mcpPkgPath = require.resolve('@modelcontextprotocol/sdk/package.json');
-      const mcpPkg = JSON.parse(fs.readFileSync(mcpPkgPath, 'utf-8'));
-      mcpSdkAvailable = true;
-      mcpSdkVersion = mcpPkg.version;
+      const mainPath = require.resolve('@modelcontextprotocol/sdk');
+      const sdkDir = mainPath.replace(/[/\\]dist[/\\].*$/, '').replace(/[/\\]src[/\\].*$/, '');
+      const pkgPath = path.join(sdkDir, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        const mcpPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        mcpSdkAvailable = true;
+        mcpSdkVersion = mcpPkg.version;
+      }
     } catch { /* not installed */ }
   }
 

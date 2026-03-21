@@ -20,6 +20,13 @@ function validateRelativePath(file) {
 
 const VALID_SHADOW_SOURCE = /^\d{8}_\d{6}(_\d{3})?$|^pre-restore-\d{8}_\d{6}(_\d{3})?$/;
 
+const TOOL_DIRS = ['.cursor/', '.cursor\\'];
+
+function isToolPath(filePath) {
+  const normalized = filePath.replace(/\\/g, '/');
+  return TOOL_DIRS.some(d => normalized.startsWith(d));
+}
+
 function validateShadowSource(source) {
   if (!VALID_SHADOW_SOURCE.test(source)) {
     return { valid: false };
@@ -208,6 +215,12 @@ function previewProjectRestore(projectDir, source) {
       }
     }
 
+    for (const f of files) {
+      if (isToolPath(f.path)) {
+        f.warning = 'tool directory — restoring may downgrade cursor-guard or other tools';
+      }
+    }
+
     return { status: 'ok', files, totalChanged: files.length };
   } catch (e) {
     return { status: 'error', error: e.message };
@@ -269,6 +282,16 @@ function executeProjectRestore(projectDir, source, opts = {}) {
       cwd: projectDir, stdio: 'pipe',
     });
 
+    // Restore .cursor/ back from HEAD to prevent tool/skill downgrade
+    const head = git(['rev-parse', 'HEAD'], { cwd: projectDir, allowFail: true });
+    if (head) {
+      try {
+        execFileSync('git', ['restore', `--source=HEAD`, '--', '.cursor/'], {
+          cwd: projectDir, stdio: 'pipe',
+        });
+      } catch { /* .cursor/ may not exist in HEAD, that's fine */ }
+    }
+
     let untrackedCleaned = 0;
     if (cleanUntracked) {
       const untrackedOutput = git(
@@ -278,6 +301,7 @@ function executeProjectRestore(projectDir, source, opts = {}) {
       if (untrackedOutput) {
         for (const raw of untrackedOutput.split('\n').filter(Boolean)) {
           const f = unquoteGitPath(raw);
+          if (isToolPath(f)) continue;
           try {
             fs.unlinkSync(path.join(projectDir, f));
             untrackedCleaned++;
@@ -287,7 +311,7 @@ function executeProjectRestore(projectDir, source, opts = {}) {
     }
 
     result.status = 'restored';
-    result.filesRestored = trackedFiles.length;
+    result.filesRestored = trackedFiles.filter(f => !isToolPath(f.path)).length;
     result.untrackedCleaned = untrackedCleaned;
     return result;
   } catch (e) {

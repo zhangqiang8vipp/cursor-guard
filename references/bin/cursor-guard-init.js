@@ -67,10 +67,10 @@ console.log('        Done.');
 // Step 2: Install MCP dependencies in skill directory
 console.log('  [2/4] Installing MCP dependencies...');
 try {
-  execFileSync('npm', ['install', '--omit=dev', '--ignore-scripts'], {
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  execFileSync(npmCmd, ['install', '--omit=dev', '--ignore-scripts'], {
     cwd: skillTarget,
     stdio: 'pipe',
-    shell: process.platform === 'win32',
   });
   console.log('        Done.');
 } catch (e) {
