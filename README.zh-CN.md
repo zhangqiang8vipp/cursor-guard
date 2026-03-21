@@ -24,6 +24,7 @@
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
 - **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
+- **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、每 15 秒自动刷新、支持多项目监控
 
 ---
 
@@ -115,6 +116,12 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       ├── status.js               # 备份系统状态
     │       ├── anomaly.js             # V4：变更频率检测
     │       └── dashboard.js           # V4：健康看板聚合
+    ├── dashboard/
+    │   ├── server.js                   # 仪表盘 HTTP 服务 + API
+    │   └── public/                     # Web UI（HTML/CSS/JS）
+    │       ├── index.html
+    │       ├── style.css
+    │       └── app.js
     ├── mcp/
     │   └── server.js                   # MCP Server（9 个工具）
     ├── bin/
@@ -249,6 +256,37 @@ npx cursor-guard-doctor --path /my/project
 
 > **注意**：请在独立终端窗口中运行备份/检查脚本，不要在 Cursor 集成终端中运行。
 
+### Web 仪表盘
+
+本地只读 Web 页面，一页查看备份健康状态、恢复点、保护范围和诊断结果。
+
+```bash
+# 监控单个项目
+npx cursor-guard-dashboard --path /my/project
+
+# 监控多个项目
+npx cursor-guard-dashboard --path /project-a --path /project-b
+
+# 自定义端口（默认 3120）
+npx cursor-guard-dashboard --path /my/project --port 8080
+
+# Windows PowerShell（从 skill 目录运行）
+node references\dashboard\server.js --path "D:\MyProject"
+```
+
+然后在浏览器打开 `http://127.0.0.1:3120`。
+
+特性：
+
+- **只读** — 不执行任何写操作，随时可以安全运行
+- **中英双语** — zh-CN / en-US，自动检测系统语言，右上角手动切换
+- **自动刷新** — 每 15 秒拉取数据，支持手动刷新按钮
+- **多项目** — 传多个 `--path` 参数可从一个页面监控多个项目
+- **4 个区块**：总览（健康状态 + 守护进程 + 告警 + 最近备份）、备份与恢复（恢复点表格，按类型过滤）、保护范围（protect/ignore 规则）、诊断（doctor 检查项）
+- **2 个详情抽屉**：恢复点抽屉（预览 JSON、复制引用/hash）、诊断抽屉（完整检查列表，WARN/FAIL 默认展开）
+- **安全性** — 仅绑定 `127.0.0.1`（不暴露到局域网）、API 使用项目 ID 而非原始路径、静态文件服务严格限制在 `public/` 目录
+- **零额外依赖** — 使用 Node.js 内置 `http` 模块 + cursor-guard 已有核心模块
+
 ---
 
 ## 恢复
@@ -325,6 +363,8 @@ npx cursor-guard-doctor --path /my/project
 | `references/lib/utils.js` | 共享工具库（配置、glob、git、manifest） |
 | `references/bin/cursor-guard-backup.js` | CLI 入口：`npx cursor-guard-backup` |
 | `references/bin/cursor-guard-doctor.js` | CLI 入口：`npx cursor-guard-doctor` |
+| `references/dashboard/server.js` | 仪表盘 HTTP 服务 + REST API |
+| `references/dashboard/public/` | 仪表盘 Web UI（index.html、style.css、app.js） |
 | `references/auto-backup.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
 | `references/guard-doctor.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
 | `references/recovery.md` | 恢复命令模板 |

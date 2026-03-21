@@ -586,6 +586,7 @@ Skip the block for unrelated turns.
 - Guard doctor (Node.js core): [references/lib/guard-doctor.js](references/lib/guard-doctor.js)
 - Core modules: [references/lib/core/](references/lib/core/) (doctor, doctor-fix, snapshot, backups, restore, status, anomaly, dashboard)
 - MCP server: [references/mcp/server.js](references/mcp/server.js) (9 tools: doctor, doctor_fix, backup_status, list_backups, snapshot_now, restore_file, restore_project, dashboard, alert_status)
+- Web dashboard: [references/dashboard/](references/dashboard/) (local read-only web UI — `node references/dashboard/server.js --path <project>`)
 - Shared utilities: [references/lib/utils.js](references/lib/utils.js)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)

@@ -24,6 +24,7 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
 - **Backup health dashboard (V4)** — One-call comprehensive view: strategy, counts, disk usage, protection scope, health status
+- **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh every 15s, multi-project support
 
 ---
 
@@ -115,6 +116,12 @@ After installation, your directory structure should look like this:
     │       ├── status.js               # Backup system status
     │       ├── anomaly.js             # V4: Change-velocity detection
     │       └── dashboard.js           # V4: Health dashboard aggregation
+    ├── dashboard/
+    │   ├── server.js                   # Dashboard HTTP server + API
+    │   └── public/                     # Web UI (HTML/CSS/JS)
+    │       ├── index.html
+    │       ├── style.css
+    │       └── app.js
     ├── mcp/
     │   └── server.js                   # MCP Server (9 tools)
     ├── bin/
@@ -249,6 +256,37 @@ npx cursor-guard-doctor --path /my/project
 
 > **Note**: Run backup/doctor scripts in a separate terminal, NOT inside Cursor's integrated terminal.
 
+### Web Dashboard
+
+A local read-only web page for monitoring backup health, restore points, protection scope, and diagnostics — all in one view.
+
+```bash
+# Monitor a single project
+npx cursor-guard-dashboard --path /my/project
+
+# Monitor multiple projects
+npx cursor-guard-dashboard --path /project-a --path /project-b
+
+# Custom port (default: 3120)
+npx cursor-guard-dashboard --path /my/project --port 8080
+
+# Windows PowerShell (from skill directory)
+node references\dashboard\server.js --path "D:\MyProject"
+```
+
+Then open `http://127.0.0.1:3120` in your browser.
+
+Features:
+
+- **Read-only** — no write operations, safe to run anytime
+- **Dual-language** — zh-CN / en-US, auto-detects system language, manual toggle in top-right
+- **Auto-refresh** — pulls data every 15 seconds, plus manual refresh button
+- **Multi-project** — pass multiple `--path` args to monitor several projects from one page
+- **4 sections**: Overview (health + watcher + alerts + latest backups), Backups & Recovery (restore point table with type filters), Protection Scope (protect/ignore patterns), Diagnostics (doctor checks)
+- **2 detail drawers**: Restore Point drawer (preview JSON, copy ref/hash), Doctor drawer (full check list, WARN/FAIL expanded by default)
+- **Security** — binds to `127.0.0.1` only (not exposed to LAN), API uses project IDs instead of raw file paths, static file serving restricted to `public/` directory
+- **Zero extra dependencies** — uses Node.js built-in `http` module + existing cursor-guard core modules
+
 ---
 
 ## Recovery
@@ -325,6 +363,8 @@ The skill activates on these signals:
 | `references/lib/utils.js` | Shared utilities (config, glob, git, manifest) |
 | `references/bin/cursor-guard-backup.js` | CLI entry: `npx cursor-guard-backup` |
 | `references/bin/cursor-guard-doctor.js` | CLI entry: `npx cursor-guard-doctor` |
+| `references/dashboard/server.js` | Dashboard HTTP server + REST API |
+| `references/dashboard/public/` | Dashboard web UI (index.html, style.css, app.js) |
 | `references/auto-backup.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
 | `references/guard-doctor.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
 | `references/recovery.md` | Recovery command templates |
