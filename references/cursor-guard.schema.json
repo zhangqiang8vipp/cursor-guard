@@ -75,7 +75,7 @@
     },
     "git_retention": {
       "type": "object",
-      "description": "Controls automatic cleanup of old commits on the cursor-guard/auto-backup branch.",
+      "description": "Controls automatic cleanup of old commits on refs/guard/auto-backup.",
       "properties": {
         "enabled": {
           "type": "boolean",

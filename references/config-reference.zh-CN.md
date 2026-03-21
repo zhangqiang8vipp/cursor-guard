@@ -51,7 +51,7 @@
 
 | 值 | 说明 |
 |----|------|
-| `"git"` | 提交到专用分支 `cursor-guard/auto-backup` |
+| `"git"` | 提交到专用引用 `refs/guard/auto-backup` |
 | `"shadow"` | 文件拷贝到 `.cursor-guard-backup/<timestamp>/` |
 | `"both"` | Git 分支快照 + 影子拷贝同时进行 |
 
@@ -155,7 +155,7 @@
 - **类型**：`object`
 - **默认值**：`{ "enabled": false, "mode": "count", "max_count": 200 }`
 
-**`cursor-guard/auto-backup` Git 分支**的保留策略。默认情况下自动备份提交会无限累积。启用此项可自动裁剪旧提交。
+**`refs/guard/auto-backup` Git 引用**的保留策略。默认情况下自动备份提交会无限累积。启用此项可自动裁剪旧提交。
 
 ### 子字段
 

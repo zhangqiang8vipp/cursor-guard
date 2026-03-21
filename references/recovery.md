@@ -268,24 +268,24 @@ The `auto-backup.ps1` script stores periodic snapshots on a dedicated branch via
 
 ```bash
 # List recent auto-backup snapshots
-git log cursor-guard/auto-backup --oneline -20
+git log guard/auto-backup --oneline -20
 
 # Restore a file from the latest auto-backup
-git restore --source=cursor-guard/auto-backup -- <path/to/file>
+git restore --source=guard/auto-backup -- <path/to/file>
 
 # Restore from a specific auto-backup snapshot
 git restore --source=<commit-hash> -- <path/to/file>
 
 # Diff your working copy against the auto-backup version
-git diff cursor-guard/auto-backup -- <path/to/file>
+git diff guard/auto-backup -- <path/to/file>
 
 # Time-based: find auto-backup snapshot from before N minutes ago
 # 按时间查找：N 分钟前之前最近的自动备份快照
-git log cursor-guard/auto-backup --oneline --before="5 minutes ago" -5 -- <path/to/file>
+git log guard/auto-backup --oneline --before="5 minutes ago" -5 -- <path/to/file>
 
 # Version-based: list recent N auto-backup snapshots
 # 按版本查找：最近 N 个自动备份快照
-git log cursor-guard/auto-backup --oneline -10 -- <path/to/file>
+git log guard/auto-backup --oneline -10 -- <path/to/file>
 ```
 
 ## If not a Git repo yet
@@ -374,10 +374,10 @@ Get-ChildItem .cursor-guard-backup/ -Directory | Where-Object {
 
 ```bash
 # View auto-backup history
-git log cursor-guard/auto-backup --oneline -30
+git log guard/auto-backup --oneline -30
 
 # Delete the branch entirely (script will recreate it on next run)
-git branch -D cursor-guard/auto-backup
+git update-ref -d refs/guard/auto-backup
 
 # Reclaim disk space after removing old branches
 git gc --prune=now

@@ -179,7 +179,7 @@ npx cursor-guard-backup --path /my/project --interval 30
 ./references/auto-backup.sh /my/project
 ```
 
-脚本使用 Git 底层命令快照到 `cursor-guard/auto-backup` 分支——不会切换分支，也不会影响你的工作索引。支持 `shadow` 模式用于非 Git 目录。
+脚本使用 Git 底层命令快照到 `refs/guard/auto-backup`——不会切换分支，也不会影响你的工作索引。该引用位于 `refs/heads/` 之外，`git push --all` 不会推送它。支持 `shadow` 模式用于非 Git 目录。
 
 ### 健康检查
 
@@ -229,7 +229,7 @@ npx cursor-guard-doctor --path /my/project
 ### 恢复优先级
 
 1. **Git** — `git restore`, `git reset`, `git reflog`
-2. **自动备份分支** — `cursor-guard/auto-backup`
+2. **自动备份引用** — `refs/guard/auto-backup`
 3. **影子拷贝** — `.cursor-guard-backup/<时间戳>/`
 4. **对话上下文** — 代理 Read 调用捕获的原始文件内容
 5. **编辑器历史** — VS Code/Cursor Timeline（辅助）

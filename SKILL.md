@@ -204,16 +204,16 @@ There are two distinct backup mechanisms. Do not confuse them:
 
 | | **Git branch snapshot** | **Shadow copy** |
 |---|---|---|
-| **What** | Commits to `cursor-guard/auto-backup` branch via plumbing | File copies to `.cursor-guard-backup/<timestamp>/` |
+| **What** | Commits to `refs/guard/auto-backup` via plumbing | File copies to `.cursor-guard-backup/<timestamp>/` |
 | **Who creates** | Auto-backup script (when `backup_strategy` = `git` or `both`) | Auto-backup script (when `backup_strategy` = `shadow` or `both`); or the agent manually (§2b) |
 | **Who cleans up** | `git_retention` config (auto, opt-in); or manual `git branch -D` | `retention` config (auto); or manual |
-| **Restore** | `git restore --source=cursor-guard/auto-backup -- <file>` | Copy file from `.cursor-guard-backup/<ts>/<file>` to original path |
+| **Restore** | `git restore --source=guard/auto-backup -- <file>` | Copy file from `.cursor-guard-backup/<ts>/<file>` to original path |
 | **Requires Git** | Yes | No (fallback for non-git repos) |
 
 **Priority order for the agent:**
 
 1. **Guard ref snapshot** (`refs/guard/snapshot`) — agent creates before each high-risk edit using temp index (§2a). Does not pollute user's branch or staging area.
-2. **Git branch auto-backup** (`cursor-guard/auto-backup`) — periodic snapshots by auto-backup script.
+2. **Git auto-backup ref** (`refs/guard/auto-backup`) — periodic snapshots by auto-backup script. Lives outside `refs/heads/` so `git push --all` won't push it.
 3. **Shadow copy** (`.cursor-guard-backup/`) — fallback for non-git repos, or as extra insurance when `backup_strategy = "both"`.
 4. **Editor habits** — Ctrl+S frequently; optional extensions are user-configured, mention only if asked.
 
@@ -267,7 +267,7 @@ If unclear, ask: "你想恢复哪个文件？还是整个项目？" / "Which fil
 git log --oneline --before="5 minutes ago" -5 -- <file>
 
 # Auto-backup branch (if exists)
-git log cursor-guard/auto-backup --oneline --before="5 minutes ago" -5 -- <file>
+git log guard/auto-backup --oneline --before="5 minutes ago" -5 -- <file>
 
 # Reflog as fallback (shows all HEAD movements)
 git reflog --before="5 minutes ago" -5
@@ -291,7 +291,7 @@ git log --oneline -<N+5> -- <file>
 git show HEAD~<N>:<file>
 
 # Auto-backup branch
-git log cursor-guard/auto-backup --oneline -<N+5> -- <file>
+git log guard/auto-backup --oneline -<N+5> -- <file>
 ```
 
 ### Step 3: Present Candidates to User
@@ -314,7 +314,7 @@ Recommended: #1 (closest to target time). Restore this one? / 推荐 #1（最接
 - If only ONE candidate is found, confirm with the user before restoring.
 - If MULTIPLE candidates, pre-select #1 (closest before target) but let the user pick another.
 - If NO candidates before the target time:
-  - Check auto-backup branch: `git rev-parse --verify cursor-guard/auto-backup`
+  - Check auto-backup ref: `git rev-parse --verify refs/guard/auto-backup`
   - Check shadow copies: `Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending`
   - If still nothing, report clearly: "No snapshot found before that time. The earliest available is [hash] at [time]. Do you want to use it?"
 - **Never silently pick a version.** Always show and confirm.

@@ -1,0 +1,13 @@
+feat: move auto-backup from refs/heads/ to refs/guard/ (v2.1.0)
+
+Migrates the auto-backup ref from refs/heads/cursor-guard/auto-backup
+to refs/guard/auto-backup. This prevents accidental pushes via
+`git push --all` (which only pushes refs/heads/*).
+
+- Auto-migration: existing legacy ref is detected, moved, and deleted
+- guard-doctor: detects legacy ref and suggests migration
+- All docs updated: SKILL.md, recovery.md, README (EN+CN),
+  config-reference (EN+CN), schema
+- Short name `guard/auto-backup` still works in git commands
+  (git log, git restore --source=, etc.)
+- Delete via `git update-ref -d` instead of `git branch -D`

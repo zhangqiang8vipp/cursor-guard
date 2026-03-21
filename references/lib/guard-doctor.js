@@ -81,15 +81,20 @@ function runDoctor(projectDir) {
     check('Strategy compatibility', 'FAIL', `unknown backup_strategy='${strategy}' (must be git/shadow/both)`);
   }
 
-  // 5. Backup branch
+  // 5. Backup ref
   if (repo) {
-    const branchRef = 'refs/heads/cursor-guard/auto-backup';
-    const exists = git(['rev-parse', '--verify', branchRef], { cwd: projectDir, allowFail: true });
+    const guardRef = 'refs/guard/auto-backup';
+    const legacyRef = 'refs/heads/cursor-guard/auto-backup';
+    const exists = git(['rev-parse', '--verify', guardRef], { cwd: projectDir, allowFail: true });
+    const legacyExists = git(['rev-parse', '--verify', legacyRef], { cwd: projectDir, allowFail: true });
     if (exists) {
-      const count = git(['rev-list', '--count', branchRef], { cwd: projectDir, allowFail: true }) || '?';
-      check('Backup branch', 'PASS', `cursor-guard/auto-backup exists (${count} commits)`);
+      const count = git(['rev-list', '--count', guardRef], { cwd: projectDir, allowFail: true }) || '?';
+      check('Backup ref', 'PASS', `refs/guard/auto-backup exists (${count} commits)`);
+    } else if (legacyExists) {
+      const count = git(['rev-list', '--count', legacyRef], { cwd: projectDir, allowFail: true }) || '?';
+      check('Backup ref', 'WARN', `legacy refs/heads/cursor-guard/auto-backup found (${count} commits) — run auto-backup once to migrate`);
     } else {
-      check('Backup branch', 'WARN', 'cursor-guard/auto-backup not created yet (will be created on first backup)');
+      check('Backup ref', 'WARN', 'refs/guard/auto-backup not created yet (will be created on first backup)');
     }
   }
 

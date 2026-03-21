@@ -51,7 +51,7 @@ Blacklist glob patterns. Matching files are excluded from protection even if the
 
 | Value | Description |
 |-------|-------------|
-| `"git"` | Local commits to dedicated branch `cursor-guard/auto-backup` |
+| `"git"` | Local commits to dedicated ref `refs/guard/auto-backup` |
 | `"shadow"` | File copies to `.cursor-guard-backup/<timestamp>/` |
 | `"both"` | Git branch snapshot + shadow copies |
 
@@ -155,7 +155,7 @@ Retention policy for **shadow copies** only. Git branch snapshots are not auto-c
 - **Type**: `object`
 - **Default**: `{ "enabled": false, "mode": "count", "max_count": 200 }`
 
-Retention policy for the **`cursor-guard/auto-backup` Git branch**. By default, auto-backup commits accumulate indefinitely. Enable this to automatically prune old commits.
+Retention policy for the **`refs/guard/auto-backup` Git ref**. By default, auto-backup commits accumulate indefinitely. Enable this to automatically prune old commits.
 
 ### Sub-fields
 

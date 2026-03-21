@@ -179,7 +179,7 @@ npx cursor-guard-backup --path /my/project --interval 30
 ./references/auto-backup.sh /my/project
 ```
 
-The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` branch — it never switches branches or touches your working index. Supports `shadow` mode for non-Git directories.
+The script uses Git plumbing commands to snapshot to `refs/guard/auto-backup` — it never switches branches or touches your working index. The ref lives outside `refs/heads/` so `git push --all` won't push it. Supports `shadow` mode for non-Git directories.
 
 ### Health Check
 
@@ -229,7 +229,7 @@ If the pre-restore backup fails, the agent will **not** proceed — it will wait
 ### Recovery priority
 
 1. **Git** — `git restore`, `git reset`, `git reflog`
-2. **Auto-backup branch** — `cursor-guard/auto-backup`
+2. **Auto-backup ref** — `refs/guard/auto-backup`
 3. **Shadow copies** — `.cursor-guard-backup/<timestamp>/`
 4. **Conversation context** — Original file content captured by agent Read calls
 5. **Editor history** — VS Code/Cursor Timeline (auxiliary)

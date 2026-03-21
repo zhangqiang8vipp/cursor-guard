@@ -400,13 +400,24 @@ async function runBackup(projectDir, intervalOverride) {
   process.on('exit', cleanup);
 
   // Git-specific setup
-  const branch = 'cursor-guard/auto-backup';
-  const branchRef = `refs/heads/${branch}`;
+  const branchRef = 'refs/guard/auto-backup';
+  const legacyRef = 'refs/heads/cursor-guard/auto-backup';
   if (repo) {
     const exists = git(['rev-parse', '--verify', branchRef], { cwd: projectDir, allowFail: true });
     if (!exists) {
-      git(['branch', branch, 'HEAD'], { cwd: projectDir, allowFail: true });
-      console.log(color.green(`[guard] Created branch: ${branch}`));
+      // Migrate from legacy refs/heads/ location if it exists
+      const legacyHash = git(['rev-parse', '--verify', legacyRef], { cwd: projectDir, allowFail: true });
+      if (legacyHash) {
+        git(['update-ref', branchRef, legacyHash], { cwd: projectDir, allowFail: true });
+        git(['update-ref', '-d', legacyRef], { cwd: projectDir, allowFail: true });
+        console.log(color.green(`[guard] Migrated ${legacyRef} → ${branchRef}`));
+      } else {
+        const head = git(['rev-parse', 'HEAD'], { cwd: projectDir, allowFail: true });
+        if (head) {
+          git(['update-ref', branchRef, head], { cwd: projectDir, allowFail: true });
+          console.log(color.green(`[guard] Created ref: ${branchRef}`));
+        }
+      }
     }
 
     const excludeFile = path.join(gDir, 'info', 'exclude');
@@ -434,7 +445,7 @@ async function runBackup(projectDir, intervalOverride) {
   // Banner
   console.log('');
   console.log(color.cyan(`[guard] Watching '${projectDir}' every ${interval}s  (Ctrl+C to stop)`));
-  console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Branch: ${branch}  |  Retention: ${cfg.retention.mode}`));
+  console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Ref: ${branchRef}  |  Retention: ${cfg.retention.mode}`));
   console.log(color.cyan(`[guard] Log: ${logFilePath}`));
   console.log('');
 
