@@ -37,18 +37,27 @@ $ErrorActionPreference = "Stop"
 $resolved = (Resolve-Path $Path).Path
 Set-Location $resolved
 
-# ── Paths (worktree-safe: uses git rev-parse instead of hard-coding .git) ──
-$gitDir      = (git rev-parse --git-dir 2>$null)
-if (-not $gitDir) {
-    $gitDir = Join-Path $resolved ".git"
-} else {
-    $gitDir = (Resolve-Path $gitDir -ErrorAction SilentlyContinue).Path
-    if (-not $gitDir) { $gitDir = Join-Path $resolved ".git" }
+# ── Git availability check ────────────────────────────────────────
+$hasGit = $false
+$gitDir = $null
+$isRepo = $false
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $hasGit = $true
+    $isRepo = (git rev-parse --is-inside-work-tree 2>$null) -eq "true"
+    if ($isRepo) {
+        $gitDir = (git rev-parse --git-dir 2>$null)
+        if ($gitDir) {
+            $gitDir = (Resolve-Path $gitDir -ErrorAction SilentlyContinue).Path
+        }
+        if (-not $gitDir) { $gitDir = Join-Path $resolved ".git" }
+    }
 }
-$lockFile    = Join-Path $gitDir "cursor-guard.lock"
-$guardIndex  = Join-Path $gitDir "cursor-guard-index"
+
+# ── Paths ─────────────────────────────────────────────────────────
 $backupDir   = Join-Path $resolved ".cursor-guard-backup"
 $logFilePath = Join-Path $backupDir "backup.log"
+$lockFile    = if ($gitDir) { Join-Path $gitDir "cursor-guard.lock" } else { Join-Path $backupDir "cursor-guard.lock" }
+$guardIndex  = if ($gitDir) { Join-Path $gitDir "cursor-guard-index" } else { $null }
 
 # ── Cleanup on exit ───────────────────────────────────────────────
 function Invoke-Cleanup {
@@ -67,6 +76,10 @@ $retentionMode    = "days"
 $retentionDays    = 30
 $retentionMaxCnt  = 100
 $retentionMaxMB   = 500
+$gitRetEnabled    = $false
+$gitRetMode       = "count"
+$gitRetDays       = 30
+$gitRetMaxCnt     = 200
 
 # ── Load .cursor-guard.json ──────────────────────────────────────
 $cfgPath = Join-Path $resolved ".cursor-guard.json"
@@ -86,7 +99,13 @@ if (Test-Path $cfgPath) {
             if ($cfg.retention.max_count)   { $retentionMaxCnt = $cfg.retention.max_count }
             if ($cfg.retention.max_size_mb) { $retentionMaxMB  = $cfg.retention.max_size_mb }
         }
-        Write-Host "[guard] Config loaded  protect=$($protectPatterns.Count)  ignore=$($ignorePatterns.Count)  retention=$retentionMode" -ForegroundColor Cyan
+        if ($cfg.git_retention) {
+            if ($cfg.git_retention.enabled -eq $true)  { $gitRetEnabled = $true }
+            if ($cfg.git_retention.mode)               { $gitRetMode   = $cfg.git_retention.mode }
+            if ($cfg.git_retention.days)               { $gitRetDays   = $cfg.git_retention.days }
+            if ($cfg.git_retention.max_count)           { $gitRetMaxCnt = $cfg.git_retention.max_count }
+        }
+        Write-Host "[guard] Config loaded  protect=$($protectPatterns.Count)  ignore=$($ignorePatterns.Count)  retention=$retentionMode  git_retention=$(if($gitRetEnabled){'on'}else{'off'})" -ForegroundColor Cyan
     }
     catch {
         Write-Host "[guard] WARNING: .cursor-guard.json parse error - using defaults." -ForegroundColor Yellow
@@ -95,12 +114,21 @@ if (Test-Path $cfgPath) {
 }
 if ($IntervalSeconds -eq 0) { $IntervalSeconds = 60 }
 
-# ── Git repo check ───────────────────────────────────────────────
-$isRepo = git rev-parse --is-inside-work-tree 2>$null
-if ($isRepo -ne "true") {
+# ── Git repo check (only required for git/both strategy) ─────────
+$needsGit = ($backupStrategy -eq "git" -or $backupStrategy -eq "both")
+if ($needsGit -and -not $isRepo) {
+    if (-not $hasGit) {
+        Write-Host "[guard] ERROR: backup_strategy='$backupStrategy' requires Git, but git is not installed." -ForegroundColor Red
+        Write-Host "  Either install Git or set backup_strategy to 'shadow' in .cursor-guard.json." -ForegroundColor Yellow
+        exit 1
+    }
     $ans = Read-Host "Directory is not a Git repo. Initialize? (y/n)"
     if ($ans -eq 'y') {
         git init
+        $isRepo = $true
+        $gitDir = (Resolve-Path (git rev-parse --git-dir)).Path
+        $lockFile   = Join-Path $gitDir "cursor-guard.lock"
+        $guardIndex = Join-Path $gitDir "cursor-guard-index"
         $gi = Join-Path $resolved ".gitignore"
         $entry = ".cursor-guard-backup/"
         if (Test-Path $gi) {
@@ -114,10 +142,16 @@ if ($isRepo -ne "true") {
         git add -A; git commit -m "guard: initial snapshot" --no-verify
         Write-Host "[guard] Repo initialized with snapshot." -ForegroundColor Green
     } else {
-        Write-Host "[guard] Git is required. Exiting." -ForegroundColor Red
+        Write-Host "[guard] Git is required for '$backupStrategy' strategy. Exiting." -ForegroundColor Red
         exit 1
     }
 }
+if (-not $isRepo -and $backupStrategy -eq "shadow") {
+    Write-Host "[guard] Non-Git directory detected. Running in shadow-only mode." -ForegroundColor Cyan
+}
+
+# ── Ensure backup dir exists ──────────────────────────────────────
+if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Force $backupDir | Out-Null }
 
 # ── Lock file (prevent multiple instances) ───────────────────────
 if (Test-Path $lockFile) {
@@ -127,30 +161,30 @@ if (Test-Path $lockFile) {
 }
 Set-Content $lockFile "pid=$PID`nstarted=$(Get-Date -Format 'o')"
 
-# ── Backup branch ───────────────────────────────────────────────
+# ── Git-specific setup (skip entirely for shadow-only) ───────────
 $branch    = "cursor-guard/auto-backup"
 $branchRef = "refs/heads/$branch"
-if (-not (git rev-parse --verify $branchRef 2>$null)) {
-    git branch $branch HEAD 2>$null
-    Write-Host "[guard] Created branch: $branch" -ForegroundColor Green
-}
-
-# ── Ensure .cursor-guard-backup/ is git-ignored ─────────────────
-$excludeFile = Join-Path $gitDir "info/exclude"
-$excludeDir  = Split-Path $excludeFile
-if (-not (Test-Path $excludeDir)) { New-Item -ItemType Directory -Force $excludeDir | Out-Null }
-$excludeEntry = ".cursor-guard-backup/"
-if (Test-Path $excludeFile) {
-    $content = Get-Content $excludeFile -Raw -ErrorAction SilentlyContinue
-    if (-not $content -or $content -notmatch [regex]::Escape($excludeEntry)) {
-        Add-Content $excludeFile "`n$excludeEntry"
+if ($isRepo) {
+    if (-not (git rev-parse --verify $branchRef 2>$null)) {
+        git branch $branch HEAD 2>$null
+        Write-Host "[guard] Created branch: $branch" -ForegroundColor Green
     }
-} else {
-    Set-Content $excludeFile $excludeEntry
+
+    $excludeFile = Join-Path $gitDir "info/exclude"
+    $excludeDir  = Split-Path $excludeFile
+    if (-not (Test-Path $excludeDir)) { New-Item -ItemType Directory -Force $excludeDir | Out-Null }
+    $excludeEntry = ".cursor-guard-backup/"
+    if (Test-Path $excludeFile) {
+        $content = Get-Content $excludeFile -Raw -ErrorAction SilentlyContinue
+        if (-not $content -or $content -notmatch [regex]::Escape($excludeEntry)) {
+            Add-Content $excludeFile "`n$excludeEntry"
+        }
+    } else {
+        Set-Content $excludeFile $excludeEntry
+    }
 }
 
-# ── Log directory & helpers ──────────────────────────────────────
-if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Force $backupDir | Out-Null }
+# ── Log & helpers ────────────────────────────────────────────────
 
 function Write-Log {
     param([string]$Msg, [ConsoleColor]$Color = "Green")
@@ -232,30 +266,93 @@ function Invoke-RetentionCleanup {
     } catch {}
 }
 
+# ── Git branch retention ─────────────────────────────────────────
+function Invoke-GitRetention {
+    if (-not $gitRetEnabled -or -not $isRepo) { return }
+    $commits = git rev-list $branchRef 2>$null
+    if (-not $commits) { return }
+    $commitList = @($commits)
+    $total = $commitList.Count
+
+    $keepCount = $total
+    switch ($gitRetMode) {
+        "count" {
+            $keepCount = [math]::Min($total, $gitRetMaxCnt)
+        }
+        "days" {
+            $cutoff = (Get-Date).AddDays(-$gitRetDays).ToString("yyyy-MM-ddTHH:mm:ss")
+            $keepCommits = git rev-list $branchRef --after=$cutoff 2>$null
+            $keepCount = if ($keepCommits) { @($keepCommits).Count } else { 0 }
+            $keepCount = [math]::Max($keepCount, 10)
+        }
+    }
+
+    if ($keepCount -ge $total) { return }
+
+    $newTip = $commitList[$keepCount - 1]
+    $orphanTree = git rev-parse "${newTip}^{tree}" 2>$null
+    if (-not $orphanTree) { return }
+
+    $orphanCommit = git commit-tree $orphanTree -m "guard: retention truncation point"
+    if (-not $orphanCommit) { return }
+
+    $keptCommits = $commitList[0..($keepCount - 2)]
+    $grafts = @()
+    foreach ($i in 0..($keptCommits.Count - 1)) {
+        if ($i -lt ($keptCommits.Count - 1)) {
+            $grafts += "$($keptCommits[$i]) $($commitList[$i + 1])"
+        } else {
+            $grafts += "$($keptCommits[$i]) $orphanCommit"
+        }
+    }
+
+    $infoDir = Join-Path $gitDir "info"
+    if (-not (Test-Path $infoDir)) { New-Item -ItemType Directory -Force $infoDir | Out-Null }
+    $graftsFile = Join-Path $infoDir "grafts"
+    $grafts | Set-Content $graftsFile
+    git filter-branch -f --tag-name-filter cat -- $branchRef 2>$null
+    Remove-Item $graftsFile -Force -ErrorAction SilentlyContinue
+
+    $pruned = $total - $keepCount
+    Write-Log "Git retention ($gitRetMode): pruned $pruned old commit(s), kept $keepCount" DarkGray
+}
+
 # ── Shadow copy helper ────────────────────────────────────────────
 function Invoke-ShadowCopy {
     $ts = Get-Date -Format 'yyyyMMdd_HHmmss'
     $snapDir = Join-Path $backupDir $ts
     New-Item -ItemType Directory -Force $snapDir | Out-Null
 
+    $allFiles = Get-ChildItem $resolved -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -notmatch '[\\/](\.git|\.cursor-guard-backup|node_modules)[\\/]' }
+
     $files = if ($protectPatterns.Count -gt 0) {
-        $protectPatterns | ForEach-Object { Get-ChildItem $resolved -Recurse -File -Filter $_ -ErrorAction SilentlyContinue }
+        $allFiles | Where-Object {
+            $rel = $_.FullName.Substring($resolved.Length + 1) -replace '\\','/'
+            $matched = $false
+            foreach ($pat in $protectPatterns) {
+                $p = $pat -replace '\\','/'
+                if ($rel -like $p -or (Split-Path $rel -Leaf) -like $p) { $matched = $true; break }
+            }
+            $matched
+        }
     } else {
-        Get-ChildItem $resolved -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '[\\/](\.git|\.cursor-guard-backup|node_modules)[\\/]' }
+        $allFiles
     }
 
     $copied = 0
     foreach ($f in $files) {
-        $rel = $f.FullName.Substring($resolved.Length + 1)
+        $rel = $f.FullName.Substring($resolved.Length + 1) -replace '\\','/'
+        $leaf = $f.Name
         $skip = $false
         foreach ($ig in $ignorePatterns) {
-            $re = '^' + [regex]::Escape($ig).Replace('\*\*','.*').Replace('\*','[^/\\]*').Replace('\?','.') + '$'
-            if ($rel -match $re) { $skip = $true; break }
+            $p = $ig -replace '\\','/'
+            if ($rel -like $p -or $leaf -like $p) { $skip = $true; break }
         }
-        foreach ($pat in $secretsPatterns) {
-            $re = '^' + [regex]::Escape($pat).Replace('\*','.*').Replace('\?','.') + '$'
-            if ($rel -match $re -or $f.Name -match $re) { $skip = $true; break }
+        if (-not $skip) {
+            foreach ($pat in $secretsPatterns) {
+                if ($rel -like $pat -or $leaf -like $pat) { $skip = $true; break }
+            }
         }
         if ($skip) { continue }
         $dest = Join-Path $snapDir $rel
@@ -286,8 +383,28 @@ try {
         Start-Sleep -Seconds $IntervalSeconds
         $cycle++
 
-        $dirty = git status --porcelain 2>$null
-        if (-not $dirty) { continue }
+        # ── Detect changes ────────────────────────────────────────
+        $hasChanges = $false
+        if ($isRepo) {
+            $dirty = git status --porcelain 2>$null
+            $hasChanges = [bool]$dirty
+        } else {
+            # Non-Git: compare file timestamps against last snapshot
+            $lastSnap = Get-ChildItem $backupDir -Directory -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -match '^\d{8}_\d{6}$' } |
+                        Sort-Object Name -Descending | Select-Object -First 1
+            if (-not $lastSnap) {
+                $hasChanges = $true
+            } else {
+                $latest = Get-ChildItem $resolved -Recurse -File -ErrorAction SilentlyContinue |
+                          Where-Object { $_.FullName -notmatch '[\\/](\.cursor-guard-backup)[\\/]' } |
+                          Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($latest -and $latest.LastWriteTime -gt $lastSnap.CreationTime) {
+                    $hasChanges = $true
+                }
+            }
+        }
+        if (-not $hasChanges) { continue }
 
         # ── Git branch snapshot ──────────────────────────────────
         if ($backupStrategy -eq "git" -or $backupStrategy -eq "both") {
@@ -350,7 +467,10 @@ try {
         }
 
         # Periodic retention cleanup every 10 cycles
-        if ($cycle % 10 -eq 0) { Invoke-RetentionCleanup }
+        if ($cycle % 10 -eq 0) {
+            Invoke-RetentionCleanup
+            Invoke-GitRetention
+        }
     }
 }
 finally {

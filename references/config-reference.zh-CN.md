@@ -132,3 +132,29 @@
   "max_size_mb": 500
 }
 ```
+
+---
+
+## `git_retention`
+
+- **类型**：`object`
+- **默认值**：`{ "enabled": false, "mode": "count", "max_count": 200 }`
+
+**`cursor-guard/auto-backup` Git 分支**的保留策略。默认情况下自动备份提交会无限累积。启用此项可自动裁剪旧提交。
+
+### 子字段
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | `boolean` | `false` | 启用自动裁剪。关闭时分支无限增长。 |
+| `mode` | `"days"` \| `"count"` | `"count"` | 裁剪策略 |
+| `days` | `integer` | `30` | 保留最近 N 天的提交（mode=days 时生效） |
+| `max_count` | `integer` | `200` | 保留最新 N 个提交（mode=count 时生效，最少 10） |
+
+```json
+"git_retention": {
+  "enabled": true,
+  "mode": "count",
+  "max_count": 200
+}
+```

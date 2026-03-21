@@ -67,6 +67,36 @@
         }
       },
       "additionalProperties": false
+    },
+    "git_retention": {
+      "type": "object",
+      "description": "Controls automatic cleanup of old commits on the cursor-guard/auto-backup branch.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic pruning of old auto-backup commits. Default false (manual cleanup)."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["days", "count"],
+          "default": "count",
+          "description": "'days': keep commits from the last N days. 'count': keep N newest commits."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Number of days to keep auto-backup commits (when mode='days')."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 10,
+          "default": 200,
+          "description": "Maximum number of auto-backup commits to keep (when mode='count')."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": true

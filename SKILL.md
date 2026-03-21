@@ -20,6 +20,7 @@ Use this skill when any of the following appear:
 - **Parallel context**: Multiple repos or branches; unclear which folder is the workspace root.
 - **Recovery asks**: e.g. "改不回来", "丢版本", "回滚", "reflog", "误删", or English equivalents.
 - **Time/version recovery**: e.g. "恢复到5分钟前", "恢复到前3个版本", "回到上一个版本", "restore to 10 minutes ago", "go back 2 versions", "恢复到下午3点的状态".
+- **Health check**: e.g. "guard doctor", "检查备份配置", "自检", "诊断guard", "check guard setup". Run `guard-doctor.ps1` and report results.
 
 If none of the above, do not expand scope; answer normally.
 
@@ -100,19 +101,22 @@ When the target file of an edit **falls outside the protected scope**, the agent
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 
 ```bash
+GIT_DIR=$(git rev-parse --git-dir)
+GUARD_IDX="$GIT_DIR/guard-snapshot-index"
+
 # 1. Create temp index from HEAD
-GIT_INDEX_FILE=.git/guard-snapshot-index git read-tree HEAD
+GIT_INDEX_FILE="$GUARD_IDX" git read-tree HEAD
 
 # 2. Stage working-tree files into temp index
-GIT_INDEX_FILE=.git/guard-snapshot-index git add -A
+GIT_INDEX_FILE="$GUARD_IDX" git add -A
 
 # 3. Write tree and create commit on a guard ref (not on the user's branch)
-TREE=$(GIT_INDEX_FILE=.git/guard-snapshot-index git write-tree)
-COMMIT=$(git commit-tree $TREE -p HEAD -m "guard: snapshot before ai edit")
-git update-ref refs/guard/snapshot $COMMIT
+TREE=$(GIT_INDEX_FILE="$GUARD_IDX" git write-tree)
+COMMIT=$(git commit-tree "$TREE" -p HEAD -m "guard: snapshot before ai edit")
+git update-ref refs/guard/snapshot "$COMMIT"
 
 # 4. Cleanup
-rm .git/guard-snapshot-index
+rm -f "$GUARD_IDX"
 ```
 
 **PowerShell equivalent** (for agent Shell calls):
@@ -359,9 +363,12 @@ Then jump to Step 5.
 
 Use the same temp-index plumbing as §2a to avoid polluting the user's staging area:
 
-**Git repo (preferred):**
+**Git repo (preferred) — timestamped ref stack:**
+
+Each pre-restore snapshot writes to a unique ref `refs/guard/pre-restore/<yyyyMMdd_HHmmss>` so consecutive restores never overwrite each other:
 
 ```powershell
+$ts = Get-Date -Format 'yyyyMMdd_HHmmss'
 $guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
 $env:GIT_INDEX_FILE = $guardIdx
 
@@ -378,10 +385,16 @@ $env:GIT_INDEX_FILE = $null
 Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
 
 $commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore to <target>"
+git update-ref "refs/guard/pre-restore/$ts" $commit
+```
+
+Record the short hash and the ref path. Also update `refs/guard/pre-restore` as an alias pointing to the latest:
+
+```powershell
 git update-ref refs/guard/pre-restore $commit
 ```
 
-Record the short hash and the ref `refs/guard/pre-restore`.
+To list all pre-restore snapshots: `git for-each-ref refs/guard/pre-restore/ --sort=-creatordate --format="%(refname:short) %(creatordate:short) %(objectname:short)"`
 
 **Non-Git fallback (shadow copy):**
 
@@ -404,12 +417,14 @@ If the snapshot fails (e.g. disk full, permission error):
 Before executing restore, tell the user:
 ```
 在恢复前，我已保留当前版本：
-- 备份引用: refs/guard/pre-restore (abc1234)
-- 恢复方式: git restore --source=refs/guard/pre-restore -- <file>
+- 备份引用: refs/guard/pre-restore/20260321_163005 (abc1234)
+- 恢复方式: git restore --source=refs/guard/pre-restore/20260321_163005 -- <file>
+- 历史栈: git for-each-ref refs/guard/pre-restore/ --sort=-creatordate
 
 Current version preserved before restore:
-- Backup ref: refs/guard/pre-restore (abc1234)
-- To undo: git restore --source=refs/guard/pre-restore -- <file>
+- Backup ref: refs/guard/pre-restore/20260321_163005 (abc1234)
+- To undo: git restore --source=refs/guard/pre-restore/20260321_163005 -- <file>
+- History: git for-each-ref refs/guard/pre-restore/ --sort=-creatordate
 ```
 
 ### Step 5: Execute Recovery
@@ -451,11 +466,12 @@ After restoring, always:
 
 ```markdown
 **Cursor Guard — restore status**
-- **Pre-restore backup**: `refs/guard/pre-restore` (`<short-hash>`) or `shadow copy at .cursor-guard-backup/pre-restore-<ts>/` or `skipped (user opted out)` or `skipped (no changes)`
+- **Pre-restore backup**: `refs/guard/pre-restore/<ts>` (`<short-hash>`) or `shadow copy at .cursor-guard-backup/pre-restore-<ts>/` or `skipped (user opted out)` or `skipped (no changes)`
 - **Restored to**: `<target-hash>` / `<target description>`
 - **Scope**: single file `<path>` / N files / entire project
 - **Result**: success / failed
-- **To undo restore**: `git restore --source=refs/guard/pre-restore -- <file>`
+- **To undo restore**: `git restore --source=refs/guard/pre-restore/<ts> -- <file>`
+- **All pre-restore snapshots**: `git for-each-ref refs/guard/pre-restore/ --sort=-creatordate`
 ```
 
 ---
@@ -511,3 +527,4 @@ Skip the block for unrelated turns.
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)
 - Config field reference (EN): [references/config-reference.md](references/config-reference.md)
 - 配置参数说明（中文）: [references/config-reference.zh-CN.md](references/config-reference.zh-CN.md)
+- Health check: [references/guard-doctor.ps1](references/guard-doctor.ps1) — run `.\guard-doctor.ps1 -Path .` to verify setup

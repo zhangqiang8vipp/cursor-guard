@@ -132,3 +132,29 @@ Retention policy for **shadow copies** only. Git branch snapshots are not auto-c
   "max_size_mb": 500
 }
 ```
+
+---
+
+## `git_retention`
+
+- **Type**: `object`
+- **Default**: `{ "enabled": false, "mode": "count", "max_count": 200 }`
+
+Retention policy for the **`cursor-guard/auto-backup` Git branch**. By default, auto-backup commits accumulate indefinitely. Enable this to automatically prune old commits.
+
+### Sub-fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable automatic pruning. When false, branch grows without limit. |
+| `mode` | `"days"` \| `"count"` | `"count"` | Pruning strategy |
+| `days` | `integer` | `30` | Keep commits from last N days (when mode=days) |
+| `max_count` | `integer` | `200` | Keep N newest commits (when mode=count, minimum 10) |
+
+```json
+"git_retention": {
+  "enabled": true,
+  "mode": "count",
+  "max_count": 200
+}
+```

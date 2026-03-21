@@ -13,8 +13,7 @@ Replace `<path>` / `<file>` with real paths. Run from repository root. **Review 
 ### Single file / 单文件
 
 ```powershell
-# Preserve current file state via temp index (does not touch staging area)
-# 通过临时索引保留当前文件（不影响暂存区）
+$ts = Get-Date -Format 'yyyyMMdd_HHmmss'
 $guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
 $env:GIT_INDEX_FILE = $guardIdx
 git read-tree HEAD
@@ -23,14 +22,15 @@ $tree = git write-tree
 $env:GIT_INDEX_FILE = $null
 Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
 $commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore"
-git update-ref refs/guard/pre-restore $commit
-Write-Host "Pre-restore backup: $($commit.Substring(0,7))"
+git update-ref "refs/guard/pre-restore/$ts" $commit
+git update-ref refs/guard/pre-restore $commit   # alias to latest
+Write-Host "Pre-restore backup: refs/guard/pre-restore/$ts ($($commit.Substring(0,7)))"
 ```
 
 ### Entire project / 整个项目
 
 ```powershell
-# Same as above but with git add -A
+$ts = Get-Date -Format 'yyyyMMdd_HHmmss'
 $guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
 $env:GIT_INDEX_FILE = $guardIdx
 git read-tree HEAD
@@ -39,8 +39,9 @@ $tree = git write-tree
 $env:GIT_INDEX_FILE = $null
 Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
 $commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore"
-git update-ref refs/guard/pre-restore $commit
-Write-Host "Pre-restore backup: $($commit.Substring(0,7))"
+git update-ref "refs/guard/pre-restore/$ts" $commit
+git update-ref refs/guard/pre-restore $commit   # alias to latest
+Write-Host "Pre-restore backup: refs/guard/pre-restore/$ts ($($commit.Substring(0,7)))"
 ```
 
 ### Non-Git fallback (shadow copy) / 非 Git 备选方案
@@ -53,19 +54,38 @@ Copy-Item "<file>" "$dir/<filename>"
 Write-Host "Pre-restore shadow copy: $dir"
 ```
 
+### List all pre-restore snapshots / 列出所有恢复前快照
+
+```bash
+git for-each-ref refs/guard/pre-restore/ --sort=-creatordate \
+  --format="%(refname:short) %(creatordate:short) %(objectname:short)"
+```
+
 ### Undo a restore (recover pre-restore state) / 撤销恢复（回到恢复前的状态）
 
 ```bash
-# Restore single file to pre-restore state
-# 将单个文件恢复到恢复前的状态
+# Undo using a specific timestamped snapshot
+# 使用特定时间戳快照撤销恢复
+git restore --source=refs/guard/pre-restore/<yyyyMMdd_HHmmss> -- <file>
+
+# Undo using the latest pre-restore snapshot (alias)
+# 使用最近一次的恢复前快照撤销
 git restore --source=refs/guard/pre-restore -- <file>
 
-# Restore entire project to pre-restore state
-# 将整个项目恢复到恢复前的状态
-git restore --source=refs/guard/pre-restore -- .
+# Restore entire project / 恢复整个项目
+git restore --source=refs/guard/pre-restore/<yyyyMMdd_HHmmss> -- .
 
 # From shadow copy / 从影子拷贝恢复
 Copy-Item ".cursor-guard-backup/pre-restore-<ts>/<file>" "<original-path>"
+```
+
+### Clean up old pre-restore refs / 清理旧的恢复前快照
+
+```bash
+# Delete all pre-restore refs (keep only the latest alias)
+# 删除所有时间戳快照（仅保留 latest alias）
+git for-each-ref refs/guard/pre-restore/ --format="%(refname)" |
+  xargs -n1 git update-ref -d
 ```
 
 ---

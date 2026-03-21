@@ -32,5 +32,11 @@
     "days": 30,
     "max_count": 100,
     "max_size_mb": 500
+  },
+  "git_retention": {
+    "enabled": false,
+    "mode": "count",
+    "days": 30,
+    "max_count": 200
   }
 }
