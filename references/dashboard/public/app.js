@@ -131,6 +131,46 @@ const I18N = {
     'check.Lock file':                  'Lock file',
     'check.Node.js':                    'Node.js',
     'check.MCP server':                 'MCP server',
+    'check.MCP version':                'MCP version',
+
+    'detail.git_version':               'version {v}',
+    'detail.git_not_found':             'git not found in PATH; only shadow strategy available',
+    'detail.worktree':                  'worktree detected (git-dir: {dir})',
+    'detail.standard_repo':             'standard repo',
+    'detail.not_git_repo':              'not a Git repo; git/both strategies won\'t work',
+    'detail.config_valid':              '.cursor-guard.json found and valid JSON',
+    'detail.config_parse_error':        'JSON parse error: {err}',
+    'detail.config_missing':            'no .cursor-guard.json found; using defaults (protect everything)',
+    'detail.strategy_no_git':           'backup_strategy=\'{s}\' but directory is not a Git repo',
+    'detail.strategy_ok':               'backup_strategy=\'{s}\' and Git repo exists',
+    'detail.strategy_shadow':           'backup_strategy=\'shadow\' — no Git required',
+    'detail.strategy_unknown':          'unknown backup_strategy=\'{s}\' (must be git/shadow/both)',
+    'detail.ref_exists':                'refs/guard/auto-backup exists ({n} commits)',
+    'detail.ref_legacy':                'legacy refs/heads/cursor-guard/auto-backup found ({n} commits) — run auto-backup once to migrate',
+    'detail.ref_not_created':           'refs/guard/auto-backup not created yet (will be created on first backup)',
+    'detail.guard_refs_found':          '{n} ref(s) found ({pre} pre-restore snapshots)',
+    'detail.guard_refs_none':           'no guard refs yet (created on first snapshot or restore)',
+    'detail.shadow_stats':              '{n} snapshot(s), {mb} MB total',
+    'detail.shadow_not_found':          '.cursor-guard-backup/ not found (will be created on first shadow backup)',
+    'detail.gitignore_ok':              '.cursor-guard-backup/ is git-ignored',
+    'detail.gitignore_missing':         '.cursor-guard-backup/ may NOT be git-ignored — backup changes could trigger commits',
+    'detail.invalid_value':             'invalid value \'{v}\'',
+    'detail.pre_restore_never':         'set to \'never\' — restores won\'t auto-preserve current version',
+    'detail.interval_low':              '{n}s is below minimum (5s), will be clamped',
+    'detail.protect_count':             '{matched} / {total} files matched by protect patterns',
+    'detail.disk_critical':             '{gb} GB free — critically low',
+    'detail.disk_free':                 '{gb} GB free',
+    'detail.disk_unknown':              'could not determine free space',
+    'detail.lock_exists':               'lock file exists — another instance may be running. {info}',
+    'detail.lock_none':                 'no lock file (no running instance)',
+    'detail.node_ok':                   '{v}',
+    'detail.node_old':                  '{v} — recommended >=18',
+    'detail.mcp_ok':                    'server.js found, SDK {v}',
+    'detail.mcp_no_sdk':                'server.js found but @modelcontextprotocol/sdk not installed — run: cd <skill-dir> && npm install',
+    'detail.mcp_no_server':             'SDK installed ({v}) but server.js not found at expected path',
+    'detail.mcp_not_configured':        'MCP not configured (optional — cursor-guard works without it)',
+    'detail.mcp_version_mismatch':      'running v{mem} but disk has v{disk} — restart Cursor to load the new version',
+    'detail.mcp_version_ok':            'v{v}',
   },
 
   'zh-CN': {
@@ -257,6 +297,46 @@ const I18N = {
     'check.Lock file':                  '锁文件',
     'check.Node.js':                    'Node.js',
     'check.MCP server':                 'MCP 服务器',
+    'check.MCP version':                'MCP 版本',
+
+    'detail.git_version':               '版本 {v}',
+    'detail.git_not_found':             'PATH 中未找到 git；仅可使用 shadow 策略',
+    'detail.worktree':                  '检测到工作树（git-dir：{dir}）',
+    'detail.standard_repo':             '标准仓库',
+    'detail.not_git_repo':              '非 Git 仓库；git/both 策略不可用',
+    'detail.config_valid':              '.cursor-guard.json 已找到且 JSON 格式有效',
+    'detail.config_parse_error':        'JSON 解析错误：{err}',
+    'detail.config_missing':            '未找到 .cursor-guard.json；使用默认设置（保护全部文件）',
+    'detail.strategy_no_git':           'backup_strategy=\'{s}\' 但目录不是 Git 仓库',
+    'detail.strategy_ok':               'backup_strategy=\'{s}\' 且 Git 仓库存在',
+    'detail.strategy_shadow':           'backup_strategy=\'shadow\'——不需要 Git',
+    'detail.strategy_unknown':          '未知 backup_strategy=\'{s}\'（须为 git/shadow/both）',
+    'detail.ref_exists':                'refs/guard/auto-backup 存在（{n} 个提交）',
+    'detail.ref_legacy':                '发现旧版 refs/heads/cursor-guard/auto-backup（{n} 个提交）——运行一次自动备份即可迁移',
+    'detail.ref_not_created':           'refs/guard/auto-backup 尚未创建（首次备份时自动创建）',
+    'detail.guard_refs_found':          '{n} 个引用（{pre} 个恢复前快照）',
+    'detail.guard_refs_none':           '尚无 guard 引用（首次快照或恢复时创建）',
+    'detail.shadow_stats':              '{n} 个快照，共 {mb} MB',
+    'detail.shadow_not_found':          '.cursor-guard-backup/ 未找到（首次影子备份时自动创建）',
+    'detail.gitignore_ok':              '.cursor-guard-backup/ 已被 git 忽略',
+    'detail.gitignore_missing':         '.cursor-guard-backup/ 可能未被 git 忽略——备份变更可能触发提交',
+    'detail.invalid_value':             '无效值 \'{v}\'',
+    'detail.pre_restore_never':         '设为 \'never\'——恢复时不会自动保留当前版本',
+    'detail.interval_low':              '{n} 秒低于最小值（5 秒），将被限制',
+    'detail.protect_count':             '{matched} / {total} 个文件匹配保护规则',
+    'detail.disk_critical':             '{gb} GB 可用——严重不足',
+    'detail.disk_free':                 '{gb} GB 可用',
+    'detail.disk_unknown':              '无法检测可用空间',
+    'detail.lock_exists':               '锁文件存在——可能有其他实例正在运行。{info}',
+    'detail.lock_none':                 '无锁文件（无运行中的实例）',
+    'detail.node_ok':                   '{v}',
+    'detail.node_old':                  '{v}——建议 >=18',
+    'detail.mcp_ok':                    'server.js 已找到，SDK {v}',
+    'detail.mcp_no_sdk':                'server.js 已找到但 @modelcontextprotocol/sdk 未安装——请运行：cd <skill-dir> && npm install',
+    'detail.mcp_no_server':             'SDK 已安装（{v}）但 server.js 未在预期路径找到',
+    'detail.mcp_not_configured':        'MCP 未配置（可选——cursor-guard 无需 MCP 也能工作）',
+    'detail.mcp_version_mismatch':      '运行中 v{mem}，磁盘为 v{disk}——请重启 Cursor 加载新版本',
+    'detail.mcp_version_ok':            'v{v}',
   },
 };
 
@@ -357,6 +437,59 @@ function translateCheckName(name) {
   const key = 'check.' + name;
   const translated = t(key);
   return translated !== key ? translated : name;
+}
+
+const DETAIL_PATTERNS = [
+  { re: /^version (.+)$/,                                              key: 'detail.git_version', extract: ['v'] },
+  { re: /^git not found in PATH/,                                      key: 'detail.git_not_found' },
+  { re: /^worktree detected \(git-dir: (.+)\)$/,                       key: 'detail.worktree', extract: ['dir'] },
+  { re: /^standard repo$/,                                             key: 'detail.standard_repo' },
+  { re: /^not a Git repo/,                                             key: 'detail.not_git_repo' },
+  { re: /^\.cursor-guard\.json found and valid JSON$/,                 key: 'detail.config_valid' },
+  { re: /^JSON parse error: (.+)$/,                                    key: 'detail.config_parse_error', extract: ['err'] },
+  { re: /^no \.cursor-guard\.json found/,                              key: 'detail.config_missing' },
+  { re: /^backup_strategy='(.+?)' but directory is not a Git repo$/,   key: 'detail.strategy_no_git', extract: ['s'] },
+  { re: /^backup_strategy='(.+?)' and Git repo exists$/,               key: 'detail.strategy_ok', extract: ['s'] },
+  { re: /^backup_strategy='shadow'/,                                   key: 'detail.strategy_shadow' },
+  { re: /^unknown backup_strategy='(.+?)'/,                            key: 'detail.strategy_unknown', extract: ['s'] },
+  { re: /^refs\/guard\/auto-backup exists \((.+?) commits?\)$/,        key: 'detail.ref_exists', extract: ['n'] },
+  { re: /^legacy refs\/heads\/cursor-guard\/auto-backup found \((.+?) commits?\)/,key: 'detail.ref_legacy', extract: ['n'] },
+  { re: /^refs\/guard\/auto-backup not created yet/,                   key: 'detail.ref_not_created' },
+  { re: /^(\d+) ref\(s\) found \((\d+) pre-restore snapshots?\)$/,    key: 'detail.guard_refs_found', extract: ['n', 'pre'] },
+  { re: /^no guard refs yet/,                                          key: 'detail.guard_refs_none' },
+  { re: /^(\d+) snapshot\(s\), (.+?) MB total$/,                       key: 'detail.shadow_stats', extract: ['n', 'mb'] },
+  { re: /^\.cursor-guard-backup\/ not found/,                          key: 'detail.shadow_not_found' },
+  { re: /^\.cursor-guard-backup\/ is git-ignored$/,                    key: 'detail.gitignore_ok' },
+  { re: /^\.cursor-guard-backup\/ may NOT be git-ignored/,             key: 'detail.gitignore_missing' },
+  { re: /^invalid value '(.+)'$/,                                      key: 'detail.invalid_value', extract: ['v'] },
+  { re: /^set to 'never'/,                                             key: 'detail.pre_restore_never' },
+  { re: /^(\d+)s is below minimum/,                                    key: 'detail.interval_low', extract: ['n'] },
+  { re: /^(\d+) \/ (\d+) files matched by protect patterns$/,         key: 'detail.protect_count', extract: ['matched', 'total'] },
+  { re: /^(.+?) GB free — critically low$/,                            key: 'detail.disk_critical', extract: ['gb'] },
+  { re: /^could not determine free space$/,                            key: 'detail.disk_unknown' },
+  { re: /^(.+?) GB free$/,                                             key: 'detail.disk_free', extract: ['gb'] },
+  { re: /^lock file exists — another instance may be running\. ?(.*)$/,key: 'detail.lock_exists', extract: ['info'] },
+  { re: /^no lock file/,                                               key: 'detail.lock_none' },
+  { re: /^(v\d+\.\d+\.\d+\S*) — recommended >=18$/,                   key: 'detail.node_old', extract: ['v'] },
+  { re: /^server\.js found, SDK (.+)$/,                                key: 'detail.mcp_ok', extract: ['v'] },
+  { re: /^server\.js found but @modelcontextprotocol/,                 key: 'detail.mcp_no_sdk' },
+  { re: /^SDK installed \((.+?)\) but server\.js/,                     key: 'detail.mcp_no_server', extract: ['v'] },
+  { re: /^MCP not configured/,                                         key: 'detail.mcp_not_configured' },
+  { re: /^running v(.+?) but disk has v(.+?) —/,                       key: 'detail.mcp_version_mismatch', extract: ['mem', 'disk'] },
+  { re: /^v(\d+\.\d+\.\d+\S*)$/,                                      key: 'detail.mcp_version_ok', extract: ['v'] },
+];
+
+function translateDetail(text) {
+  if (!text) return text;
+  for (const p of DETAIL_PATTERNS) {
+    const m = text.match(p.re);
+    if (m) {
+      const params = {};
+      if (p.extract) p.extract.forEach((k, i) => { params[k] = m[i + 1]; });
+      return t(p.key, params);
+    }
+  }
+  return text;
 }
 
 /* ── Time helpers ─────────────────────────────────────────── */
@@ -809,7 +942,7 @@ function openDoctorDrawer() {
           <span class="badge ${badgeClass}">${t('diagnostics.' + c.status)}</span>
           <span class="check-name">${esc(translateCheckName(c.name))}</span>
         </summary>
-        ${c.detail ? `<div class="check-detail">${esc(c.detail)}</div>` : ''}
+        ${c.detail ? `<div class="check-detail">${esc(translateDetail(c.detail))}</div>` : ''}
       </details>
     `;
   }).join('');
