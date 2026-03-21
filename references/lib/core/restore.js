@@ -21,10 +21,13 @@ function validateRelativePath(file) {
 const VALID_SHADOW_SOURCE = /^\d{8}_\d{6}(_\d{3})?$|^pre-restore-\d{8}_\d{6}(_\d{3})?$/;
 
 const TOOL_DIRS = ['.cursor/', '.cursor\\'];
+const GUARD_CONFIGS = ['.cursor-guard.json'];
 
 function isToolPath(filePath) {
   const normalized = filePath.replace(/\\/g, '/');
-  return TOOL_DIRS.some(d => normalized.startsWith(d));
+  if (TOOL_DIRS.some(d => normalized.startsWith(d))) return true;
+  if (GUARD_CONFIGS.includes(normalized)) return true;
+  return false;
 }
 
 function validateShadowSource(source) {
@@ -217,7 +220,7 @@ function previewProjectRestore(projectDir, source) {
 
     for (const f of files) {
       if (isToolPath(f.path)) {
-        f.warning = 'tool directory — restoring may downgrade cursor-guard or other tools';
+        f.warning = 'protected path — will be preserved from HEAD to prevent tool/config downgrade';
       }
     }
 
@@ -282,14 +285,16 @@ function executeProjectRestore(projectDir, source, opts = {}) {
       cwd: projectDir, stdio: 'pipe',
     });
 
-    // Restore .cursor/ back from HEAD to prevent tool/skill downgrade
+    // Restore protected paths from HEAD to prevent tool/skill/config downgrade
     const head = git(['rev-parse', 'HEAD'], { cwd: projectDir, allowFail: true });
     if (head) {
-      try {
-        execFileSync('git', ['restore', `--source=HEAD`, '--', '.cursor/'], {
-          cwd: projectDir, stdio: 'pipe',
-        });
-      } catch { /* .cursor/ may not exist in HEAD, that's fine */ }
+      for (const p of ['.cursor/', ...GUARD_CONFIGS]) {
+        try {
+          execFileSync('git', ['restore', `--source=HEAD`, '--', p], {
+            cwd: projectDir, stdio: 'pipe',
+          });
+        } catch { /* may not exist in HEAD, that's fine */ }
+      }
     }
 
     let untrackedCleaned = 0;

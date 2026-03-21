@@ -110,7 +110,16 @@ console.log(`        MCP server: ${serverExists ? 'OK' : 'MISSING'}`);
 console.log(`        MCP SDK:    ${sdkExists ? 'OK' : 'MISSING — run npm install in skill dir'}`);
 
 console.log(`\n  Installation complete!\n`);
-console.log('  ⚠  If MCP was already configured, restart Cursor (or Ctrl+Shift+P →');
+
+// Detect git repo and recommend committing
+let isGitRepoDir = false;
+try { isGitRepoDir = fs.existsSync(path.join(projectDir, '.git')); } catch { /* ignore */ }
+if (!isGlobal && isGitRepoDir) {
+  console.log('  ** Important: commit now to prevent restore from reverting the skill **');
+  console.log(`     git add .cursor/ .cursor-guard.json && git commit -m "chore: install cursor-guard"\n`);
+}
+
+console.log('  If MCP was already configured, restart Cursor (or Ctrl+Shift+P ->');
 console.log('     "Developer: Reload Window") to load the updated MCP server.\n');
 console.log('  Next steps:');
 console.log('  1. The skill activates automatically in Cursor Agent conversations.');
