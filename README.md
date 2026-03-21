@@ -132,9 +132,22 @@ Edit `.cursor-guard.json` to define which files to protect:
   "ignore": ["node_modules/**", "dist/**"],
   "auto_backup_interval_seconds": 60,
   "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"],
+  "pre_restore_backup": "always",
   "retention": { "mode": "days", "days": 30 }
 }
 ```
+
+#### `pre_restore_backup` — restore behavior control
+
+| Value | Behavior |
+|-------|----------|
+| `"always"` (default) | Automatically preserve current version before every restore. No prompt. |
+| `"ask"` | Prompt you each time: "Preserve current version before restore? (Y/n)" — you decide per restore. |
+| `"never"` | Never preserve current version before restore (not recommended). |
+
+Regardless of config, you can always override per-request:
+- Say "don't preserve current version" to skip even when config is `"always"`
+- Say "preserve current first" to force even when config is `"never"`
 
 ---
 

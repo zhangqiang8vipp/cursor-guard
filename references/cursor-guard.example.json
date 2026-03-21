@@ -35,6 +35,9 @@
     "*.pem"
   ],
 
+  "_comment_pre_restore_backup": "Controls behavior before restore operations. 'always' (default): auto-preserve current version. 'ask': prompt user each time. 'never': skip preservation (not recommended).",
+  "pre_restore_backup": "always",
+
   "_comment_retention": "Retention policy for shadow copies. mode: 'days' (default, keep N days), 'count' (keep N newest snapshots), 'size' (keep total under N MB).",
   "retention": {
     "mode": "days",

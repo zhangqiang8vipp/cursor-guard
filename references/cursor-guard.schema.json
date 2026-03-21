@@ -31,6 +31,12 @@
       "items": { "type": "string" },
       "description": "Glob patterns for sensitive files auto-excluded from backups. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*"
     },
+    "pre_restore_backup": {
+      "type": "string",
+      "enum": ["always", "ask", "never"],
+      "default": "always",
+      "description": "'always' (default): automatically preserve current version before every restore. 'ask': prompt the user each time to choose whether to preserve. 'never': skip preservation entirely (not recommended)."
+    },
     "retention": {
       "type": "object",
       "description": "Controls automatic cleanup of old shadow-copy snapshots.",

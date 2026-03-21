@@ -132,9 +132,22 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
   "ignore": ["node_modules/**", "dist/**"],
   "auto_backup_interval_seconds": 60,
   "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"],
+  "pre_restore_backup": "always",
   "retention": { "mode": "days", "days": 30 }
 }
 ```
+
+#### `pre_restore_backup` — 恢复前保留行为控制
+
+| 值 | 行为 |
+|----|------|
+| `"always"`（默认） | 每次恢复前自动保留当前版本，无需确认。 |
+| `"ask"` | 每次恢复前询问你："恢复前是否保留当前版本？(Y/n)"——由你逐次决定。 |
+| `"never"` | 恢复前不保留当前版本（不推荐）。 |
+
+无论配置如何，你始终可以在单次请求中覆盖：
+- 说"不保留当前版本"可跳过保留（即使配置为 `"always"`）
+- 说"先保留当前版本"可强制保留（即使配置为 `"never"`）
 
 ---
 

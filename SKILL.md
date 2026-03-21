@@ -44,6 +44,12 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
   // Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*
   "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"],
 
+  // Controls behavior before restore operations.
+  // "always" (default): automatically preserve current version before every restore.
+  // "ask": prompt the user each time to decide.
+  // "never": skip preservation entirely (not recommended).
+  "pre_restore_backup": "always",
+
   // Retention for shadow copies. mode: "days" | "count" | "size"
   "retention": { "mode": "days", "days": 30, "max_count": 100, "max_size_mb": 500 }
 }
@@ -302,19 +308,26 @@ Recommended: #1 (closest to target time). Restore this one? / 推荐 #1（最接
   - If still nothing, report clearly: "No snapshot found before that time. The earliest available is [hash] at [time]. Do you want to use it?"
 - **Never silently pick a version.** Always show and confirm.
 
-### Step 4: Preserve Current Version Before Restore (MANDATORY)
+### Step 4: Preserve Current Version Before Restore
 
 > **Rule: `restore_requires_preserve_current_by_default`**
 >
-> Every restore operation MUST first preserve the current state, THEN restore. This is non-negotiable unless the user explicitly opts out.
+> The behavior is controlled by `pre_restore_backup` in `.cursor-guard.json` (default: `"always"`).
 
-**4a. Check if user opted out**
+**4a. Determine preservation mode**
 
-Skip preservation ONLY if the user explicitly said one of:
-- "不保留当前版本" / "不用备份当前版本" / "直接覆盖恢复"
-- "skip backup before restore" / "don't preserve current" / "just restore"
+Read `pre_restore_backup` from config (§0). Three modes:
 
-If opted out, inform: "你已明确表示不保留当前版本，我将直接恢复。" and jump to Step 5.
+| Config value | Behavior |
+|-------------|----------|
+| `"always"` (default) | Automatically preserve current version. No prompt. Jump to 4b. |
+| `"ask"` | Prompt the user: "恢复前是否保留当前版本？(Y/n)" / "Preserve current version before restore? (Y/n)". If user answers yes/default → jump to 4b. If user answers no → inform and jump to Step 5. |
+| `"never"` | Skip preservation entirely. Inform: "配置已设为不保留当前版本 (pre_restore_backup=never)，直接恢复。" and jump to Step 5. |
+
+**Override rules** (apply regardless of config):
+- If the user **explicitly** says "不保留当前版本" / "skip backup before restore" in the current message → skip, even if config is `"always"`.
+- If the user **explicitly** says "先保留当前版本" / "preserve current first" → preserve, even if config is `"never"`.
+- User's explicit instruction in the current message always takes priority over config.
 
 **4b. Determine preservation scope**
 
