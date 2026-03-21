@@ -24,35 +24,112 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 
 ## Installation / 安装
 
-### For Cursor (as an Agent Skill) / 作为 Cursor 代理技能
+### Method 1: npm install / 方式一：npm 安装
 
-Copy the `cursor-guard/` folder into your Cursor skills directory:
-
-将 `cursor-guard/` 文件夹复制到 Cursor 技能目录：
-
-```
-~/.cursor/skills/cursor-guard/
+```bash
+npm install cursor-guard
 ```
 
-Or per-project / 或按项目配置：
+After installation, copy the skill files to your Cursor skills directory:
+
+安装后，将技能文件复制到 Cursor 技能目录：
+
+**Windows (PowerShell):**
+
+```powershell
+# Global installation (all projects) / 全局安装（所有项目生效）
+Copy-Item -Recurse node_modules/cursor-guard "$env:USERPROFILE/.cursor/skills/cursor-guard"
+
+# Per-project installation / 项目级安装（仅当前项目生效）
+Copy-Item -Recurse node_modules/cursor-guard .cursor/skills/cursor-guard
+```
+
+**macOS / Linux:**
+
+```bash
+# Global installation / 全局安装
+cp -r node_modules/cursor-guard ~/.cursor/skills/cursor-guard
+
+# Per-project installation / 项目级安装
+cp -r node_modules/cursor-guard .cursor/skills/cursor-guard
+```
+
+After copying, you can remove the npm dependency if you don't need it in `node_modules`:
+
+复制完成后，如果不需要保留在 `node_modules` 中，可以卸载：
+
+```bash
+npm uninstall cursor-guard
+```
+
+### Method 2: Git clone / 方式二：Git 克隆
+
+```bash
+# Global installation / 全局安装
+git clone https://github.com/zhangqiang8vipp/cursor-guard.git ~/.cursor/skills/cursor-guard
+
+# Per-project installation / 项目级安装
+git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cursor-guard
+```
+
+### Method 3: Manual download / 方式三：手动下载
+
+Download from [GitHub Releases](https://github.com/zhangqiang8vipp/cursor-guard/releases) and extract to:
+
+从 [GitHub Releases](https://github.com/zhangqiang8vipp/cursor-guard/releases) 下载并解压到：
 
 ```
-<project-root>/.cursor/skills/cursor-guard/
+~/.cursor/skills/cursor-guard/          # Global / 全局
+<project-root>/.cursor/skills/cursor-guard/  # Per-project / 项目级
+```
+
+### Verify Installation / 验证安装
+
+After installation, your directory structure should look like this / 安装后目录结构应如下所示：
+
+```
+.cursor/skills/cursor-guard/
+├── SKILL.md                          # AI agent instructions / AI 代理指令
+├── README.md
+├── LICENSE
+└── references/
+    ├── auto-backup.ps1               # Auto-backup script / 自动备份脚本
+    ├── recovery.md                   # Recovery commands / 恢复命令
+    ├── cursor-guard.example.json     # Example config / 示例配置
+    └── cursor-guard.schema.json      # Config schema / 配置 Schema
 ```
 
 The skill activates automatically when the AI agent detects risky operations (file edits, deletes, renames) or when you mention recovery-related terms.
 
-技能会在 AI 代理检测到高风险操作（文件编辑、删除、重命名）或你提到恢复相关词汇时自动激活。
+技能会在 AI 代理检测到高风险操作（文件编辑、删除、重命名）或你提到恢复相关词汇时自动激活。无需其他设置，安装即生效。
 
-### Project Configuration (Optional) / 项目配置（可选）
+---
 
-Copy the example config to your workspace root and customize:
+## Quick Start / 快速上手
 
-将示例配置复制到项目根目录并自定义：
+1. **Install the skill** using any method above / 用以上任意方式安装技能
+
+2. **Open Cursor** and start an Agent conversation / 打开 Cursor，开始一个 Agent 对话
+
+3. **The skill works automatically** — when the AI agent tries to edit files, it will: / 技能自动生效——当 AI 代理尝试编辑文件时，会自动：
+   - Create a Git snapshot before writing / 写入前创建 Git 快照
+   - Read files before overwriting / 覆写前先读取文件
+   - Show diff previews for dangerous operations / 危险操作前展示 diff 预览
+   - Report a status block after each protected operation / 每次受保护操作后报告状态
+
+4. **(Optional) Add project config** to customize protection scope / （可选）添加项目配置自定义保护范围：
 
 ```bash
 cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guard.json
 ```
+
+5. **(Optional) Run auto-backup** in a separate terminal / （可选）在独立终端运行自动备份：
+
+```powershell
+.\auto-backup.ps1 -Path "D:\MyProject"
+```
+
+### Project Configuration / 项目配置
 
 Edit `.cursor-guard.json` to define which files to protect / 编辑 `.cursor-guard.json` 定义保护哪些文件：
 
