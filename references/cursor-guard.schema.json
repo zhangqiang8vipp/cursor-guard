@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cursor Guard Configuration",
+  "description": "Controls which files are protected, backup strategy, secrets filtering, and retention policy for the cursor-guard skill.",
+  "type": "object",
+  "properties": {
+    "protect": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Whitelist glob patterns relative to workspace root. Only matching files get backup protection. If empty or missing, all files are protected."
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Blacklist glob patterns. Matching files are excluded even if they match 'protect'. Applied on top of .gitignore."
+    },
+    "backup_strategy": {
+      "type": "string",
+      "enum": ["git", "shadow", "both"],
+      "default": "git",
+      "description": "Primary backup method: 'git' (local commits), 'shadow' (.cursor-guard-backup/ copies), or 'both'."
+    },
+    "auto_backup_interval_seconds": {
+      "type": "integer",
+      "minimum": 5,
+      "default": 60,
+      "description": "Interval in seconds for auto-backup.ps1 to check for changes."
+    },
+    "secrets_patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Glob patterns for sensitive files auto-excluded from backups. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*"
+    },
+    "retention": {
+      "type": "object",
+      "description": "Controls automatic cleanup of old shadow-copy snapshots.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["days", "count", "size"],
+          "default": "days",
+          "description": "'days': keep snapshots from the last N days. 'count': keep N newest snapshots. 'size': keep total size under N MB."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Number of days to retain snapshots (when mode='days')."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100,
+          "description": "Maximum number of snapshots to keep (when mode='count')."
+        },
+        "max_size_mb": {
+          "type": "integer",
+          "minimum": 10,
+          "default": 500,
+          "description": "Maximum total size in MB for shadow copies (when mode='size')."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

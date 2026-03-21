@@ -1,0 +1,45 @@
+{
+  "_comment_schema": "Optional: add \"$schema\" pointing to cursor-guard.schema.json for IDE validation. Adjust the path to where you placed the schema file.",
+
+  "_comment_mode": "Two modes: whitelist (set 'protect') or blacklist (set 'ignore'). If both are set, 'protect' is checked first, then 'ignore' excludes from it.",
+
+  "protect": [
+    "src/**",
+    "lib/**",
+    "*.config.js",
+    "*.config.ts",
+    "package.json",
+    "tsconfig.json",
+    ".env.example"
+  ],
+
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    ".next/**",
+    "coverage/**",
+    "*.log",
+    "*.tmp",
+    ".cursor-guard-backup/**"
+  ],
+
+  "backup_strategy": "git",
+  "auto_backup_interval_seconds": 60,
+
+  "_comment_secrets": "Glob patterns for sensitive files — auto-excluded from backup even if matched by 'protect'. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*",
+  "secrets_patterns": [
+    ".env",
+    ".env.*",
+    "*.key",
+    "*.pem"
+  ],
+
+  "_comment_retention": "Retention policy for shadow copies. mode: 'days' (default, keep N days), 'count' (keep N newest snapshots), 'size' (keep total under N MB).",
+  "retention": {
+    "mode": "days",
+    "days": 30,
+    "max_count": 100,
+    "max_size_mb": 500
+  }
+}

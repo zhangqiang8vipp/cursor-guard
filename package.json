@@ -1,0 +1,29 @@
+{
+  "name": "cursor-guard",
+  "version": "1.0.0",
+  "description": "Protects code from accidental AI overwrite or deletion in Cursor IDE — mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery.",
+  "keywords": [
+    "cursor",
+    "cursor-ide",
+    "ai-safety",
+    "code-protection",
+    "git-backup",
+    "snapshot",
+    "recovery",
+    "agent-skill"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "homepage": "",
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "LICENSE",
+    "references/"
+  ],
+  "main": "SKILL.md"
+}
