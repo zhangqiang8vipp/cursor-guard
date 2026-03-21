@@ -312,8 +312,6 @@ function isProcessAlive(pid) {
 // ── Main ────────────────────────────────────────────────────────
 
 async function runBackup(projectDir, intervalOverride) {
-  process.chdir(projectDir);
-
   const hasGit = gitAvailable();
   const repo = hasGit && isGitRepo(projectDir);
   const gDir = repo ? getGitDir(projectDir) : null;
@@ -326,7 +324,7 @@ async function runBackup(projectDir, intervalOverride) {
   const guardIndex = gDir ? path.join(gDir, 'cursor-guard-index') : null;
 
   // Load config
-  let { cfg, loaded, error } = loadConfig(projectDir);
+  let { cfg, loaded, error, warnings } = loadConfig(projectDir);
   let interval = intervalOverride || cfg.auto_backup_interval_seconds || 60;
   if (interval < 5) interval = 5;
   let cfgMtime = 0;
@@ -337,6 +335,9 @@ async function runBackup(projectDir, intervalOverride) {
     console.log(color.yellow(`[guard] WARNING: .cursor-guard.json parse error — using defaults. ${error}`));
   } else if (loaded) {
     console.log(color.cyan(`[guard] Config loaded  protect=${cfg.protect.length}  ignore=${cfg.ignore.length}  strategy=${cfg.backup_strategy}  git_retention=${cfg.git_retention.enabled ? 'on' : 'off'}`));
+    if (warnings && warnings.length > 0) {
+      for (const w of warnings) console.log(color.yellow(`[guard] WARNING: ${w}`));
+    }
   }
 
   // Strategy check
@@ -419,6 +420,16 @@ async function runBackup(projectDir, intervalOverride) {
   }
 
   const logger = createLogger(logFilePath);
+
+  // Global error handlers
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught exception: ${err.message}`);
+    cleanup();
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled rejection: ${reason}`);
+  });
 
   // Banner
   console.log('');

@@ -210,6 +210,26 @@ test('non-string backup_strategy is ignored', () => {
   }
 });
 
+test('invalid enum values fall back to defaults with warnings', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-test-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({
+      backup_strategy: 'gittt',
+      pre_restore_backup: 'yolo',
+      retention: { mode: 'fancy' },
+      git_retention: { enabled: true, mode: 'monthly' },
+    }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.strictEqual(cfg.backup_strategy, 'git');
+    assert.strictEqual(cfg.pre_restore_backup, 'always');
+    assert.strictEqual(cfg.retention.mode, 'days');
+    assert.strictEqual(cfg.git_retention.mode, 'count');
+    assert.strictEqual(warnings.length, 4);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 // ── filterFiles ──────────────────────────────────────────────────
 
 console.log('\nfilterFiles:');

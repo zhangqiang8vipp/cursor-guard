@@ -52,18 +52,22 @@ const ALWAYS_SKIP = /[/\\](\.git|\.cursor-guard-backup|node_modules)[/\\]/;
 
 function walkDir(dir, rootDir) {
   const results = [];
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return results; }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    const rel = path.relative(rootDir, full).replace(/\\/g, '/');
-    if (ALWAYS_SKIP.test('/' + rel + '/')) continue;
-    if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory()) {
-      results.push(...walkDir(full, rootDir));
-    } else if (entry.isFile()) {
-      results.push({ full, rel, name: entry.name });
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); }
+    catch { continue; }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      const rel = path.relative(rootDir, full).replace(/\\/g, '/');
+      if (ALWAYS_SKIP.test('/' + rel + '/')) continue;
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile()) {
+        results.push({ full, rel, name: entry.name });
+      }
     }
   }
   return results;
@@ -72,6 +76,11 @@ function walkDir(dir, rootDir) {
 // ── Config loading ──────────────────────────────────────────────
 
 const DEFAULT_SECRETS = ['.env', '.env.*', '*.key', '*.pem', '*.p12', '*.pfx', 'credentials*'];
+
+const VALID_STRATEGIES = ['git', 'shadow', 'both'];
+const VALID_PRE_RESTORE = ['always', 'ask', 'never'];
+const VALID_RETENTION_MODES = ['days', 'count', 'size'];
+const VALID_GIT_RETENTION_MODES = ['days', 'count'];
 
 const DEFAULT_CONFIG = {
   protect: [],
@@ -101,22 +110,47 @@ function loadConfig(projectDir) {
       const merged = [...new Set([...cfg.secrets_patterns, ...raw.secrets_patterns_extra])];
       cfg.secrets_patterns = merged;
     }
-    if (typeof raw.backup_strategy === 'string')          cfg.backup_strategy = raw.backup_strategy;
+    const warnings = [];
+    if (typeof raw.backup_strategy === 'string') {
+      if (VALID_STRATEGIES.includes(raw.backup_strategy)) {
+        cfg.backup_strategy = raw.backup_strategy;
+      } else {
+        warnings.push(`Unknown backup_strategy "${raw.backup_strategy}", using default "${cfg.backup_strategy}"`);
+      }
+    }
     if (typeof raw.auto_backup_interval_seconds === 'number') cfg.auto_backup_interval_seconds = raw.auto_backup_interval_seconds;
-    if (typeof raw.pre_restore_backup === 'string')       cfg.pre_restore_backup = raw.pre_restore_backup;
+    if (typeof raw.pre_restore_backup === 'string') {
+      if (VALID_PRE_RESTORE.includes(raw.pre_restore_backup)) {
+        cfg.pre_restore_backup = raw.pre_restore_backup;
+      } else {
+        warnings.push(`Unknown pre_restore_backup "${raw.pre_restore_backup}", using default "${cfg.pre_restore_backup}"`);
+      }
+    }
     if (raw.retention) {
-      if (raw.retention.mode)        cfg.retention.mode = raw.retention.mode;
-      if (raw.retention.days)        cfg.retention.days = raw.retention.days;
-      if (raw.retention.max_count)   cfg.retention.max_count = raw.retention.max_count;
-      if (raw.retention.max_size_mb) cfg.retention.max_size_mb = raw.retention.max_size_mb;
+      if (raw.retention.mode) {
+        if (VALID_RETENTION_MODES.includes(raw.retention.mode)) {
+          cfg.retention.mode = raw.retention.mode;
+        } else {
+          warnings.push(`Unknown retention.mode "${raw.retention.mode}", using default "${cfg.retention.mode}"`);
+        }
+      }
+      if (typeof raw.retention.days === 'number')        cfg.retention.days = raw.retention.days;
+      if (typeof raw.retention.max_count === 'number')   cfg.retention.max_count = raw.retention.max_count;
+      if (typeof raw.retention.max_size_mb === 'number') cfg.retention.max_size_mb = raw.retention.max_size_mb;
     }
     if (raw.git_retention) {
       if (raw.git_retention.enabled === true)  cfg.git_retention.enabled = true;
-      if (raw.git_retention.mode)              cfg.git_retention.mode = raw.git_retention.mode;
-      if (raw.git_retention.days)              cfg.git_retention.days = raw.git_retention.days;
-      if (raw.git_retention.max_count)         cfg.git_retention.max_count = raw.git_retention.max_count;
+      if (raw.git_retention.mode) {
+        if (VALID_GIT_RETENTION_MODES.includes(raw.git_retention.mode)) {
+          cfg.git_retention.mode = raw.git_retention.mode;
+        } else {
+          warnings.push(`Unknown git_retention.mode "${raw.git_retention.mode}", using default "${cfg.git_retention.mode}"`);
+        }
+      }
+      if (typeof raw.git_retention.days === 'number')      cfg.git_retention.days = raw.git_retention.days;
+      if (typeof raw.git_retention.max_count === 'number') cfg.git_retention.max_count = raw.git_retention.max_count;
     }
-    return { cfg, loaded: true, error: null };
+    return { cfg, loaded: true, error: null, warnings };
   } catch (e) {
     return { cfg, loaded: false, error: e.message };
   }
@@ -249,11 +283,23 @@ function timestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function createLogger(logFilePath) {
+function createLogger(logFilePath, maxSizeMB = 10) {
+  let writeCount = 0;
+  function rotateIfNeeded() {
+    if (++writeCount % 100 !== 0) return;
+    try {
+      const stat = fs.statSync(logFilePath);
+      if (stat.size > maxSizeMB * 1024 * 1024) {
+        const old = logFilePath + '.old';
+        try { fs.unlinkSync(old); } catch { /* ignore */ }
+        fs.renameSync(logFilePath, old);
+      }
+    } catch { /* ignore */ }
+  }
   return {
     log(msg, c = 'green') {
       const line = `${timestamp()}  ${msg}`;
-      try { fs.appendFileSync(logFilePath, line + '\n'); } catch { /* ignore */ }
+      try { fs.appendFileSync(logFilePath, line + '\n'); rotateIfNeeded(); } catch { /* ignore */ }
       console.log(color[c] ? color[c](`[guard] ${line}`) : `[guard] ${line}`);
     },
     info(msg) { this.log(msg, 'cyan'); },
