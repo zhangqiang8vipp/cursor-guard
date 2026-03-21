@@ -260,6 +260,21 @@ function runDiagnostics(projectDir) {
     check('MCP server', 'WARN', 'MCP not configured (optional — cursor-guard works without it)');
   }
 
+  // 15. MCP version consistency (in-process vs on-disk)
+  const diskPkgPath = path.resolve(__dirname, '../../../package.json');
+  try {
+    const diskPkg = JSON.parse(fs.readFileSync(diskPkgPath, 'utf-8'));
+    const memPkg = require('../../../package.json');
+    if (diskPkg.version !== memPkg.version) {
+      check('MCP version', 'WARN',
+        `running v${memPkg.version} but disk has v${diskPkg.version} — restart Cursor to load the new version`);
+    } else {
+      check('MCP version', 'PASS', `v${memPkg.version}`);
+    }
+  } catch {
+    // Not running inside MCP or package.json unreadable — skip silently
+  }
+
   // Build summary
   let pass = 0, warn = 0, fail = 0;
   for (const c of checks) {

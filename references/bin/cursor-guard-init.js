@@ -110,6 +110,8 @@ console.log(`        MCP server: ${serverExists ? 'OK' : 'MISSING'}`);
 console.log(`        MCP SDK:    ${sdkExists ? 'OK' : 'MISSING — run npm install in skill dir'}`);
 
 console.log(`\n  Installation complete!\n`);
+console.log('  ⚠  If MCP was already configured, restart Cursor (or Ctrl+Shift+P →');
+console.log('     "Developer: Reload Window") to load the updated MCP server.\n');
 console.log('  Next steps:');
 console.log('  1. The skill activates automatically in Cursor Agent conversations.');
 console.log('  2. (Optional) Copy example config to project root:');

@@ -124,9 +124,11 @@ const VALID_PRE_RESTORE = ['always', 'ask', 'never'];
 const VALID_RETENTION_MODES = ['days', 'count', 'size'];
 const VALID_GIT_RETENTION_MODES = ['days', 'count'];
 
+const DEFAULT_IGNORE = ['.cursor/skills/**'];
+
 const DEFAULT_CONFIG = {
   protect: [],
-  ignore: [],
+  ignore: [...DEFAULT_IGNORE],
   secrets_patterns: DEFAULT_SECRETS,
   backup_strategy: 'git',
   auto_backup_interval_seconds: 60,
@@ -157,7 +159,10 @@ function loadConfig(projectDir) {
       return clean;
     }
     if (Array.isArray(raw.protect))          cfg.protect = sanitizeStringArray(raw.protect, 'protect');
-    if (Array.isArray(raw.ignore))           cfg.ignore = sanitizeStringArray(raw.ignore, 'ignore');
+    if (Array.isArray(raw.ignore)) {
+      const userIgnore = sanitizeStringArray(raw.ignore, 'ignore');
+      cfg.ignore = [...new Set([...DEFAULT_IGNORE, ...userIgnore])];
+    }
     if (Array.isArray(raw.secrets_patterns)) cfg.secrets_patterns = sanitizeStringArray(raw.secrets_patterns, 'secrets_patterns');
     if (Array.isArray(raw.secrets_patterns_extra)) {
       const cleaned = sanitizeStringArray(raw.secrets_patterns_extra, 'secrets_patterns_extra');

@@ -102,6 +102,35 @@ const I18N = {
     'time.minutesAgo': '{n}m ago',
     'time.hoursAgo':   '{n}h ago',
     'time.daysAgo':    '{n}d ago',
+
+    'issue.watcher_not_running':        'Auto-backup watcher is not running',
+    'issue.watcher_stale':              'Watcher has a stale lock file (process not running)',
+    'issue.strategy_no_git':            'Strategy requires Git but directory is not a git repo',
+    'issue.no_auto_backup_ref':         'No auto-backup ref found — watcher may not have run yet',
+    'issue.disk_critically_low':        'Disk space critically low ({gb} GB free)',
+    'issue.disk_low':                   'Disk space low ({gb} GB free)',
+    'issue.git_backup_stale':           'Last git backup is stale ({rel})',
+    'issue.active_alert':               'Active alert: {type} — {count} files in {window}s',
+    'issue.alert_high_velocity':        'High volume of file changes detected. Consider reviewing recent modifications and creating a manual snapshot.',
+
+    'check.Git installed':              'Git installed',
+    'check.Git repository':             'Git repository',
+    'check.Config file':                'Config file',
+    'check.Strategy compatibility':     'Strategy compatibility',
+    'check.Backup ref':                 'Backup ref',
+    'check.Guard refs':                 'Guard refs',
+    'check.Shadow copies':              'Shadow copies',
+    'check.Backup dir ignored':         'Backup dir ignored',
+    'check.Config: backup_strategy':    'Config: backup_strategy',
+    'check.Config: pre_restore_backup': 'Config: pre_restore_backup',
+    'check.Config: interval':           'Config: interval',
+    'check.Config: retention.mode':     'Config: retention.mode',
+    'check.Config: git_retention.mode': 'Config: git_retention.mode',
+    'check.Protect patterns':           'Protect patterns',
+    'check.Disk space':                 'Disk space',
+    'check.Lock file':                  'Lock file',
+    'check.Node.js':                    'Node.js',
+    'check.MCP server':                 'MCP server',
   },
 
   'zh-CN': {
@@ -199,6 +228,35 @@ const I18N = {
     'time.minutesAgo': '{n} 分钟前',
     'time.hoursAgo':   '{n} 小时前',
     'time.daysAgo':    '{n} 天前',
+
+    'issue.watcher_not_running':        '自动备份守护进程未运行',
+    'issue.watcher_stale':              '守护进程锁文件已过期（进程未运行）',
+    'issue.strategy_no_git':            '策略需要 Git 但目录不是 Git 仓库',
+    'issue.no_auto_backup_ref':         '未找到自动备份引用——守护进程可能尚未运行',
+    'issue.disk_critically_low':        '磁盘空间严重不足（{gb} GB 可用）',
+    'issue.disk_low':                   '磁盘空间不足（{gb} GB 可用）',
+    'issue.git_backup_stale':           '最近 Git 备份已过时（{rel}）',
+    'issue.active_alert':               '活跃告警：{type}——{count} 个文件在 {window} 秒内变更',
+    'issue.alert_high_velocity':        '检测到大量文件变更，建议检查最近修改并手动创建快照。',
+
+    'check.Git installed':              'Git 安装状态',
+    'check.Git repository':             'Git 仓库',
+    'check.Config file':                '配置文件',
+    'check.Strategy compatibility':     '策略兼容性',
+    'check.Backup ref':                 '备份引用',
+    'check.Guard refs':                 'Guard 引用',
+    'check.Shadow copies':              '影子拷贝',
+    'check.Backup dir ignored':         '备份目录忽略',
+    'check.Config: backup_strategy':    '配置：备份策略',
+    'check.Config: pre_restore_backup': '配置：恢复前备份',
+    'check.Config: interval':           '配置：备份间隔',
+    'check.Config: retention.mode':     '配置：留存模式',
+    'check.Config: git_retention.mode': '配置：Git 留存模式',
+    'check.Protect patterns':           '保护规则匹配',
+    'check.Disk space':                 '磁盘空间',
+    'check.Lock file':                  '锁文件',
+    'check.Node.js':                    'Node.js',
+    'check.MCP server':                 'MCP 服务器',
   },
 };
 
@@ -257,6 +315,9 @@ function setLocale(loc) {
   state.locale = loc;
   localStorage.setItem('cg-locale', loc);
   document.documentElement.lang = loc === 'zh-CN' ? 'zh-CN' : 'en';
+  document.title = t('app.title');
+  const refreshBtn = $('#refresh-btn');
+  if (refreshBtn) refreshBtn.title = t('topbar.refresh');
   updateStaticI18n();
   if (state.pageData) renderAll();
   updateRefreshDisplay();
@@ -264,6 +325,38 @@ function setLocale(loc) {
 
 function updateStaticI18n() {
   $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+}
+
+/* ── Backend string translation ────────────────────────────── */
+
+const ISSUE_PATTERNS = [
+  { re: /^Auto-backup watcher is not running$/,                     key: 'issue.watcher_not_running' },
+  { re: /^Watcher has a stale lock file/,                           key: 'issue.watcher_stale' },
+  { re: /^Strategy requires Git but directory is not a git repo$/,  key: 'issue.strategy_no_git' },
+  { re: /^No auto-backup ref found/,                                key: 'issue.no_auto_backup_ref' },
+  { re: /^Disk space critically low \((.+?) GB free\)$/,            key: 'issue.disk_critically_low', extract: ['gb'] },
+  { re: /^Disk space low \((.+?) GB free\)$/,                       key: 'issue.disk_low', extract: ['gb'] },
+  { re: /^Last git backup is stale \((.+?)\)$/,                     key: 'issue.git_backup_stale', extract: ['rel'] },
+  { re: /^Active alert: (.+?) — (\d+) files in (\d+)s$/,           key: 'issue.active_alert', extract: ['type', 'count', 'window'] },
+  { re: /^High volume of file changes/,                             key: 'issue.alert_high_velocity' },
+];
+
+function translateIssue(text) {
+  for (const p of ISSUE_PATTERNS) {
+    const m = text.match(p.re);
+    if (m) {
+      const params = {};
+      if (p.extract) p.extract.forEach((k, i) => { params[k] = m[i + 1]; });
+      return t(p.key, params);
+    }
+  }
+  return text;
+}
+
+function translateCheckName(name) {
+  const key = 'check.' + name;
+  const translated = t(key);
+  return translated !== key ? translated : name;
 }
 
 /* ── Time helpers ─────────────────────────────────────────── */
@@ -446,7 +539,7 @@ function renderHealthCard(health) {
       <span class="status-dot status-${st}"></span>
       <span class="status-text status-${st}">${t('health.' + st)}</span>
     </div>
-    ${issues.length > 0 ? `<ul class="issue-list">${issues.map(i => `<li class="text-sm">${esc(i)}</li>`).join('')}</ul>` : ''}
+    ${issues.length > 0 ? `<ul class="issue-list">${issues.map(i => `<li class="text-sm">${esc(translateIssue(i))}</li>`).join('')}</ul>` : ''}
   `;
 }
 
@@ -509,7 +602,7 @@ function renderAlertCard(alerts) {
   el.innerHTML = `
     <div class="card-label">${t('alert.title')}</div>
     <div class="card-status"><span class="status-dot status-warning"></span><span class="status-text status-warning">${t('alert.active')}</span></div>
-    <div class="card-detail text-muted text-sm">${esc(a.recommendation || a.message || '')}</div>
+    <div class="card-detail text-muted text-sm">${esc(translateIssue(a.recommendation || a.message || ''))}</div>
   `;
 }
 
@@ -714,7 +807,7 @@ function openDoctorDrawer() {
       <details class="check-item" ${shouldOpen ? 'open' : ''}>
         <summary>
           <span class="badge ${badgeClass}">${t('diagnostics.' + c.status)}</span>
-          <span class="check-name">${esc(c.name)}</span>
+          <span class="check-name">${esc(translateCheckName(c.name))}</span>
         </summary>
         ${c.detail ? `<div class="check-detail">${esc(c.detail)}</div>` : ''}
       </details>
@@ -821,6 +914,7 @@ function setupEvents() {
 async function init() {
   state.locale = detectLocale();
   document.documentElement.lang = state.locale === 'zh-CN' ? 'zh-CN' : 'en';
+  document.title = t('app.title');
   updateStaticI18n();
   showLoading();
 

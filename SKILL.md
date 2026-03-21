@@ -488,6 +488,7 @@ Current version preserved before restore:
 > - Project preview: `restore_project { "path": "<project>", "source": "<hash>", "preview": true }` — returns the list of files that would change.
 > - Project execute: after user confirms, `restore_project { "path": "<project>", "source": "<hash>", "preview": false, "preserve_current": true }` — creates pre-restore snapshot, then restores all files in one call. Returns `{ filesRestored, preRestoreRef, files }`.
 > - MCP `restore_file` and `restore_project` respect `pre_restore_backup` config (§Step 4) automatically. The response includes `preRestoreRef` if a snapshot was created.
+> - **`.cursor/` protection**: `restore_project` automatically preserves the `.cursor/` directory (including skills, MCP configs, rules) from HEAD after restoring. Preview results mark `.cursor/` files with a `warning` field. If a user explicitly wants to restore `.cursor/` contents, they must do so file-by-file via `restore_file`.
 
 **Single file recovery:**
 
@@ -568,6 +569,7 @@ Skip the block for unrelated turns.
 11. **Use `--no-verify`** on all guard snapshot commits to bypass pre-commit hooks that could fail or modify files.
 12. **Concurrent agents**: if multiple Agent threads are active, warn the user to avoid simultaneous writes to the same file. Snapshots cannot prevent race conditions between parallel agents.
 13. **Preservation must not pollute** — all pre-restore backups use temp index + dedicated ref (`refs/guard/pre-restore`). The user's staging area, working tree, and commit history on their branch are never modified by the preservation process.
+14. **Do not restore `.cursor/` directory** — `.cursor/skills/`, `.cursor/rules/`, and `.cursor/mcp.json` are tool infrastructure, not project code. `restore_project` automatically protects this directory. Never include `.cursor/` in manual restore commands unless the user explicitly requests it. Restoring `.cursor/skills/cursor-guard/` would downgrade the protection tool itself.
 
 ---
 

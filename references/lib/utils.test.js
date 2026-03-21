@@ -110,7 +110,7 @@ test('returns defaults when no config file', () => {
     assert.strictEqual(loaded, false);
     assert.strictEqual(error, null);
     assert.deepStrictEqual(cfg.protect, []);
-    assert.deepStrictEqual(cfg.ignore, []);
+    assert.deepStrictEqual(cfg.ignore, ['.cursor/skills/**']);
     assert.deepStrictEqual(cfg.secrets_patterns, DEFAULT_SECRETS);
     assert.strictEqual(cfg.backup_strategy, 'git');
     assert.strictEqual(cfg.git_retention.enabled, false);
@@ -354,7 +354,7 @@ test('loadConfig filters non-string elements from array fields with warnings', (
     }));
     const { cfg, warnings } = loadConfig(tmpDir);
     assert.deepStrictEqual(cfg.protect, ['src/**'], 'protect should only contain strings');
-    assert.deepStrictEqual(cfg.ignore, ['dist/**'], 'ignore should only contain strings');
+    assert.deepStrictEqual(cfg.ignore, ['.cursor/skills/**', 'dist/**'], 'ignore should contain defaults + user strings');
     assert.deepStrictEqual(cfg.secrets_patterns, ['.env'], 'secrets_patterns should only contain strings');
     assert.ok(warnings.some(w => w.includes('protect') && w.includes('3 non-string')), 'should warn about protect');
     assert.ok(warnings.some(w => w.includes('ignore') && w.includes('1 non-string')), 'should warn about ignore');
