@@ -122,7 +122,8 @@ function shadowRetention(backupDir, cfg, logger) {
 function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
   if (!cfg.git_retention.enabled) return;
 
-  const out = git(['log', branchRef, '--format=%H %aI %s'], { cwd, allowFail: true });
+  // %aI = author date ISO, %cI = committer date ISO
+  const out = git(['log', branchRef, '--format=%H %aI %cI %s'], { cwd, allowFail: true });
   if (!out) return;
 
   const lines = out.split('\n').filter(Boolean);
@@ -130,11 +131,13 @@ function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
   for (const line of lines) {
     const firstSpace = line.indexOf(' ');
     const secondSpace = line.indexOf(' ', firstSpace + 1);
+    const thirdSpace = line.indexOf(' ', secondSpace + 1);
     const hash = line.substring(0, firstSpace);
-    const dateISO = line.substring(firstSpace + 1, secondSpace);
-    const subject = line.substring(secondSpace + 1);
+    const authorDate = line.substring(firstSpace + 1, secondSpace);
+    const committerDate = line.substring(secondSpace + 1, thirdSpace);
+    const subject = line.substring(thirdSpace + 1);
     if (subject.startsWith('guard: auto-backup')) {
-      guardCommits.push({ hash, dateISO, subject });
+      guardCommits.push({ hash, authorDate, committerDate, subject });
     } else {
       break;
     }
@@ -152,7 +155,7 @@ function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
     const cutoff = Date.now() - days * 86400000;
     keepCount = 0;
     for (const c of guardCommits) {
-      if (new Date(c.dateISO).getTime() >= cutoff) keepCount++;
+      if (new Date(c.authorDate).getTime() >= cutoff) keepCount++;
       else break;
     }
     keepCount = Math.max(keepCount, 10);
@@ -160,18 +163,30 @@ function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
 
   if (keepCount >= total) return;
 
-  // Rebuild kept commits as a new orphan chain (oldest-to-keep first)
+  // Rebuild kept commits as a new orphan chain (oldest-to-keep first),
+  // preserving original author/committer dates so "days" mode stays accurate.
   const toKeep = guardCommits.slice(0, keepCount).reverse();
+
+  function commitTreeWithDate(args, commit) {
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_DATE: commit.authorDate,
+      GIT_COMMITTER_DATE: commit.committerDate,
+    };
+    try {
+      return execFileSync('git', args, { cwd, env, stdio: 'pipe', encoding: 'utf-8' }).trim() || null;
+    } catch { return null; }
+  }
 
   const rootTree = git(['rev-parse', `${toKeep[0].hash}^{tree}`], { cwd, allowFail: true });
   if (!rootTree) return;
-  let prevHash = git(['commit-tree', rootTree, '-m', toKeep[0].subject], { cwd, allowFail: true });
+  let prevHash = commitTreeWithDate(['commit-tree', rootTree, '-m', toKeep[0].subject], toKeep[0]);
   if (!prevHash) return;
 
   for (let i = 1; i < toKeep.length; i++) {
     const tree = git(['rev-parse', `${toKeep[i].hash}^{tree}`], { cwd, allowFail: true });
     if (!tree) return;
-    prevHash = git(['commit-tree', tree, '-p', prevHash, '-m', toKeep[i].subject], { cwd, allowFail: true });
+    prevHash = commitTreeWithDate(['commit-tree', tree, '-p', prevHash, '-m', toKeep[i].subject], toKeep[i]);
     if (!prevHash) return;
   }
 
