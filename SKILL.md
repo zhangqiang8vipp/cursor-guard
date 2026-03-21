@@ -509,4 +509,5 @@ Skip the block for unrelated turns.
 - Auto-backup script: [references/auto-backup.ps1](references/auto-backup.ps1)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)
-- Config field reference (EN/中文): [references/config-reference.md](references/config-reference.md)
+- Config field reference (EN): [references/config-reference.md](references/config-reference.md)
+- 配置参数说明（中文）: [references/config-reference.zh-CN.md](references/config-reference.zh-CN.md)
