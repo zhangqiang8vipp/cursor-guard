@@ -1,0 +1,357 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const {
+  git, isGitRepo, gitDir: getGitDir, walkDir, diskFreeGB,
+} = require('../utils');
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+function parseShadowTimestamp(name) {
+  const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return null;
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+}
+
+function parseBeforeExpression(before) {
+  if (!before) return null;
+  const iso = Date.parse(before);
+  if (!isNaN(iso)) return new Date(iso);
+  const agoMatch = before.match(/^(\d+)\s*(second|minute|hour|day|week|month)s?\s*ago$/i);
+  if (agoMatch) {
+    const n = parseInt(agoMatch[1], 10);
+    const unit = agoMatch[2].toLowerCase();
+    const ms = { second: 1000, minute: 60000, hour: 3600000, day: 86400000, week: 604800000, month: 2592000000 }[unit] || 0;
+    return new Date(Date.now() - n * ms);
+  }
+  return null;
+}
+
+function entryToMs(entry) {
+  if (!entry.timestamp) return 0;
+  const iso = Date.parse(entry.timestamp);
+  if (!isNaN(iso)) return iso;
+  const tsName = typeof entry.timestamp === 'string' && entry.timestamp.startsWith('pre-restore-')
+    ? entry.timestamp.slice('pre-restore-'.length)
+    : entry.timestamp;
+  const d = parseShadowTimestamp(tsName);
+  return d ? d.getTime() : 0;
+}
+
+// ── List backups ────────────────────────────────────────────────
+
+/**
+ * List available backup/restore points from all sources.
+ * Returns a globally time-sorted list (newest first), truncated to `limit`.
+ *
+ * @param {string} projectDir
+ * @param {object} [opts]
+ * @param {string} [opts.file] - Filter to commits touching this relative path
+ * @param {string} [opts.before] - Time boundary (e.g. '10 minutes ago', ISO string)
+ * @param {number} [opts.limit=20] - Max total results
+ * @returns {{ sources: Array<{type: string, ref?: string, commitHash?: string, shortHash?: string, timestamp?: string, message?: string, path?: string}> }}
+ */
+function listBackups(projectDir, opts = {}) {
+  const limit = opts.limit || 20;
+  const sources = [];
+
+  if (opts.file) {
+    const normalized = path.normalize(opts.file).replace(/\\/g, '/');
+    if (path.isAbsolute(normalized) || normalized.startsWith('..')) {
+      return { sources: [], error: 'file path must be relative and within project directory' };
+    }
+  }
+
+  const repo = isGitRepo(projectDir);
+  const beforeDate = parseBeforeExpression(opts.before);
+
+  // Git sources
+  if (repo) {
+    // Auto-backup commits (git --before handles native filtering)
+    const autoRef = 'refs/guard/auto-backup';
+    const autoExists = git(['rev-parse', '--verify', autoRef], { cwd: projectDir, allowFail: true });
+    if (autoExists) {
+      const logArgs = ['log', autoRef, `--format=%H %aI %s`, `-${limit}`];
+      if (opts.before) logArgs.push(`--before=${opts.before}`);
+      if (opts.file) logArgs.push('--', opts.file);
+      const out = git(logArgs, { cwd: projectDir, allowFail: true });
+      if (out) {
+        for (const line of out.split('\n').filter(Boolean)) {
+          const firstSpace = line.indexOf(' ');
+          const secondSpace = line.indexOf(' ', firstSpace + 1);
+          const hash = line.substring(0, firstSpace);
+          const timestamp = line.substring(firstSpace + 1, secondSpace);
+          const message = line.substring(secondSpace + 1);
+          sources.push({
+            type: 'git-auto-backup',
+            ref: autoRef,
+            commitHash: hash,
+            shortHash: hash.substring(0, 7),
+            timestamp,
+            message,
+          });
+        }
+      }
+    }
+
+    // Pre-restore snapshots
+    const preRestoreRefs = git(
+      ['for-each-ref', 'refs/guard/pre-restore/', '--format=%(refname) %(objectname) %(*objectname) %(creatordate:iso-strict)', '--sort=-creatordate'],
+      { cwd: projectDir, allowFail: true }
+    );
+    if (preRestoreRefs) {
+      for (const line of preRestoreRefs.split('\n').filter(Boolean)) {
+        const parts = line.split(' ');
+        const ref = parts[0];
+        const hash = parts[1];
+        const timestamp = parts[3] || parts[2];
+        if (beforeDate && timestamp) {
+          const ms = Date.parse(timestamp);
+          if (!isNaN(ms) && ms > beforeDate.getTime()) continue;
+        }
+        sources.push({
+          type: 'git-pre-restore',
+          ref,
+          commitHash: hash,
+          shortHash: hash.substring(0, 7),
+          timestamp,
+        });
+      }
+    }
+
+    // Agent snapshot ref
+    const snapshotHash = git(['rev-parse', '--verify', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
+    if (snapshotHash) {
+      const ts = git(['log', '-1', '--format=%aI', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
+      const include = !beforeDate || (ts && Date.parse(ts) <= beforeDate.getTime());
+      if (include) {
+        sources.push({
+          type: 'git-snapshot',
+          ref: 'refs/guard/snapshot',
+          commitHash: snapshotHash,
+          shortHash: snapshotHash.substring(0, 7),
+          timestamp: ts || null,
+        });
+      }
+    }
+  }
+
+  // Shadow copy directories
+  const backupDir = path.join(projectDir, '.cursor-guard-backup');
+  if (fs.existsSync(backupDir)) {
+    try {
+      const dirs = fs.readdirSync(backupDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name)
+        .sort()
+        .reverse();
+
+      for (const name of dirs) {
+        const isPreRestore = name.startsWith('pre-restore-');
+        const isTimestamp = /^\d{8}_\d{6}$/.test(name);
+        if (!isTimestamp && !isPreRestore) continue;
+
+        if (beforeDate) {
+          const tsName = isPreRestore ? name.slice('pre-restore-'.length) : name;
+          const snapDate = parseShadowTimestamp(tsName);
+          if (snapDate && snapDate.getTime() > beforeDate.getTime()) continue;
+        }
+
+        const dirPath = path.join(backupDir, name);
+
+        if (opts.file && !fs.existsSync(path.join(dirPath, opts.file))) continue;
+
+        sources.push({
+          type: isPreRestore ? 'shadow-pre-restore' : 'shadow',
+          timestamp: name,
+          path: dirPath,
+        });
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Unified time sort (newest first) across all sources, then truncate
+  sources.sort((a, b) => entryToMs(b) - entryToMs(a));
+
+  return { sources: sources.slice(0, limit) };
+}
+
+// ── Shadow retention ────────────────────────────────────────────
+
+/**
+ * Clean old shadow copy snapshots based on retention config.
+ *
+ * @param {string} backupDir - Path to .cursor-guard-backup/
+ * @param {object} cfg - Loaded config
+ * @returns {{ removed: number, mode: string, diskFreeGB?: number, diskWarning?: string }}
+ */
+function cleanShadowRetention(backupDir, cfg) {
+  const { mode, days, max_count, max_size_mb } = cfg.retention;
+  let dirs;
+  try {
+    dirs = fs.readdirSync(backupDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && /^\d{8}_\d{6}$/.test(d.name))
+      .map(d => d.name)
+      .sort()
+      .reverse();
+  } catch { return { removed: 0, mode }; }
+  if (!dirs || dirs.length === 0) return { removed: 0, mode };
+
+  let removed = 0;
+
+  if (mode === 'days') {
+    const cutoff = Date.now() - days * 86400000;
+    for (const name of dirs) {
+      const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+      if (!m) continue;
+      const dt = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+      if (dt.getTime() < cutoff) {
+        fs.rmSync(path.join(backupDir, name), { recursive: true, force: true });
+        removed++;
+      }
+    }
+  } else if (mode === 'count') {
+    if (dirs.length > max_count) {
+      for (const name of dirs.slice(max_count)) {
+        fs.rmSync(path.join(backupDir, name), { recursive: true, force: true });
+        removed++;
+      }
+    }
+  } else if (mode === 'size') {
+    let totalBytes = 0;
+    try {
+      const allFiles = walkDir(backupDir, backupDir);
+      for (const f of allFiles) {
+        try { totalBytes += fs.statSync(f.full).size; } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+    const oldestFirst = [...dirs].reverse();
+    for (const name of oldestFirst) {
+      if (totalBytes / (1024 * 1024) <= max_size_mb) break;
+      const dirPath = path.join(backupDir, name);
+      let dirSize = 0;
+      try {
+        const files = walkDir(dirPath, dirPath);
+        for (const f of files) {
+          try { dirSize += fs.statSync(f.full).size; } catch { /* skip */ }
+        }
+      } catch { /* ignore */ }
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      totalBytes -= dirSize;
+      removed++;
+    }
+  }
+
+  const result = { removed, mode };
+
+  const freeGB = diskFreeGB(backupDir);
+  if (freeGB !== null) {
+    result.diskFreeGB = parseFloat(freeGB.toFixed(1));
+    if (freeGB < 1) result.diskWarning = 'critically low';
+    else if (freeGB < 5) result.diskWarning = 'low';
+  }
+
+  return result;
+}
+
+// ── Git retention ───────────────────────────────────────────────
+
+/**
+ * Clean old git auto-backup commits by rebuilding the branch as an orphan chain.
+ *
+ * @param {string} branchRef
+ * @param {string} gitDirPath
+ * @param {object} cfg - Loaded config
+ * @param {string} cwd - Project directory
+ * @returns {{ kept: number, pruned: number, mode: string, rebuilt: boolean, skipped?: boolean, reason?: string }}
+ */
+function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
+  const { mode, days, max_count } = cfg.git_retention;
+  if (!cfg.git_retention.enabled) {
+    return { kept: 0, pruned: 0, mode, rebuilt: false, skipped: true, reason: 'retention disabled' };
+  }
+
+  const out = git(['log', branchRef, '--format=%H %aI %cI %s'], { cwd, allowFail: true });
+  if (!out) {
+    return { kept: 0, pruned: 0, mode, rebuilt: false, skipped: true, reason: 'no commits on ref' };
+  }
+
+  const lines = out.split('\n').filter(Boolean);
+  const guardCommits = [];
+  for (const line of lines) {
+    const firstSpace = line.indexOf(' ');
+    const secondSpace = line.indexOf(' ', firstSpace + 1);
+    const thirdSpace = line.indexOf(' ', secondSpace + 1);
+    const hash = line.substring(0, firstSpace);
+    const authorDate = line.substring(firstSpace + 1, secondSpace);
+    const committerDate = line.substring(secondSpace + 1, thirdSpace);
+    const subject = line.substring(thirdSpace + 1);
+    if (subject.startsWith('guard: auto-backup') || subject.startsWith('guard: snapshot')) {
+      guardCommits.push({ hash, authorDate, committerDate, subject });
+    }
+    // Non-guard commits are silently skipped; continue scanning older history
+  }
+
+  const total = guardCommits.length;
+  if (total === 0) {
+    return { kept: 0, pruned: 0, mode, rebuilt: false, skipped: true, reason: 'no guard commits found' };
+  }
+
+  let keepCount = total;
+  if (mode === 'count') {
+    keepCount = Math.min(total, max_count);
+  } else if (mode === 'days') {
+    const cutoff = Date.now() - days * 86400000;
+    keepCount = 0;
+    for (const c of guardCommits) {
+      if (new Date(c.authorDate).getTime() >= cutoff) keepCount++;
+      else break;
+    }
+    keepCount = Math.max(keepCount, 10);
+  }
+
+  if (keepCount >= total) {
+    return { kept: total, pruned: 0, mode, rebuilt: false };
+  }
+
+  const toKeep = guardCommits.slice(0, keepCount).reverse();
+
+  function commitTreeWithDate(args, commit) {
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_DATE: commit.authorDate,
+      GIT_COMMITTER_DATE: commit.committerDate,
+    };
+    try {
+      return execFileSync('git', args, { cwd, env, stdio: 'pipe', encoding: 'utf-8' }).trim() || null;
+    } catch { return null; }
+  }
+
+  const rootTree = git(['rev-parse', `${toKeep[0].hash}^{tree}`], { cwd, allowFail: true });
+  if (!rootTree) {
+    return { kept: total, pruned: 0, mode, rebuilt: false, reason: 'could not resolve root tree' };
+  }
+  let prevHash = commitTreeWithDate(['commit-tree', rootTree, '-m', toKeep[0].subject], toKeep[0]);
+  if (!prevHash) {
+    return { kept: total, pruned: 0, mode, rebuilt: false, reason: 'commit-tree failed for root' };
+  }
+
+  for (let i = 1; i < toKeep.length; i++) {
+    const tree = git(['rev-parse', `${toKeep[i].hash}^{tree}`], { cwd, allowFail: true });
+    if (!tree) {
+      return { kept: total, pruned: 0, mode, rebuilt: false, reason: `could not resolve tree for commit ${i}` };
+    }
+    prevHash = commitTreeWithDate(['commit-tree', tree, '-p', prevHash, '-m', toKeep[i].subject], toKeep[i]);
+    if (!prevHash) {
+      return { kept: total, pruned: 0, mode, rebuilt: false, reason: `commit-tree failed at index ${i}` };
+    }
+  }
+
+  git(['update-ref', branchRef, prevHash], { cwd, allowFail: true });
+
+  return { kept: keepCount, pruned: total - keepCount, mode, rebuilt: true };
+}
+
+module.exports = { listBackups, cleanShadowRetention, cleanGitRetention };

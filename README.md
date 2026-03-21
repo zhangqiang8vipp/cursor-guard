@@ -20,6 +20,8 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Configurable scope** — Protect only what matters via `.cursor-guard.json`
 - **Secrets filtering** — Sensitive files (`.env`, keys, certificates) are auto-excluded from backups
 - **Auto-backup script** — A cross-platform watcher (Node.js) that periodically snapshots to a dedicated Git branch without disturbing your working tree
+- **MCP tool calls (optional)** — 7 structured tools (diagnostics, snapshot, restore, status, etc.) with JSON responses and lower token cost
+- **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 
 ---
 
@@ -84,19 +86,30 @@ After installation, your directory structure should look like this:
 
 ```
 .cursor/skills/cursor-guard/
-├── SKILL.md                            # AI agent instructions
+├── SKILL.md                            # AI agent instructions (with MCP dual-path logic)
+├── ROADMAP.md                          # Version evolution roadmap
 ├── README.md
 ├── README.zh-CN.md
 ├── LICENSE
 ├── package.json
 └── references/
     ├── lib/
-    │   ├── auto-backup.js              # Backup core (Node.js)
-    │   ├── guard-doctor.js             # Health check core
-    │   └── utils.js                    # Shared utilities
+    │   ├── auto-backup.js              # Backup watcher (calls Core)
+    │   ├── guard-doctor.js             # Health check CLI (calls Core)
+    │   ├── utils.js                    # Shared utilities
+    │   └── core/                       # V3 Core layer (pure logic)
+    │       ├── doctor.js               # Diagnostics (incl. MCP self-check)
+    │       ├── doctor-fix.js           # Auto-fix common issues
+    │       ├── snapshot.js             # Git snapshots + shadow copies
+    │       ├── backups.js              # Backup listing + retention
+    │       ├── restore.js              # Single file / project restore
+    │       └── status.js               # Backup system status
+    ├── mcp/
+    │   └── server.js                   # MCP Server (7 tools)
     ├── bin/
-    │   ├── cursor-guard-backup.js      # CLI entry: npx cursor-guard-backup
-    │   └── cursor-guard-doctor.js      # CLI entry: npx cursor-guard-doctor
+    │   ├── cursor-guard-backup.js      # CLI: npx cursor-guard-backup
+    │   ├── cursor-guard-doctor.js      # CLI: npx cursor-guard-doctor
+    │   └── cursor-guard-mcp (server.js)# CLI: npx cursor-guard-mcp
     ├── auto-backup.ps1 / .sh           # Thin wrappers
     ├── guard-doctor.ps1 / .sh
     ├── recovery.md                     # Recovery commands
@@ -128,7 +141,22 @@ The skill activates automatically when the AI agent detects risky operations or 
 cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guard.json
 ```
 
-5. **(Optional) Run auto-backup** in a separate terminal:
+5. **(Optional) Enable MCP tool calls** — add to `.cursor/mcp.json`:
+
+```jsonc
+{
+  "mcpServers": {
+    "cursor-guard": {
+      "command": "node",
+      "args": ["<skill-path>/references/mcp/server.js"]
+    }
+  }
+}
+```
+
+This gives the AI agent 7 structured tools (diagnostics, snapshot, restore, etc.) with JSON responses — faster, more reliable, and lower token cost. Everything works without MCP too.
+
+6. **(Optional) Run auto-backup** in a separate terminal:
 
 ```bash
 npx cursor-guard-backup --path /my/project
@@ -265,6 +293,9 @@ The skill activates on these signals:
 - Time-based recovery: "restore to N minutes ago", "go back to yesterday"
 - Version-based recovery: "previous version", "go back N versions"
 - History issues: checkpoints missing, Timeline not working, save failures
+- Health check: "guard doctor", "check guard setup", "is MCP working"
+- Auto-fix: "guard fix", "fix config"
+- Backup status: "guard status", "is the watcher running", "last backup time"
 
 ---
 
@@ -272,9 +303,12 @@ The skill activates on these signals:
 
 | File | Purpose |
 |------|---------|
-| `SKILL.md` | Main skill instructions for the AI agent |
-| `references/lib/auto-backup.js` | Auto-backup core logic (Node.js) |
-| `references/lib/guard-doctor.js` | Health check core logic (Node.js) |
+| `SKILL.md` | Main skill instructions for the AI agent (with MCP dual-path) |
+| `ROADMAP.md` | Version evolution roadmap (V2-V7) |
+| `references/lib/core/` | Core layer: 6 pure-logic modules (doctor / doctor-fix / snapshot / backups / restore / status) |
+| `references/mcp/server.js` | MCP Server: 7 structured tools (optional) |
+| `references/lib/auto-backup.js` | Auto-backup watcher (calls Core) |
+| `references/lib/guard-doctor.js` | Health check CLI shell (calls Core) |
 | `references/lib/utils.js` | Shared utilities (config, glob, git, manifest) |
 | `references/bin/cursor-guard-backup.js` | CLI entry: `npx cursor-guard-backup` |
 | `references/bin/cursor-guard-doctor.js` | CLI entry: `npx cursor-guard-doctor` |

@@ -20,12 +20,6 @@
   ],
   "backup_strategy": "git",
   "auto_backup_interval_seconds": 60,
-  "secrets_patterns": [
-    ".env",
-    ".env.*",
-    "*.key",
-    "*.pem"
-  ],
   "secrets_patterns_extra": [],
   "pre_restore_backup": "always",
   "retention": {

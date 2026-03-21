@@ -133,7 +133,39 @@ npx cursor-guard-backup --path .
 - 要么先 `cd` 到真正的项目根目录，再用 `--path .`
 - 要么不切目录，直接把目标项目路径写完整
 
-### 第四步：在 Cursor 里正常使用 Agent
+### 第四步（可选）：启用 MCP 工具调用
+
+如果你的 Cursor 版本支持 MCP，可以启用它来让 Agent 调用更快、更省 token。
+
+在项目根目录（或全局 Cursor 设置）创建 `.cursor/mcp.json`：
+
+```jsonc
+{
+  "mcpServers": {
+    "cursor-guard": {
+      "command": "node",
+      "args": ["<skill路径>/references/mcp/server.js"]
+      // 例: "args": ["C:/Users/you/.cursor/skills/cursor-guard/references/mcp/server.js"]
+    }
+  }
+}
+```
+
+启用后 Agent 可以直接调用 7 个工具：
+
+| 工具 | 作用 |
+|------|------|
+| `doctor` | 诊断环境、配置、Git、备份状态 |
+| `doctor_fix` | 自动修复常见问题（创建配置、初始化 Git 等） |
+| `backup_status` | 查看 watcher 状态、最近备份、磁盘空间 |
+| `snapshot_now` | 立即创建快照 |
+| `list_backups` | 列出所有恢复点 |
+| `restore_file` | 恢复单个文件 |
+| `restore_project` | 预览/执行全项目恢复 |
+
+**不启用 MCP 也完全不影响使用**——Agent 会自动回退到 shell 命令路径。
+
+### 第五步：在 Cursor 里正常使用 Agent
 
 后续你像平时一样让 Agent 改代码即可。  
 `cursor-guard` 会在需要时提供保护、备份和恢复路径。
@@ -287,6 +319,19 @@ git log guard/auto-backup --oneline -20
 # 从自动备份恢复单个文件
 git restore --source=guard/auto-backup -- src/app.ts
 ```
+
+### Agent 对话中的触发词
+
+你可以直接用自然语言和 Agent 说：
+
+| 你说 | Agent 做什么 |
+|------|------------|
+| "guard doctor" / "自检" | 运行健康检查 |
+| "guard fix" / "修复配置" | 自动修复常见问题 |
+| "备份状态" / "watcher 在跑吗" | 查看备份系统状态 |
+| "恢复到5分钟前" | 从历史中找到最接近的版本并恢复 |
+| "帮我恢复 src/app.ts" | 列出该文件的恢复点 |
+| "MCP 能用吗" | 检查 MCP 是否配置正确 |
 
 ---
 

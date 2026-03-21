@@ -20,7 +20,9 @@ Use this skill when any of the following appear:
 - **Parallel context**: Multiple repos or branches; unclear which folder is the workspace root.
 - **Recovery asks**: e.g. "改不回来", "丢版本", "回滚", "reflog", "误删", or English equivalents.
 - **Time/version recovery**: e.g. "恢复到5分钟前", "恢复到前3个版本", "回到上一个版本", "restore to 10 minutes ago", "go back 2 versions", "恢复到下午3点的状态".
-- **Health check**: e.g. "guard doctor", "检查备份配置", "自检", "诊断guard", "check guard setup". Run `guard-doctor.ps1` and report results.
+- **Health check**: e.g. "guard doctor", "检查备份配置", "自检", "诊断guard", "check guard setup", "MCP 能用吗". If MCP `doctor` tool is available, call `doctor { "path": "<project>" }` and format the result; otherwise run `guard-doctor.ps1` and report results. Doctor output includes an "MCP server" check (SDK installed + server.js present). If doctor reports FAIL items, suggest running `doctor_fix` (MCP) or guide the user through manual fixes.
+- **Auto-fix**: e.g. "guard fix", "修复配置", "自动修复". If MCP `doctor_fix` tool is available, call `doctor_fix { "path": "<project>", "dry_run": true }` first to preview, then `doctor_fix { "path": "<project>" }` to apply. Without MCP, guide the user through manual steps based on doctor output.
+- **Backup status**: e.g. "备份状态", "guard status", "watcher 在跑吗", "最近一次备份". If MCP `backup_status` tool is available, call `backup_status { "path": "<project>" }` and format the structured result for the user (watcher running/stale, last backup time, strategy, ref counts, disk). Without MCP, check lock file existence and `git log` manually.
 
 If none of the above, do not expand scope; answer normally.
 
@@ -75,6 +77,33 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
 
 **If no config file exists**, the agent operates in "protect everything" mode (backward compatible). Mention to the user that they can create `.cursor-guard.json` to narrow scope — see [references/cursor-guard.example.json](references/cursor-guard.example.json).
 
+### 0a. Execution Path: MCP vs Shell
+
+cursor-guard provides an **MCP server** (`cursor-guard-mcp`) as an optional enhancement. When available, prefer MCP tool calls over shell commands — they are faster, return structured JSON, and consume fewer tokens.
+
+**Detection**: at the start of a session, check if the following MCP tools are available in your tool list: `doctor`, `list_backups`, `snapshot_now`, `restore_file`, `restore_project`. If **any** of them exists, use MCP for that operation; otherwise, fall back to shell commands as described in the sections below.
+
+**Routing table** (MCP tool → replaces which shell workflow):
+
+| Operation | MCP tool | Shell fallback section |
+|-----------|----------|----------------------|
+| Health check / diagnostics | `doctor` | guard-doctor.ps1 / .sh |
+| Auto-fix common issues | `doctor_fix` | manual steps per doctor output |
+| Backup system status | `backup_status` | manual: check lock file + git log + shadow dir |
+| Pre-write snapshot | `snapshot_now` | §2a plumbing commands |
+| List restore points | `list_backups` | §5a Step 2 git log |
+| Restore single file | `restore_file` | §5a Step 5 git restore |
+| Preview project restore | `restore_project` (preview=true) | §5a Step 5 git diff |
+| Execute project restore | `restore_project` (preview=false) | §5a Step 5 git restore -- . |
+
+**Rules**:
+- MCP results are JSON — parse `status`, `error`, and data fields; do not re-run shell to verify.
+- If an MCP call returns an `error` field, report it to the user and fall back to the shell path for that operation.
+- All Hard Rules (§Hard Rules) still apply regardless of execution path. MCP tools enforce them internally (e.g. `restore_file` creates a pre-restore snapshot by default).
+- If MCP is not configured, the skill works exactly as before — **no degradation**.
+- `doctor_fix` is safe to call — each fix is idempotent. Use `dry_run: true` to preview changes before applying. Typical fixes: create missing config, init git repo, gitignore backup dir, remove stale lock file.
+- `restore_project` with `preview: false` executes a full restore including pre-restore snapshot. Always call with `preview: true` first, show the result to the user, and only execute after explicit confirmation.
+
 When the target file of an edit **falls outside the protected scope**, the agent:
 - Still applies "Read before Write" (Hard Rule §2).
 - Skips the mandatory git snapshot / shadow copy step.
@@ -101,6 +130,8 @@ When the target file of an edit **falls outside the protected scope**, the agent
 ### 2a. If workspace IS a Git repo
 
 **Before any High-risk operation on a protected file:**
+
+> **MCP shortcut**: if `snapshot_now` tool is available, call it with `{ "path": "<project>", "strategy": "git" }` instead of the shell commands below. The tool handles temp index, secrets exclusion, and ref creation internally, and returns `{ "git": { "status": "created", "commitHash": "...", "shortHash": "..." } }`. Report the `shortHash` to the user and proceed.
 
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 
@@ -259,6 +290,8 @@ Extract two things from the user's request:
 If unclear, ask: "你想恢复哪个文件？还是整个项目？" / "Which file(s) do you want to restore?"
 
 ### Step 2: Find Matching Commits
+
+> **MCP shortcut**: if `list_backups` tool is available, call it with `{ "path": "<project>", "file": "<file>", "before": "<time expr>", "limit": 10 }`. The tool searches all sources (git refs + shadow copies) in one call and returns a unified list sorted by time. Skip to Step 3 with the results.
 
 **For time-based requests**, the goal is to find the **latest commit AT or BEFORE the target time** — not commits after it.
 
@@ -436,6 +469,12 @@ Current version preserved before restore:
 
 ### Step 5: Execute Recovery
 
+> **MCP shortcut**: if `restore_file` / `restore_project` tools are available:
+> - Single file: `restore_file { "path": "<project>", "file": "<file>", "source": "<hash-or-timestamp>", "preserve_current": true }` — handles pre-restore snapshot + restore + verification in one call.
+> - Project preview: `restore_project { "path": "<project>", "source": "<hash>", "preview": true }` — returns the list of files that would change.
+> - Project execute: after user confirms, `restore_project { "path": "<project>", "source": "<hash>", "preview": false, "preserve_current": true }` — creates pre-restore snapshot, then restores all files in one call. Returns `{ filesRestored, preRestoreRef, files }`.
+> - MCP `restore_file` and `restore_project` respect `pre_restore_backup` config (§Step 4) automatically. The response includes `preRestoreRef` if a snapshot was created.
+
 **Single file recovery:**
 
 ```bash
@@ -531,11 +570,14 @@ Skip the block for unrelated turns.
 - Recovery commands: [references/recovery.md](references/recovery.md)
 - Auto-backup (Node.js core): [references/lib/auto-backup.js](references/lib/auto-backup.js)
 - Guard doctor (Node.js core): [references/lib/guard-doctor.js](references/lib/guard-doctor.js)
+- Core modules: [references/lib/core/](references/lib/core/) (doctor, doctor-fix, snapshot, backups, restore, status)
+- MCP server: [references/mcp/server.js](references/mcp/server.js) (7 tools: doctor, doctor_fix, backup_status, list_backups, snapshot_now, restore_file, restore_project)
 - Shared utilities: [references/lib/utils.js](references/lib/utils.js)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)
 - Config field reference (EN): [references/config-reference.md](references/config-reference.md)
 - 配置参数说明（中文）: [references/config-reference.zh-CN.md](references/config-reference.zh-CN.md)
+- Version roadmap: [ROADMAP.md](ROADMAP.md)
 
 ### Running scripts
 
@@ -555,3 +597,21 @@ npx cursor-guard-doctor --path /my/project
 ./references/auto-backup.sh /my/project
 ./references/guard-doctor.sh /my/project
 ```
+
+### MCP Server (optional enhancement)
+
+If your Cursor config supports MCP, add `cursor-guard` as an MCP server for lower token cost and structured tool calls:
+
+```jsonc
+// .cursor/mcp.json (or global Cursor MCP settings)
+{
+  "mcpServers": {
+    "cursor-guard": {
+      "command": "node",
+      "args": ["<path-to-skill>/references/mcp/server.js"]
+    }
+  }
+}
+```
+
+Once configured, the 7 tools (`doctor`, `doctor_fix`, `backup_status`, `list_backups`, `snapshot_now`, `restore_file`, `restore_project`) are available as MCP tool calls. See §0a for routing logic.

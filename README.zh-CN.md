@@ -20,6 +20,8 @@
 - **可配置保护范围** — 通过 `.cursor-guard.json` 配置文件只保护你关心的文件
 - **敏感文件过滤** — `.env`、密钥、证书等敏感文件自动排除备份
 - **自动备份脚本** — 跨平台 (Node.js) 定期快照到独立 Git 分支，不干扰工作区
+- **MCP 工具调用（可选）** — 7 个标准化工具（诊断、快照、恢复、状态等），结构化 JSON 返回，低 token 消耗
+- **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 
 ---
 
@@ -84,19 +86,30 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
 
 ```
 .cursor/skills/cursor-guard/
-├── SKILL.md                            # AI 代理指令
+├── SKILL.md                            # AI 代理指令（含 MCP 双路径逻辑）
+├── ROADMAP.md                          # 版本演进规划书
 ├── README.md
 ├── README.zh-CN.md
 ├── LICENSE
 ├── package.json
 └── references/
     ├── lib/
-    │   ├── auto-backup.js              # 备份核心 (Node.js)
-    │   ├── guard-doctor.js             # 健康检查核心
-    │   └── utils.js                    # 共享工具库
+    │   ├── auto-backup.js              # 备份 watcher（调用 Core）
+    │   ├── guard-doctor.js             # 健康检查 CLI（调用 Core）
+    │   ├── utils.js                    # 共享工具库
+    │   └── core/                       # V3 Core 层（纯逻辑）
+    │       ├── doctor.js               # 诊断检查（含 MCP 自检）
+    │       ├── doctor-fix.js           # 自动修复常见问题
+    │       ├── snapshot.js             # Git 快照 + 影子拷贝
+    │       ├── backups.js              # 备份列表 + 留存清理
+    │       ├── restore.js              # 单文件/全项目恢复
+    │       └── status.js               # 备份系统状态
+    ├── mcp/
+    │   └── server.js                   # MCP Server（7 个工具）
     ├── bin/
-    │   ├── cursor-guard-backup.js      # CLI 入口：npx cursor-guard-backup
-    │   └── cursor-guard-doctor.js      # CLI 入口：npx cursor-guard-doctor
+    │   ├── cursor-guard-backup.js      # CLI：npx cursor-guard-backup
+    │   ├── cursor-guard-doctor.js      # CLI：npx cursor-guard-doctor
+    │   └── cursor-guard-mcp (server.js)# CLI：npx cursor-guard-mcp
     ├── auto-backup.ps1 / .sh           # 薄封装
     ├── guard-doctor.ps1 / .sh
     ├── recovery.md                     # 恢复命令模板
@@ -128,7 +141,22 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
 cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guard.json
 ```
 
-5. **（可选）运行自动备份** — 在独立终端运行：
+5. **（可选）启用 MCP 工具调用** — 在 `.cursor/mcp.json` 中添加：
+
+```jsonc
+{
+  "mcpServers": {
+    "cursor-guard": {
+      "command": "node",
+      "args": ["<skill-path>/references/mcp/server.js"]
+    }
+  }
+}
+```
+
+启用后 AI 代理可直接调用 7 个结构化工具（诊断、快照、恢复等），无需拼接 shell 命令，更快更省 token。不启用也完全不影响使用。
+
+6. **（可选）运行自动备份** — 在独立终端运行：
 
 ```bash
 npx cursor-guard-backup --path /my/project
@@ -265,6 +293,9 @@ npx cursor-guard-doctor --path /my/project
 - 按时间恢复："恢复到N分钟前"、"恢复到下午3点"、"回到昨天"
 - 按版本恢复："恢复到上一个版本"、"前N个版本"、"撤销最近N次修改"
 - 历史问题：Checkpoint 丢失、Timeline 不工作、保存失败
+- 健康检查："guard doctor"、"自检"、"诊断guard"、"MCP 能用吗"
+- 自动修复："guard fix"、"修复配置"、"自动修复"
+- 备份状态："备份状态"、"guard status"、"watcher 在跑吗"
 
 ---
 
@@ -272,9 +303,12 @@ npx cursor-guard-doctor --path /my/project
 
 | 文件 | 用途 |
 |------|------|
-| `SKILL.md` | AI 代理的主要技能指令 |
-| `references/lib/auto-backup.js` | 自动备份核心逻辑 (Node.js) |
-| `references/lib/guard-doctor.js` | 健康检查核心逻辑 (Node.js) |
+| `SKILL.md` | AI 代理的主要技能指令（含 MCP 双路径逻辑） |
+| `ROADMAP.md` | 版本演进规划书（V2-V7） |
+| `references/lib/core/` | Core 层：6 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status） |
+| `references/mcp/server.js` | MCP Server：7 个标准化工具（可选） |
+| `references/lib/auto-backup.js` | 自动备份 watcher（调用 Core） |
+| `references/lib/guard-doctor.js` | 健康检查 CLI 壳（调用 Core） |
 | `references/lib/utils.js` | 共享工具库（配置、glob、git、manifest） |
 | `references/bin/cursor-guard-backup.js` | CLI 入口：`npx cursor-guard-backup` |
 | `references/bin/cursor-guard-doctor.js` | CLI 入口：`npx cursor-guard-doctor` |
