@@ -170,14 +170,40 @@ The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` 
 
 ## Recovery / 恢复
 
-If something goes wrong, recovery follows this priority:
+If something goes wrong, just tell the AI agent in natural language:
 
-出问题时，按以下优先级恢复：
+出问题时，直接用自然语言告诉 AI 代理即可：
+
+### By time / 按时间恢复
+
+> "帮我恢复到5分钟前"
+> "restore to 10 minutes ago"
+> "恢复到今天下午3点的状态"
+> "go back to yesterday's version"
+
+### By version / 按版本恢复
+
+> "恢复到上一个版本"
+> "回到前3个版本"
+> "undo the last 2 changes"
+> "go back 3 versions"
+
+### By file / 指定文件恢复
+
+> "把 src/app.py 恢复到10分钟前"
+> "restore src/app.py to the previous version"
+
+The agent will automatically search Git history and auto-backup snapshots, show you matching versions to choose from, and restore after your confirmation.
+
+代理会自动搜索 Git 历史和自动备份快照，列出匹配版本供你选择，确认后执行恢复。
+
+### Recovery priority / 恢复优先级
 
 1. **Git** — `git restore`, `git reset`, `git reflog`
-2. **Shadow copies / 影子拷贝** — `.cursor-guard-backup/<timestamp>/`
-3. **Conversation context / 对话上下文** — Original file content captured by agent Read calls / 代理 Read 调用捕获的原始内容
-4. **Editor history / 编辑器历史** — VS Code/Cursor Timeline (auxiliary / 辅助)
+2. **Auto-backup branch / 自动备份分支** — `cursor-guard/auto-backup`
+3. **Shadow copies / 影子拷贝** — `.cursor-guard-backup/<timestamp>/`
+4. **Conversation context / 对话上下文** — Original file content captured by agent Read calls / 代理 Read 调用捕获的原始内容
+5. **Editor history / 编辑器历史** — VS Code/Cursor Timeline (auxiliary / 辅助)
 
 See [references/recovery.md](references/recovery.md) for detailed commands / 详细命令见恢复文档。
 
@@ -189,6 +215,8 @@ The skill activates on these signals / 技能在以下信号时激活：
 
 - File edits, deletes, renames by the AI agent / AI 代理的文件编辑、删除、重命名
 - Recovery requests / 恢复请求："回滚"、"误删"、"丢版本"、"rollback"、"undo"、"recover"
+- Time-based recovery / 按时间恢复："恢复到N分钟前"、"restore to N minutes ago"、"恢复到下午3点"
+- Version-based recovery / 按版本恢复："恢复到上一个版本"、"前N个版本"、"go back N versions"
 - History issues / 历史问题：checkpoints missing、Timeline not working、save failures
 
 ---

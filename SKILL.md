@@ -19,6 +19,7 @@ Use this skill when any of the following appear:
 - **History confusion**: Checkpoints missing, Timeline/local history not rolling back, "save failed" after external writes.
 - **Parallel context**: Multiple repos or branches; unclear which folder is the workspace root.
 - **Recovery asks**: e.g. "改不回来", "丢版本", "回滚", "reflog", "误删", or English equivalents.
+- **Time/version recovery**: e.g. "恢复到5分钟前", "恢复到前3个版本", "回到上一个版本", "restore to 10 minutes ago", "go back 2 versions", "恢复到下午3点的状态".
 
 If none of the above, do not expand scope; answer normally.
 
@@ -169,6 +170,120 @@ When editing 3+ files in one task:
 3. **Conversation context**: If the agent Read the file before overwriting, the original content is in this chat — offer to re-write it back.
 4. **Editor Local History / Timeline**: auxiliary, per-file; unreliable for tool-only disk writes.
 5. **Cursor Checkpoints**: auxiliary; tied to Agent UI; not a long-term backup.
+
+---
+
+## 5a. Time-Based & Version-Based Recovery
+
+When the user requests recovery using time or version references, follow this workflow:
+
+### Trigger Phrases (Chinese & English)
+
+| Pattern | Type | Example |
+|---------|------|---------|
+| "恢复到 N 分钟/小时前", "N minutes/hours ago" | Time-based | "恢复到5分钟前", "restore to 10 minutes ago" |
+| "恢复到前 N 个版本", "go back N versions" | Version-based | "恢复到前3个版本", "go back 2 versions" |
+| "恢复到上一个版本", "previous version" | Version-based (N=1) | "回到上一个版本", "undo last change" |
+| "恢复到今天下午3点", "restore to 3pm" | Time-based (absolute) | "恢复到下午3点的状态" |
+| "恢复到昨天的版本", "yesterday's version" | Time-based | "恢复到昨天" |
+
+### Step 1: Parse the Request
+
+Extract two things from the user's request:
+- **Target scope**: specific file(s) or entire project?
+- **Reference point**: a time expression or a version count?
+
+If unclear, ask: "你想恢复哪个文件？还是整个项目？" / "Which file(s) do you want to restore?"
+
+### Step 2: Find Matching Commits
+
+**For time-based requests**, search both main branch and auto-backup branch:
+
+```bash
+# Main branch: commits around the target time
+git log --oneline --after="<time-expr>" --before="now" -- <file>
+
+# Auto-backup branch (if exists)
+git log cursor-guard/auto-backup --oneline --after="<time-expr>" -- <file>
+
+# Reflog (captures all HEAD movements including resets)
+git reflog --since="<time-expr>"
+```
+
+Time expression mapping:
+- "5分钟前" / "5 minutes ago" → `--after="5 minutes ago"`
+- "1小时前" / "1 hour ago" → `--after="1 hour ago"`
+- "今天下午3点" → `--after="today 15:00" --before="today 15:05"` (find closest)
+- "昨天" / "yesterday" → `--after="yesterday 00:00" --before="yesterday 23:59"`
+
+**For version-based requests**, use commit offset:
+
+```bash
+# N versions ago on current branch
+git log --oneline -<N+5> -- <file>
+
+# Or use HEAD~N directly
+git show HEAD~<N>:<file>
+
+# Auto-backup branch
+git log cursor-guard/auto-backup --oneline -<N+5> -- <file>
+```
+
+### Step 3: Present Candidates to User
+
+Show a numbered list of matching commits with timestamps:
+
+```
+Found these snapshots / 找到以下快照:
+
+1. [abc1234] 2026-03-21 16:05:32 — guard: snapshot before ai edit
+2. [def5678] 2026-03-21 16:02:15 — guard: auto-backup 2026-03-21 16:02:15
+3. [ghi9012] 2026-03-21 15:58:40 — feat: add login page
+
+Which one to restore? / 恢复到哪个版本？(enter number)
+```
+
+If only ONE candidate is found, confirm with the user before restoring.
+
+If NO candidates are found:
+- Check if auto-backup branch exists: `git rev-parse --verify cursor-guard/auto-backup`
+- Check shadow copies: `Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending`
+- Report what was searched and suggest alternatives.
+
+### Step 4: Execute Recovery
+
+**Single file recovery:**
+
+```bash
+git restore --source=<commit-hash> -- <path/to/file>
+```
+
+**Entire project recovery** (destructive — require explicit confirmation):
+
+```bash
+# Show what will change first
+git diff <commit-hash> -- .
+
+# After user confirms:
+git restore --source=<commit-hash> -- .
+```
+
+**From shadow copy:**
+
+```powershell
+# Find the closest timestamp directory
+Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending
+
+# Restore
+Copy-Item ".cursor-guard-backup/<timestamp>/<file>" "<original-path>"
+```
+
+### Step 5: Verify & Report
+
+After restoring, always:
+1. Show the restored file content (or diff) so the user can verify
+2. Report the recovery in the status block (§6)
+3. Suggest creating a new snapshot of the current (restored) state
 
 ---
 
