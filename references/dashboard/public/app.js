@@ -1,0 +1,841 @@
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════
+   Cursor Guard Dashboard — Frontend
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── I18n Dictionary ──────────────────────────────────────── */
+
+const I18N = {
+  'en-US': {
+    'app.title':        'Cursor Guard Dashboard',
+    'topbar.refresh':   'Refresh',
+    'topbar.lastRefresh':'Last refresh',
+    'state.loading':    'Loading…',
+    'state.retry':      'Retry',
+
+    'overview.title':   'Overview',
+    'backups.title':    'Backups & Recovery',
+    'protection.title': 'Protection Scope',
+    'diagnostics.title':'Diagnostics',
+
+    'health.title':     'Health',
+    'health.healthy':   'Healthy',
+    'health.warning':   'Warning',
+    'health.critical':  'Critical',
+    'health.unknown':   'Unknown',
+
+    'gitBackup.title':  'Latest Git Backup',
+    'gitBackup.none':   'No Git backup yet',
+    'shadowBackup.title':'Latest Shadow Snapshot',
+    'shadowBackup.none':'No Shadow snapshot yet',
+
+    'watcher.title':    'Watcher',
+    'watcher.running':  'Running',
+    'watcher.stopped':  'Stopped',
+    'watcher.stale':    'Stale',
+    'watcher.pid':      'PID',
+    'watcher.since':    'Since',
+
+    'alert.title':      'Alerts',
+    'alert.none':       'No active alerts',
+    'alert.active':     'Active Alert',
+
+    'backups.gitCommits':       'Git Commits',
+    'backups.shadowSnapshots':  'Shadow Snapshots',
+    'backups.preRestore':       'Pre-Restore Snapshots',
+    'backups.diskUsage':        'Disk Usage',
+    'backups.gitDisk':          'Git',
+    'backups.shadowDisk':       'Shadow',
+    'backups.restorePoints':    'Restore Points',
+    'backups.filterAll':        'All',
+    'backups.noBackups':        'No restore points found',
+    'backups.col.time':         'Time',
+    'backups.col.type':         'Type',
+    'backups.col.ref':          'Ref / Hash',
+
+    'type.git-auto-backup':     'Git Auto-Backup',
+    'type.git-pre-restore':     'Git Pre-Restore',
+    'type.git-snapshot':        'Git Snapshot',
+    'type.shadow':              'Shadow Snapshot',
+    'type.shadow-pre-restore':  'Shadow Pre-Restore',
+
+    'protection.protect':   'Protected Patterns',
+    'protection.ignore':    'Ignored Patterns',
+    'protection.fileCount': '{n} files in protection scope',
+    'protection.note':      'These patterns define which files are protected. This is not the full directory listing.',
+    'protection.allFiles':  'All files (no protect patterns configured)',
+    'protection.noIgnore':  'None',
+
+    'diagnostics.pass':     'Pass',
+    'diagnostics.warn':     'Warn',
+    'diagnostics.fail':     'Fail',
+    'diagnostics.hint':     'Click for details →',
+    'diagnostics.PASS':     'PASS',
+    'diagnostics.WARN':     'WARN',
+    'diagnostics.FAIL':     'FAIL',
+
+    'drawer.restorePoint':  'Restore Point Details',
+    'drawer.doctorTitle':   'Diagnostic Details',
+    'drawer.close':         'Close',
+    'drawer.preview':       'Preview JSON',
+    'drawer.copyRef':       'Copy Ref',
+    'drawer.copyJson':      'Copy JSON',
+    'drawer.copied':        'Copied!',
+    'drawer.field.time':    'Time',
+    'drawer.field.type':    'Type',
+    'drawer.field.ref':     'Ref',
+    'drawer.field.hash':    'Commit Hash',
+    'drawer.field.path':    'Path',
+    'drawer.field.message': 'Message',
+
+    'error.fetchFailed':    'Failed to fetch data',
+    'error.sectionFailed':  'This section failed to load',
+    'empty.noData':         'No data available',
+
+    'strategy.git':    'Git',
+    'strategy.shadow': 'Shadow',
+    'strategy.both':   'Both',
+
+    'time.justNow':    'just now',
+    'time.secondsAgo': '{n}s ago',
+    'time.minutesAgo': '{n}m ago',
+    'time.hoursAgo':   '{n}h ago',
+    'time.daysAgo':    '{n}d ago',
+  },
+
+  'zh-CN': {
+    'app.title':        'Cursor Guard 仪表盘',
+    'topbar.refresh':   '刷新',
+    'topbar.lastRefresh':'上次刷新',
+    'state.loading':    '加载中…',
+    'state.retry':      '重试',
+
+    'overview.title':   '总览',
+    'backups.title':    '备份与恢复',
+    'protection.title': '保护范围',
+    'diagnostics.title':'诊断',
+
+    'health.title':     '健康状态',
+    'health.healthy':   '健康',
+    'health.warning':   '警告',
+    'health.critical':  '严重',
+    'health.unknown':   '未知',
+
+    'gitBackup.title':  '最近 Git 备份',
+    'gitBackup.none':   '暂无 Git 备份',
+    'shadowBackup.title':'最近影子快照',
+    'shadowBackup.none':'暂无影子快照',
+
+    'watcher.title':    '守护进程',
+    'watcher.running':  '运行中',
+    'watcher.stopped':  '已停止',
+    'watcher.stale':    '已过期',
+    'watcher.pid':      'PID',
+    'watcher.since':    '启动时间',
+
+    'alert.title':      '告警',
+    'alert.none':       '无活跃告警',
+    'alert.active':     '活跃告警',
+
+    'backups.gitCommits':       'Git 提交数',
+    'backups.shadowSnapshots':  '影子快照',
+    'backups.preRestore':       '恢复前快照',
+    'backups.diskUsage':        '磁盘占用',
+    'backups.gitDisk':          'Git',
+    'backups.shadowDisk':       'Shadow',
+    'backups.restorePoints':    '恢复点',
+    'backups.filterAll':        '全部',
+    'backups.noBackups':        '暂无恢复点',
+    'backups.col.time':         '时间',
+    'backups.col.type':         '类型',
+    'backups.col.ref':          '引用 / Hash',
+
+    'type.git-auto-backup':     'Git 自动备份',
+    'type.git-pre-restore':     'Git 恢复前快照',
+    'type.git-snapshot':        'Git 快照',
+    'type.shadow':              '影子快照',
+    'type.shadow-pre-restore':  '影子恢复前快照',
+
+    'protection.protect':   '保护规则',
+    'protection.ignore':    '忽略规则',
+    'protection.fileCount': '{n} 个文件在保护范围内',
+    'protection.note':      '以下是当前会进入保护范围的文件规则，不等于当前目录全部文件。',
+    'protection.allFiles':  '全部文件（未配置 protect 规则）',
+    'protection.noIgnore':  '无',
+
+    'diagnostics.pass':     '通过',
+    'diagnostics.warn':     '警告',
+    'diagnostics.fail':     '失败',
+    'diagnostics.hint':     '点击查看详情 →',
+    'diagnostics.PASS':     '通过',
+    'diagnostics.WARN':     '警告',
+    'diagnostics.FAIL':     '失败',
+
+    'drawer.restorePoint':  '恢复点详情',
+    'drawer.doctorTitle':   '诊断详情',
+    'drawer.close':         '关闭',
+    'drawer.preview':       '预览 JSON',
+    'drawer.copyRef':       '复制引用',
+    'drawer.copyJson':      '复制 JSON',
+    'drawer.copied':        '已复制！',
+    'drawer.field.time':    '时间',
+    'drawer.field.type':    '类型',
+    'drawer.field.ref':     '引用',
+    'drawer.field.hash':    '提交 Hash',
+    'drawer.field.path':    '路径',
+    'drawer.field.message': '消息',
+
+    'error.fetchFailed':    '数据拉取失败',
+    'error.sectionFailed':  '此区块加载失败',
+    'empty.noData':         '暂无数据',
+
+    'strategy.git':    'Git',
+    'strategy.shadow': '影子',
+    'strategy.both':   '双重',
+
+    'time.justNow':    '刚刚',
+    'time.secondsAgo': '{n} 秒前',
+    'time.minutesAgo': '{n} 分钟前',
+    'time.hoursAgo':   '{n} 小时前',
+    'time.daysAgo':    '{n} 天前',
+  },
+};
+
+/* ── State ────────────────────────────────────────────────── */
+
+const state = {
+  locale: 'en-US',
+  projects: [],
+  currentProjectId: null,
+  pageData: null,
+  filteredBackups: [],
+  backupFilter: 'all',
+  refreshTimer: null,
+  tickTimer: null,
+  lastRefreshAt: null,
+  drawerOpen: null,
+};
+
+const REFRESH_MS = 15000;
+
+/* ── DOM helpers ──────────────────────────────────────────── */
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const show = (el) => el && el.classList.remove('hidden');
+const hide = (el) => el && el.classList.add('hidden');
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ── I18n helpers ─────────────────────────────────────────── */
+
+function t(key, params) {
+  const dict = I18N[state.locale] || I18N['en-US'];
+  let text = dict[key] || I18N['en-US'][key] || key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      text = text.replace(`{${k}}`, v);
+    }
+  }
+  return text;
+}
+
+function detectLocale() {
+  const saved = localStorage.getItem('cg-locale');
+  if (saved && I18N[saved]) return saved;
+  const nav = navigator.language || '';
+  return nav.startsWith('zh') ? 'zh-CN' : 'en-US';
+}
+
+function setLocale(loc) {
+  state.locale = loc;
+  localStorage.setItem('cg-locale', loc);
+  document.documentElement.lang = loc === 'zh-CN' ? 'zh-CN' : 'en';
+  updateStaticI18n();
+  if (state.pageData) renderAll();
+  updateRefreshDisplay();
+}
+
+function updateStaticI18n() {
+  $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+}
+
+/* ── Time helpers ─────────────────────────────────────────── */
+
+function parseShadowTs(ts) {
+  if (!ts) return null;
+  const m = String(ts).match(/^(?:pre-restore-)?(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+}
+
+function toDate(ts) {
+  if (!ts) return null;
+  let d = new Date(ts);
+  if (!isNaN(d.getTime())) return d;
+  d = parseShadowTs(ts);
+  return d && !isNaN(d.getTime()) ? d : null;
+}
+
+function formatTime(ts) {
+  const d = toDate(ts);
+  if (!d) return ts || '-';
+  return new Intl.DateTimeFormat(state.locale, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).format(d);
+}
+
+function relativeTime(ts) {
+  const d = toDate(ts);
+  if (!d) return '';
+  const ms = Date.now() - d.getTime();
+  if (ms < 0) return t('time.justNow');
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return t('time.secondsAgo', { n: sec });
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t('time.minutesAgo', { n: min });
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return t('time.hoursAgo', { n: hr });
+  return t('time.daysAgo', { n: Math.floor(hr / 24) });
+}
+
+/* ── Data fetching ────────────────────────────────────────── */
+
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function loadProjects() {
+  state.projects = await fetchJson('/api/projects');
+  if (state.projects.length > 0 && !state.currentProjectId) {
+    state.currentProjectId = state.projects[0].id;
+  }
+}
+
+async function loadPageData() {
+  if (!state.currentProjectId) return;
+  state.pageData = await fetchJson(`/api/page-data?id=${state.currentProjectId}`);
+  state.lastRefreshAt = Date.now();
+}
+
+/* ── Refresh ──────────────────────────────────────────────── */
+
+function startRefresh() {
+  stopRefresh();
+  state.refreshTimer = setInterval(async () => {
+    try { await loadPageData(); renderAll(); } catch { /* keep existing */ }
+  }, REFRESH_MS);
+  state.tickTimer = setInterval(updateRefreshDisplay, 1000);
+}
+
+function stopRefresh() {
+  if (state.refreshTimer) { clearInterval(state.refreshTimer); state.refreshTimer = null; }
+  if (state.tickTimer) { clearInterval(state.tickTimer); state.tickTimer = null; }
+}
+
+async function manualRefresh() {
+  const icon = $('#refresh-btn .icon-spin');
+  if (icon) icon.classList.add('icon-spin-active');
+  stopRefresh();
+  try { await loadPageData(); renderAll(); }
+  catch (e) { showGlobalError(e.message); }
+  if (icon) icon.classList.remove('icon-spin-active');
+  startRefresh();
+}
+
+function updateRefreshDisplay() {
+  const el = $('#last-refresh');
+  if (!el || !state.lastRefreshAt) return;
+  const sec = Math.floor((Date.now() - state.lastRefreshAt) / 1000);
+  el.textContent = `${t('topbar.lastRefresh')}: ${sec}s`;
+}
+
+/* ── Rendering: Top bar ───────────────────────────────────── */
+
+function renderProjectSelect() {
+  const sel = $('#project-select');
+  sel.innerHTML = state.projects.map(p =>
+    `<option value="${esc(p.id)}" title="${esc(p.pathLabel)}">${esc(p.name)}</option>`
+  ).join('');
+  if (state.currentProjectId) sel.value = state.currentProjectId;
+}
+
+function renderStrategyBadge(strategy) {
+  const el = $('#strategy-badge');
+  el.textContent = t('strategy.' + (strategy || 'git'));
+  el.className = 'badge badge-strategy';
+}
+
+/* ── Rendering: Global states ─────────────────────────────── */
+
+function showLoading() {
+  show($('#loading-state'));
+  hide($('#error-state'));
+  $$('.screen').forEach(s => hide(s));
+}
+
+function showGlobalError(msg) {
+  hide($('#loading-state'));
+  show($('#error-state'));
+  $$('.screen').forEach(s => hide(s));
+  $('#error-message').textContent = msg || t('error.fetchFailed');
+}
+
+function showContent() {
+  hide($('#loading-state'));
+  hide($('#error-state'));
+  $$('.screen').forEach(s => show(s));
+}
+
+/* ── Rendering: Main dispatch ─────────────────────────────── */
+
+function renderAll() {
+  if (!state.pageData) return;
+  const { dashboard, doctor, backups } = state.pageData;
+
+  showContent();
+
+  if (dashboard && !dashboard.error) {
+    renderStrategyBadge(dashboard.strategy);
+    renderOverview(dashboard);
+    renderBackupsSection(dashboard, Array.isArray(backups) ? backups : []);
+    renderProtection(dashboard.protectionScope);
+  } else {
+    renderSectionError('overview-grid', dashboard?.error);
+    renderSectionError('backup-stats', dashboard?.error);
+    renderSectionError('protection-content', dashboard?.error);
+  }
+
+  if (doctor && !doctor.error) {
+    renderDiagnostics(doctor);
+  } else {
+    renderSectionError('diagnostics-summary', doctor?.error);
+  }
+
+  updateStaticI18n();
+  updateRefreshDisplay();
+}
+
+/* ── Rendering: Overview ──────────────────────────────────── */
+
+function renderOverview(d) {
+  renderHealthCard(d.health);
+  renderGitBackupCard(d.lastBackup);
+  renderShadowBackupCard(d.lastBackup);
+  renderWatcherCard(d.watcher);
+  renderAlertCard(d.alerts);
+}
+
+function renderHealthCard(health) {
+  const el = $('#card-health');
+  const st = health?.status || 'unknown';
+  const issues = health?.issues || [];
+  el.className = `card card-health`;
+  el.style.borderLeft = `3px solid var(--${st === 'healthy' ? 'green' : st === 'warning' ? 'yellow' : st === 'critical' ? 'red' : 'gray'})`;
+  el.innerHTML = `
+    <div class="card-status">
+      <span class="status-dot status-${st}"></span>
+      <span class="status-text status-${st}">${t('health.' + st)}</span>
+    </div>
+    ${issues.length > 0 ? `<ul class="issue-list">${issues.map(i => `<li class="text-sm">${esc(i)}</li>`).join('')}</ul>` : ''}
+  `;
+}
+
+function renderGitBackupCard(lastBackup) {
+  const el = $('#card-git-backup');
+  const g = lastBackup?.git;
+  if (!g) {
+    el.innerHTML = `<div class="card-label">${t('gitBackup.title')}</div><div class="card-empty">${t('gitBackup.none')}</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card-label">${t('gitBackup.title')}</div>
+    <div class="card-value">${esc(relativeTime(g.timestamp))}</div>
+    <div class="card-detail text-muted">
+      <span class="text-mono">${esc(g.shortHash)}</span> · <span class="text-sm">${esc(formatTime(g.timestamp))}</span>
+    </div>
+  `;
+}
+
+function renderShadowBackupCard(lastBackup) {
+  const el = $('#card-shadow-backup');
+  const s = lastBackup?.shadow;
+  if (!s) {
+    el.innerHTML = `<div class="card-label">${t('shadowBackup.title')}</div><div class="card-empty">${t('shadowBackup.none')}</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card-label">${t('shadowBackup.title')}</div>
+    <div class="card-value">${esc(relativeTime(s.timestamp))}</div>
+    <div class="card-detail text-muted text-sm">${esc(formatTime(s.timestamp))}</div>
+  `;
+}
+
+function renderWatcherCard(watcher) {
+  const el = $('#card-watcher');
+  let st = 'stopped';
+  if (watcher?.running) st = 'running';
+  else if (watcher?.stale) st = 'stale';
+  el.innerHTML = `
+    <div class="card-label">${t('watcher.title')}</div>
+    <div class="card-status">
+      <span class="status-dot status-${st}"></span>
+      <span>${t('watcher.' + st)}</span>
+    </div>
+    ${watcher?.pid ? `<div class="card-detail text-muted text-sm">${t('watcher.pid')}: ${watcher.pid}</div>` : ''}
+    ${watcher?.startedAt ? `<div class="card-detail text-muted text-sm">${t('watcher.since')}: ${esc(formatTime(watcher.startedAt))}</div>` : ''}
+  `;
+}
+
+function renderAlertCard(alerts) {
+  const el = $('#card-alert');
+  if (!alerts?.active) {
+    el.innerHTML = `
+      <div class="card-label">${t('alert.title')}</div>
+      <div class="card-status"><span class="status-dot status-healthy"></span><span>${t('alert.none')}</span></div>
+    `;
+    return;
+  }
+  const a = alerts.latest || {};
+  el.innerHTML = `
+    <div class="card-label">${t('alert.title')}</div>
+    <div class="card-status"><span class="status-dot status-warning"></span><span class="status-text status-warning">${t('alert.active')}</span></div>
+    <div class="card-detail text-muted text-sm">${esc(a.recommendation || a.message || '')}</div>
+  `;
+}
+
+/* ── Rendering: Backups Section ───────────────────────────── */
+
+function renderBackupsSection(dashboard, backups) {
+  renderBackupStats(dashboard, backups);
+  renderFilterBar();
+  renderBackupTable(backups);
+}
+
+function renderBackupStats(d, backups) {
+  const gitCount = d.counts?.git?.commits || 0;
+  const shadowCount = d.counts?.shadow?.snapshots || 0;
+  const preRestoreCount = Array.isArray(backups)
+    ? backups.filter(b => b.type === 'git-pre-restore' || b.type === 'shadow-pre-restore').length
+    : 0;
+  const gitDisk = d.diskUsage?.git?.display || '0B';
+  const shadowDisk = d.diskUsage?.shadow?.display || '0B';
+
+  $('#backup-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">${t('backups.gitCommits')}</div><div class="stat-value">${gitCount}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('backups.shadowSnapshots')}</div><div class="stat-value">${shadowCount}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('backups.preRestore')}</div><div class="stat-value">${preRestoreCount}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('backups.gitDisk')}</div><div class="stat-value">${esc(gitDisk)}</div></div>
+    <div class="stat-card"><div class="stat-label">${t('backups.shadowDisk')}</div><div class="stat-value">${esc(shadowDisk)}</div></div>
+  `;
+}
+
+function renderFilterBar() {
+  const types = [
+    { key: 'all',                label: 'backups.filterAll' },
+    { key: 'git-auto-backup',   label: 'type.git-auto-backup' },
+    { key: 'git-pre-restore',   label: 'type.git-pre-restore' },
+    { key: 'shadow',            label: 'type.shadow' },
+    { key: 'shadow-pre-restore',label: 'type.shadow-pre-restore' },
+  ];
+  $('#backup-filters').innerHTML = types.map(t2 =>
+    `<button class="filter-btn ${state.backupFilter === t2.key ? 'active' : ''}" data-filter="${t2.key}">${t(t2.label)}</button>`
+  ).join('');
+}
+
+function renderBackupTable(backups) {
+  if (!Array.isArray(backups)) {
+    $('#backup-table-wrap').innerHTML = `<div class="error-panel">${t('error.sectionFailed')}</div>`;
+    return;
+  }
+  state.filteredBackups = state.backupFilter === 'all'
+    ? backups
+    : backups.filter(b => b.type === state.backupFilter);
+
+  if (state.filteredBackups.length === 0) {
+    $('#backup-table-wrap').innerHTML = `<div class="empty-state">${t('backups.noBackups')}</div>`;
+    return;
+  }
+
+  const rows = state.filteredBackups.map((b, i) => {
+    const badgeClass = b.type.startsWith('git') ? (b.type.includes('pre') ? 'badge-pre' : 'badge-git') : (b.type.includes('pre') ? 'badge-pre' : 'badge-shadow');
+    return `<tr data-bi="${i}">
+      <td><div>${esc(formatTime(b.timestamp))}</div><div class="text-muted text-sm">${esc(relativeTime(b.timestamp))}</div></td>
+      <td><span class="badge ${badgeClass}">${t('type.' + b.type)}</span></td>
+      <td class="text-mono">${esc(b.shortHash || b.timestamp || '-')}</td>
+    </tr>`;
+  }).join('');
+
+  $('#backup-table-wrap').innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>${t('backups.col.time')}</th>
+        <th>${t('backups.col.type')}</th>
+        <th>${t('backups.col.ref')}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+/* ── Rendering: Protection Scope ──────────────────────────── */
+
+function renderProtection(scope) {
+  const el = $('#protection-content');
+  if (!scope) { el.innerHTML = `<div class="empty-state">${t('empty.noData')}</div>`; return; }
+
+  const protectList = scope.protect || [];
+  const ignoreList = scope.ignore || [];
+  const isAll = protectList.length === 1 && protectList[0] === '**';
+
+  el.innerHTML = `
+    <div class="protection-grid">
+      <div class="pattern-card">
+        <h4>${t('protection.protect')}</h4>
+        ${isAll
+          ? `<p class="text-muted text-sm">${t('protection.allFiles')}</p>`
+          : `<ul class="pattern-list">${protectList.map(p => `<li class="pattern-item">${esc(p)}</li>`).join('')}</ul>`
+        }
+      </div>
+      <div class="pattern-card">
+        <h4>${t('protection.ignore')}</h4>
+        ${ignoreList.length === 0
+          ? `<p class="text-muted text-sm">${t('protection.noIgnore')}</p>`
+          : `<ul class="pattern-list">${ignoreList.map(p => `<li class="pattern-item">${esc(p)}</li>`).join('')}</ul>`
+        }
+      </div>
+    </div>
+    <div class="protection-count">${t('protection.fileCount', { n: scope.fileCount || 0 })}</div>
+    <p class="protection-note">${t('protection.note')}</p>
+  `;
+}
+
+/* ── Rendering: Diagnostics ───────────────────────────────── */
+
+function renderDiagnostics(doctor) {
+  const el = $('#diagnostics-summary');
+  const s = doctor.summary || { pass: 0, warn: 0, fail: 0 };
+
+  el.innerHTML = `
+    <div class="diag-summary" id="diag-summary-click">
+      <div class="diag-counts">
+        <div class="diag-count"><span class="num" style="color:var(--green)">${s.pass}</span><span class="label badge-pass">${t('diagnostics.pass')}</span></div>
+        <div class="diag-count"><span class="num" style="color:var(--yellow)">${s.warn}</span><span class="label badge-warn">${t('diagnostics.warn')}</span></div>
+        <div class="diag-count"><span class="num" style="color:var(--red)">${s.fail}</span><span class="label badge-fail">${t('diagnostics.fail')}</span></div>
+      </div>
+      <span class="diag-hint">${t('diagnostics.hint')}</span>
+    </div>
+  `;
+}
+
+/* ── Rendering: Error / Empty ─────────────────────────────── */
+
+function renderSectionError(elementId, msg) {
+  const el = $(`#${elementId}`);
+  if (!el) return;
+  el.innerHTML = `<div class="error-panel"><div class="error-icon">⚠</div><p>${esc(msg || t('error.sectionFailed'))}</p></div>`;
+}
+
+/* ── Drawers ──────────────────────────────────────────────── */
+
+function openDrawer(name) {
+  state.drawerOpen = name;
+  $(`#${name}-drawer`).classList.add('active');
+  $('#drawer-overlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  if (!state.drawerOpen) return;
+  $(`#${state.drawerOpen}-drawer`).classList.remove('active');
+  $('#drawer-overlay').classList.remove('active');
+  document.body.style.overflow = '';
+  state.drawerOpen = null;
+}
+
+function openRestoreDrawer(backup) {
+  const body = $('#restore-drawer-body');
+  const fields = [
+    { key: 'drawer.field.time', val: formatTime(backup.timestamp) },
+    { key: 'drawer.field.type', val: t('type.' + backup.type) },
+  ];
+  if (backup.ref) fields.push({ key: 'drawer.field.ref', val: backup.ref });
+  if (backup.commitHash) fields.push({ key: 'drawer.field.hash', val: backup.commitHash });
+  if (backup.path) fields.push({ key: 'drawer.field.path', val: backup.path });
+  if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
+
+  const refText = backup.ref || backup.shortHash || backup.timestamp || '';
+  const jsonText = JSON.stringify(backup, null, 2);
+
+  body.innerHTML = `
+    ${fields.map(f => `
+      <div class="restore-field">
+        <div class="restore-field-label">${t(f.key)}</div>
+        <div class="restore-field-value text-mono">${esc(f.val)}</div>
+      </div>
+    `).join('')}
+    <div class="restore-actions">
+      <button class="btn btn-sm" data-copy="${esc(refText)}">${t('drawer.copyRef')}</button>
+      <button class="btn btn-sm" data-copy-json>${t('drawer.copyJson')}</button>
+      <button class="btn btn-sm" id="preview-toggle">${t('drawer.preview')}</button>
+    </div>
+    <div id="json-preview-wrap" class="hidden">
+      <pre class="json-preview">${esc(jsonText)}</pre>
+    </div>
+  `;
+
+  body.querySelector('[data-copy-json]')?.addEventListener('click', () => copyText(jsonText));
+  body.querySelector('#preview-toggle')?.addEventListener('click', () => {
+    const wrap = body.querySelector('#json-preview-wrap');
+    wrap.classList.toggle('hidden');
+  });
+
+  openDrawer('restore');
+}
+
+function openDoctorDrawer() {
+  const doctor = state.pageData?.doctor;
+  if (!doctor || doctor.error) return;
+  const body = $('#doctor-drawer-body');
+
+  body.innerHTML = (doctor.checks || []).map(c => {
+    const badgeClass = c.status === 'PASS' ? 'badge-pass' : c.status === 'WARN' ? 'badge-warn' : 'badge-fail';
+    const shouldOpen = c.status !== 'PASS';
+    return `
+      <details class="check-item" ${shouldOpen ? 'open' : ''}>
+        <summary>
+          <span class="badge ${badgeClass}">${t('diagnostics.' + c.status)}</span>
+          <span class="check-name">${esc(c.name)}</span>
+        </summary>
+        ${c.detail ? `<div class="check-detail">${esc(c.detail)}</div>` : ''}
+      </details>
+    `;
+  }).join('');
+
+  openDrawer('doctor');
+}
+
+/* ── Copy to clipboard ────────────────────────────────────── */
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  showToast(t('drawer.copied'));
+}
+
+function showToast(msg) {
+  let toast = $('#copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.className = 'copy-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+}
+
+/* ── Event Listeners ──────────────────────────────────────── */
+
+function setupEvents() {
+  $('#project-select').addEventListener('change', async (e) => {
+    state.currentProjectId = e.target.value;
+    state.backupFilter = 'all';
+    stopRefresh();
+    showLoading();
+    try { await loadPageData(); renderAll(); }
+    catch (err) { showGlobalError(err.message); }
+    startRefresh();
+  });
+
+  $('#refresh-btn').addEventListener('click', manualRefresh);
+  $('#error-retry').addEventListener('click', manualRefresh);
+
+  $('#lang-toggle').addEventListener('click', () => {
+    setLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN');
+  });
+
+  // Filter buttons (event delegation)
+  $('#backup-filters').addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    state.backupFilter = btn.dataset.filter;
+    const backups = state.pageData?.backups;
+    if (Array.isArray(backups)) {
+      renderFilterBar();
+      renderBackupTable(backups);
+    }
+  });
+
+  // Backup table row click (event delegation)
+  $('#backup-table-wrap').addEventListener('click', (e) => {
+    const row = e.target.closest('tr[data-bi]');
+    if (!row) return;
+    const idx = parseInt(row.dataset.bi, 10);
+    const backup = state.filteredBackups[idx];
+    if (backup) openRestoreDrawer(backup);
+  });
+
+  // Diagnostics summary click
+  $('#diagnostics-summary').addEventListener('click', (e) => {
+    if (e.target.closest('#diag-summary-click')) openDoctorDrawer();
+  });
+
+  // Copy ref buttons (event delegation on drawers)
+  document.addEventListener('click', (e) => {
+    const copyBtn = e.target.closest('[data-copy]');
+    if (copyBtn) copyText(copyBtn.dataset.copy);
+  });
+
+  // Close drawer
+  $('#drawer-overlay').addEventListener('click', closeDrawer);
+  document.querySelectorAll('[data-action="close-drawer"]').forEach(btn => {
+    btn.addEventListener('click', closeDrawer);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDrawer();
+  });
+}
+
+/* ── Init ─────────────────────────────────────────────────── */
+
+async function init() {
+  state.locale = detectLocale();
+  document.documentElement.lang = state.locale === 'zh-CN' ? 'zh-CN' : 'en';
+  updateStaticI18n();
+  showLoading();
+
+  try {
+    await loadProjects();
+    renderProjectSelect();
+    await loadPageData();
+    renderAll();
+    startRefresh();
+  } catch (e) {
+    showGlobalError(e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  setupEvents();
+  init();
+});

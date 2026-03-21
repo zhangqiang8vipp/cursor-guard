@@ -30,7 +30,8 @@
     "cursor-guard-init": "references/bin/cursor-guard-init.js",
     "cursor-guard-backup": "references/bin/cursor-guard-backup.js",
     "cursor-guard-doctor": "references/bin/cursor-guard-doctor.js",
-    "cursor-guard-mcp": "references/mcp/server.js"
+    "cursor-guard-mcp": "references/mcp/server.js",
+    "cursor-guard-dashboard": "references/dashboard/server.js"
   },
   "files": [
     "SKILL.md",
@@ -48,6 +49,7 @@
     "references/lib/utils.js",
     "references/lib/core/",
     "references/mcp/",
+    "references/dashboard/",
     "references/config-reference.md",
     "references/config-reference.zh-CN.md",
     "references/cursor-guard.example.json",
