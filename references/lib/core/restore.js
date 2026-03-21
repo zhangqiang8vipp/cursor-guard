@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const {
-  git, isGitRepo, gitDir: getGitDir, loadConfig,
+  git, isGitRepo, gitDir: getGitDir, loadConfig, unquoteGitPath,
 } = require('../utils');
 const { createGitSnapshot, formatTimestamp, removeSecretsFromIndex } = require('./snapshot');
 
@@ -18,7 +18,7 @@ function validateRelativePath(file) {
   return { valid: true, normalized };
 }
 
-const VALID_SHADOW_SOURCE = /^\d{8}_\d{6}$|^pre-restore-\d{8}_\d{6}$/;
+const VALID_SHADOW_SOURCE = /^\d{8}_\d{6}(_\d{3})?$|^pre-restore-\d{8}_\d{6}(_\d{3})?$/;
 
 function validateShadowSource(source) {
   if (!VALID_SHADOW_SOURCE.test(source)) {
@@ -88,11 +88,20 @@ function restoreFile(projectDir, file, source, opts = {}) {
     const targetFile = path.join(projectDir, file);
     if (fs.existsSync(targetFile)) {
       try {
-        const ts = formatTimestamp(new Date());
-        const preRestoreDir = path.join(projectDir, '.cursor-guard-backup', `pre-restore-${ts}`);
+        const preNow = new Date();
+        const preBaseTs = formatTimestamp(preNow);
+        let preTs = preBaseTs;
+        let preRestoreDir = path.join(projectDir, '.cursor-guard-backup', `pre-restore-${preTs}`);
+        if (fs.existsSync(preRestoreDir)) {
+          let seq = preNow.getMilliseconds();
+          for (let i = 0; i < 1000 && fs.existsSync(preRestoreDir); i++, seq++) {
+            preTs = `${preBaseTs}_${String(seq % 1000).padStart(3, '0')}`;
+            preRestoreDir = path.join(projectDir, '.cursor-guard-backup', `pre-restore-${preTs}`);
+          }
+        }
         fs.mkdirSync(path.join(preRestoreDir, path.dirname(file)), { recursive: true });
         fs.copyFileSync(targetFile, path.join(preRestoreDir, file));
-        result.preRestoreShadow = `pre-restore-${ts}`;
+        result.preRestoreShadow = `pre-restore-${preTs}`;
       } catch (e) {
         return { status: 'error', restoredFrom: source, error: `pre-restore shadow copy failed: ${e.message}` };
       }
@@ -164,24 +173,39 @@ function previewProjectRestore(projectDir, source) {
       return { status: 'error', error: `cannot resolve git source: ${source}` };
     }
 
+    const files = [];
+
     const diffOutput = git(
       ['diff', '--name-status', resolved],
       { cwd: projectDir, allowFail: true }
     );
 
-    if (!diffOutput) {
-      return { status: 'ok', files: [], totalChanged: 0 };
+    if (diffOutput) {
+      for (const line of diffOutput.split('\n').filter(Boolean)) {
+        const parts = line.split('\t');
+        const code = parts[0].trim();
+        if (code.startsWith('R') || code.startsWith('C')) {
+          const oldPath = unquoteGitPath(parts[1] || '');
+          const newPath = unquoteGitPath(parts[2] || '');
+          files.push({ path: newPath, oldPath, change: code.startsWith('R') ? 'renamed' : 'copied' });
+        } else {
+          const filePath = unquoteGitPath(parts[1] || '');
+          let change = 'modified';
+          if (code === 'A') change = 'added';
+          else if (code === 'D') change = 'deleted';
+          files.push({ path: filePath, change });
+        }
+      }
     }
 
-    const files = [];
-    for (const line of diffOutput.split('\n').filter(Boolean)) {
-      const tab = line.indexOf('\t');
-      const code = line.substring(0, tab).trim();
-      const filePath = line.substring(tab + 1).trim();
-      let change = 'modified';
-      if (code === 'A') change = 'added';
-      else if (code === 'D') change = 'deleted';
-      files.push({ path: filePath, change });
+    const untrackedOutput = git(
+      ['ls-files', '--others', '--exclude-standard'],
+      { cwd: projectDir, allowFail: true }
+    );
+    if (untrackedOutput) {
+      for (const f of untrackedOutput.split('\n').filter(Boolean)) {
+        files.push({ path: unquoteGitPath(f), change: 'untracked' });
+      }
     }
 
     return { status: 'ok', files, totalChanged: files.length };
@@ -195,16 +219,18 @@ function previewProjectRestore(projectDir, source) {
 /**
  * Execute a full project restore to a given source commit.
  * Creates a pre-restore snapshot first (unless opted out), then
- * restores all changed files.
+ * restores all tracked files and optionally removes untracked files.
  *
  * @param {string} projectDir
  * @param {string} source - Commit hash or ref
  * @param {object} [opts]
  * @param {boolean} [opts.preserveCurrent=true]
- * @returns {{ status: 'restored'|'error', preRestoreRef?: string, preRestoreShortHash?: string, filesRestored: number, files?: Array<{path: string, change: string}>, error?: string }}
+ * @param {boolean} [opts.cleanUntracked=true] - Remove untracked non-ignored files after restore
+ * @returns {{ status: 'restored'|'error', preRestoreRef?: string, preRestoreShortHash?: string, filesRestored: number, untrackedCleaned?: number, files?: Array<{path: string, change: string}>, error?: string }}
  */
 function executeProjectRestore(projectDir, source, opts = {}) {
   const preserveCurrent = resolvePreserve(projectDir, opts);
+  const cleanUntracked = opts.cleanUntracked !== false;
 
   if (!isGitRepo(projectDir)) {
     return { status: 'error', filesRestored: 0, error: 'not a git repository' };
@@ -219,11 +245,14 @@ function executeProjectRestore(projectDir, source, opts = {}) {
   if (preview.status === 'error') {
     return { status: 'error', filesRestored: 0, error: preview.error };
   }
-  if (preview.totalChanged === 0) {
+  const trackedFiles = preview.files.filter(f => f.change !== 'untracked');
+  const effectiveFiles = cleanUntracked ? preview.files : trackedFiles;
+
+  if (effectiveFiles.length === 0) {
     return { status: 'restored', filesRestored: 0, files: [], preRestoreRef: null };
   }
 
-  const result = { filesRestored: 0, files: preview.files };
+  const result = { filesRestored: 0, files: effectiveFiles };
 
   if (preserveCurrent) {
     const snap = createPreRestoreSnapshot(projectDir, null);
@@ -239,8 +268,27 @@ function executeProjectRestore(projectDir, source, opts = {}) {
     execFileSync('git', ['restore', `--source=${resolved}`, '--', '.'], {
       cwd: projectDir, stdio: 'pipe',
     });
+
+    let untrackedCleaned = 0;
+    if (cleanUntracked) {
+      const untrackedOutput = git(
+        ['ls-files', '--others', '--exclude-standard'],
+        { cwd: projectDir, allowFail: true }
+      );
+      if (untrackedOutput) {
+        for (const raw of untrackedOutput.split('\n').filter(Boolean)) {
+          const f = unquoteGitPath(raw);
+          try {
+            fs.unlinkSync(path.join(projectDir, f));
+            untrackedCleaned++;
+          } catch { /* skip files that can't be removed */ }
+        }
+      }
+    }
+
     result.status = 'restored';
-    result.filesRestored = preview.totalChanged;
+    result.filesRestored = trackedFiles.length;
+    result.untrackedCleaned = untrackedCleaned;
     return result;
   } catch (e) {
     return { status: 'error', filesRestored: 0, error: e.message };
@@ -261,8 +309,15 @@ function createPreRestoreSnapshot(projectDir, scope) {
   const gDir = getGitDir(projectDir);
   if (!gDir) return { status: 'error', error: 'not a git repository' };
 
-  const ts = formatTimestamp(new Date());
-  const ref = `refs/guard/pre-restore/${ts}`;
+  const now = new Date();
+  const baseTs = formatTimestamp(now);
+  let seq = now.getMilliseconds();
+  let ts, ref;
+  for (let i = 0; i < 1000; i++, seq++) {
+    ts = `${baseTs}_${String(seq % 1000).padStart(3, '0')}`;
+    ref = `refs/guard/pre-restore/${ts}`;
+    if (!git(['rev-parse', '--verify', ref], { cwd: projectDir, allowFail: true })) break;
+  }
   const guardIdx = path.join(gDir, 'guard-pre-restore-index');
   const env = { ...process.env, GIT_INDEX_FILE: guardIdx };
   const cwd = projectDir;

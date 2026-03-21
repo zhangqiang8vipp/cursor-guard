@@ -74,7 +74,7 @@ function getBackupStatus(projectDir) {
     const autoExists = git(['rev-parse', '--verify', autoRef], { cwd: projectDir, allowFail: true });
     if (autoExists) {
       const logLine = git(
-        ['log', autoRef, '--format=%H %aI %s', '-1'],
+        ['log', autoRef, '--format=%H %aI %s', '-1', '--grep=^guard:'],
         { cwd: projectDir, allowFail: true }
       );
       if (logLine) {
@@ -97,7 +97,7 @@ function getBackupStatus(projectDir) {
   if (fs.existsSync(backupDir)) {
     try {
       const dirs = fs.readdirSync(backupDir, { withFileTypes: true })
-        .filter(d => d.isDirectory() && /^\d{8}_\d{6}$/.test(d.name))
+        .filter(d => d.isDirectory() && /^\d{8}_\d{6}(_\d{3})?$/.test(d.name))
         .sort((a, b) => b.name.localeCompare(a.name));
 
       if (dirs.length > 0) {
@@ -133,10 +133,10 @@ function getBackupStatus(projectDir) {
     const autoRef = 'refs/guard/auto-backup';
     const autoHash = git(['rev-parse', '--verify', autoRef], { cwd: projectDir, allowFail: true });
     if (autoHash) {
-      const count = git(['rev-list', '--count', autoRef], { cwd: projectDir, allowFail: true });
+      const countOutput = git(['log', autoRef, '--grep=^guard:', '--format=%H'], { cwd: projectDir, allowFail: true });
       refs.autoBackup = {
         hash: autoHash.substring(0, 7),
-        commitCount: count ? parseInt(count, 10) : 0,
+        commitCount: countOutput ? countOutput.split('\n').filter(Boolean).length : 0,
       };
     }
 

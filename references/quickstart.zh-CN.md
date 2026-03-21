@@ -151,7 +151,7 @@ npx cursor-guard-backup --path .
 }
 ```
 
-启用后 Agent 可以直接调用 7 个工具：
+启用后 Agent 可以直接调用 9 个工具：
 
 | 工具 | 作用 |
 |------|------|
@@ -162,6 +162,8 @@ npx cursor-guard-backup --path .
 | `list_backups` | 列出所有恢复点 |
 | `restore_file` | 恢复单个文件 |
 | `restore_project` | 预览/执行全项目恢复 |
+| `dashboard` | 综合健康看板（策略/数量/磁盘/范围/状态/告警） |
+| `alert_status` | 查看当前是否有变更频率告警 |
 
 **不启用 MCP 也完全不影响使用**——Agent 会自动回退到 shell 命令路径。
 
@@ -214,6 +216,12 @@ npx cursor-guard-backup --path .
     "enabled": true,
     "mode": "count",
     "max_count": 200
+  },
+  "proactive_alert": true,
+  "alert_thresholds": {
+    "files_per_window": 20,
+    "window_seconds": 10,
+    "cooldown_seconds": 60
   }
 }
 ```
@@ -227,6 +235,7 @@ npx cursor-guard-backup --path .
 - 恢复前默认先保留当前版本
 - 额外排除自定义敏感文件
 - 自动清理过旧备份
+- 开启主动变更频率检测（10 秒内 20+ 文件变更时告警）
 
 ---
 
@@ -264,6 +273,17 @@ npx cursor-guard-backup --path .
 ### `git_retention`
 
 控制 `refs/guard/auto-backup` 里的 Git 备份保留多久。
+
+### `proactive_alert`
+
+是否开启 V4 主动变更频率检测（默认 `true`）。开启后 watcher 会自动监控文件变更速率，异常时触发告警。
+
+### `alert_thresholds`
+
+告警阈值配置：
+- `files_per_window`：窗口内触发告警的文件数（默认 20）
+- `window_seconds`：滑动窗口秒数（默认 10）
+- `cooldown_seconds`：连续告警最小间隔（默认 60）
 
 ---
 
@@ -329,6 +349,8 @@ git restore --source=guard/auto-backup -- src/app.ts
 | "guard doctor" / "自检" | 运行健康检查 |
 | "guard fix" / "修复配置" | 自动修复常见问题 |
 | "备份状态" / "watcher 在跑吗" | 查看备份系统状态 |
+| "看板" / "dashboard" | 显示综合健康看板 |
+| "有告警吗" / "风险提示" | 检查变更频率告警 |
 | "恢复到5分钟前" | 从历史中找到最接近的版本并恢复 |
 | "帮我恢复 src/app.ts" | 列出该文件的恢复点 |
 | "MCP 能用吗" | 检查 MCP 是否配置正确 |

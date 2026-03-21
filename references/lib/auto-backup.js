@@ -2,13 +2,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const {
   color, loadConfig, gitAvailable, git, isGitRepo, gitDir: getGitDir,
   walkDir, filterFiles, buildManifest, loadManifest, saveManifest,
-  manifestChanged, createLogger,
+  manifestChanged, createLogger, unquoteGitPath,
 } = require('./utils');
 const { createGitSnapshot, createShadowCopy } = require('./core/snapshot');
 const { cleanShadowRetention, cleanGitRetention } = require('./core/backups');
+const { createChangeTracker, recordChange, checkAnomaly, saveAlert, clearExpiredAlert } = require('./core/anomaly');
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -123,11 +125,7 @@ async function runBackup(projectDir, intervalOverride) {
         git(['update-ref', '-d', legacyRef], { cwd: projectDir, allowFail: true });
         console.log(color.green(`[guard] Migrated ${legacyRef} → ${branchRef}`));
       } else {
-        const head = git(['rev-parse', 'HEAD'], { cwd: projectDir, allowFail: true });
-        if (head) {
-          git(['update-ref', branchRef, head], { cwd: projectDir, allowFail: true });
-          console.log(color.green(`[guard] Created ref: ${branchRef}`));
-        }
+        console.log(color.cyan(`[guard] Ref ${branchRef} does not exist yet — will be created on first snapshot.`));
       }
     }
 
@@ -153,6 +151,12 @@ async function runBackup(projectDir, intervalOverride) {
     logger.error(`Unhandled rejection: ${reason}`);
   });
 
+  // V4: Initialize change tracker for anomaly detection
+  let tracker = createChangeTracker(cfg);
+  if (cfg.proactive_alert) {
+    console.log(color.cyan(`[guard] Proactive alert: ON  (threshold: ${cfg.alert_thresholds.files_per_window} files / ${cfg.alert_thresholds.window_seconds}s)`));
+  }
+
   // Banner
   console.log('');
   console.log(color.cyan(`[guard] Watching '${projectDir}' every ${interval}s  (Ctrl+C to stop)`));
@@ -175,6 +179,7 @@ async function runBackup(projectDir, intervalOverride) {
           if (reload.loaded && !reload.error) {
             cfg = reload.cfg;
             cfgMtime = newMtime;
+            tracker = createChangeTracker(cfg);
             logger.info('Config reloaded (file changed)');
           }
         }
@@ -184,6 +189,7 @@ async function runBackup(projectDir, intervalOverride) {
     // Detect changes
     let hasChanges = false;
     let pendingManifest = null;
+    let lastManifest = null;
     try {
       if (repo) {
         const dirty = git(['status', '--porcelain'], { cwd: projectDir, allowFail: true });
@@ -192,8 +198,8 @@ async function runBackup(projectDir, intervalOverride) {
         const allFiles = walkDir(projectDir, projectDir);
         const filtered = filterFiles(allFiles, cfg);
         const newManifest = buildManifest(filtered);
-        const oldManifest = loadManifest(backupDir);
-        hasChanges = manifestChanged(oldManifest, newManifest);
+        lastManifest = loadManifest(backupDir);
+        hasChanges = manifestChanged(lastManifest, newManifest);
         if (hasChanges) pendingManifest = newManifest;
       }
     } catch (e) {
@@ -201,6 +207,56 @@ async function runBackup(projectDir, intervalOverride) {
       continue;
     }
     if (!hasChanges) continue;
+
+    // V4: Record change event and check for anomalies
+    let changedFileCount = 0;
+    if (repo) {
+      // Use execFileSync directly — git() helper's trim() strips leading spaces
+      // from porcelain output, corrupting the first line when it starts with ' '.
+      let porcelain = '';
+      try {
+        porcelain = execFileSync('git', ['status', '--porcelain'], {
+          cwd: projectDir, stdio: 'pipe', encoding: 'utf-8',
+        });
+      } catch { /* ignore */ }
+      if (porcelain) {
+        const lines = porcelain.split('\n').filter(Boolean);
+        if (cfg.protect.length === 0 && cfg.ignore.length === 0) {
+          changedFileCount = lines.length;
+        } else {
+          const changedPaths = lines.map(line => {
+            const filePart = line.substring(3);
+            const arrowIdx = filePart.indexOf(' -> ');
+            const raw = arrowIdx >= 0 ? filePart.substring(arrowIdx + 4) : filePart;
+            return unquoteGitPath(raw);
+          });
+          const fakeFiles = changedPaths.map(rel => ({ rel, full: path.join(projectDir, rel) }));
+          changedFileCount = filterFiles(fakeFiles, cfg).length;
+        }
+      }
+    } else if (pendingManifest) {
+      if (!lastManifest) {
+        changedFileCount = Object.keys(pendingManifest).length;
+      } else {
+        const newKeys = new Set(Object.keys(pendingManifest));
+        const oldKeys = new Set(Object.keys(lastManifest));
+        let diffCount = 0;
+        for (const k of newKeys) {
+          if (!oldKeys.has(k) || lastManifest[k].mtimeMs !== pendingManifest[k].mtimeMs || lastManifest[k].size !== pendingManifest[k].size) diffCount++;
+        }
+        for (const k of oldKeys) {
+          if (!newKeys.has(k)) diffCount++;
+        }
+        changedFileCount = diffCount;
+      }
+    }
+
+    recordChange(tracker, changedFileCount);
+    const anomalyResult = checkAnomaly(tracker);
+    if (anomalyResult.anomaly && anomalyResult.alert && !anomalyResult.suppressed) {
+      saveAlert(projectDir, anomalyResult.alert);
+      logger.warn(`ALERT: ${anomalyResult.alert.fileCount} files changed in ${anomalyResult.alert.windowSeconds}s (threshold: ${anomalyResult.alert.threshold})`);
+    }
 
     // Git snapshot via Core
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
@@ -250,6 +306,8 @@ async function runBackup(projectDir, intervalOverride) {
           logger.log(`Git retention (${gitRetResult.mode}): rebuilt branch with ${gitRetResult.kept} newest snapshots, pruned ${gitRetResult.pruned}. Run 'git gc' to reclaim space.`, 'gray');
         }
       }
+
+      clearExpiredAlert(projectDir);
     }
   }
 }

@@ -7,6 +7,7 @@ const os = require('os');
 const {
   globMatch, matchesAny, loadConfig, DEFAULT_CONFIG, DEFAULT_SECRETS,
   filterFiles, buildManifest, manifestChanged, parseArgs, walkDir,
+  unquoteGitPath,
 } = require('./utils');
 
 let passed = 0;
@@ -341,6 +342,76 @@ test('skips .git and node_modules', () => {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('loadConfig filters non-string elements from array fields with warnings', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-cfg-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({
+      protect: ['src/**', 123, null, true],
+      ignore: ['dist/**', { not: 'a string' }],
+      secrets_patterns: ['.env', 42],
+    }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.deepStrictEqual(cfg.protect, ['src/**'], 'protect should only contain strings');
+    assert.deepStrictEqual(cfg.ignore, ['dist/**'], 'ignore should only contain strings');
+    assert.deepStrictEqual(cfg.secrets_patterns, ['.env'], 'secrets_patterns should only contain strings');
+    assert.ok(warnings.some(w => w.includes('protect') && w.includes('3 non-string')), 'should warn about protect');
+    assert.ok(warnings.some(w => w.includes('ignore') && w.includes('1 non-string')), 'should warn about ignore');
+    assert.ok(warnings.some(w => w.includes('secrets_patterns') && w.includes('1 non-string')), 'should warn about secrets_patterns');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig filters non-string elements from secrets_patterns_extra', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-cfg-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({
+      secrets_patterns_extra: ['*.secret', 999, null],
+    }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.ok(cfg.secrets_patterns.includes('*.secret'), 'should include valid extra pattern');
+    assert.ok(!cfg.secrets_patterns.includes(999), 'should not include number');
+    assert.ok(warnings.some(w => w.includes('secrets_patterns_extra')), 'should warn about non-string extras');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig warns on non-boolean proactive_alert', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-cfg-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({ proactive_alert: "no" }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.strictEqual(cfg.proactive_alert, true, 'should keep default true');
+    assert.ok(warnings && warnings.some(w => w.includes('proactive_alert')), 'should have proactive_alert warning');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ── unquoteGitPath ───────────────────────────────────────────────
+
+console.log('\nunquoteGitPath:');
+
+test('returns unquoted path unchanged', () => {
+  assert.strictEqual(unquoteGitPath('src/app.js'), 'src/app.js');
+});
+
+test('strips quotes and unescapes spaces', () => {
+  assert.strictEqual(unquoteGitPath('"dir with space/a.txt"'), 'dir with space/a.txt');
+});
+
+test('unescapes backslash sequences', () => {
+  assert.strictEqual(unquoteGitPath('"a\\tb"'), 'a\tb');
+  assert.strictEqual(unquoteGitPath('"a\\nb"'), 'a\nb');
+  assert.strictEqual(unquoteGitPath('"a\\\\"'), 'a\\');
+  assert.strictEqual(unquoteGitPath('"a\\""'), 'a"');
+});
+
+test('unescapes octal sequences', () => {
+  assert.strictEqual(unquoteGitPath('"\\303\\251"'), '\u00e9');
 });
 
 // ── Summary ──────────────────────────────────────────────────────

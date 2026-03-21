@@ -10,9 +10,10 @@ const {
 // ── Helpers ──────────────────────────────────────────────────────
 
 function parseShadowTimestamp(name) {
-  const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+  const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(\d{3}))?$/);
   if (!m) return null;
-  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+  const ms = m[7] ? `.${m[7]}` : '';
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${ms}`);
 }
 
 function parseBeforeExpression(before) {
@@ -73,7 +74,7 @@ function listBackups(projectDir, opts = {}) {
     const autoRef = 'refs/guard/auto-backup';
     const autoExists = git(['rev-parse', '--verify', autoRef], { cwd: projectDir, allowFail: true });
     if (autoExists) {
-      const logArgs = ['log', autoRef, `--format=%H %aI %s`, `-${limit}`];
+      const logArgs = ['log', autoRef, `--format=%H %aI %s`, `-${limit}`, '--grep=^guard:'];
       if (opts.before) logArgs.push(`--before=${opts.before}`);
       if (opts.file) logArgs.push('--', opts.file);
       const out = git(logArgs, { cwd: projectDir, allowFail: true });
@@ -150,7 +151,7 @@ function listBackups(projectDir, opts = {}) {
 
       for (const name of dirs) {
         const isPreRestore = name.startsWith('pre-restore-');
-        const isTimestamp = /^\d{8}_\d{6}$/.test(name);
+        const isTimestamp = /^\d{8}_\d{6}(_\d{3})?$/.test(name);
         if (!isTimestamp && !isPreRestore) continue;
 
         if (beforeDate) {
@@ -192,7 +193,7 @@ function cleanShadowRetention(backupDir, cfg) {
   let dirs;
   try {
     dirs = fs.readdirSync(backupDir, { withFileTypes: true })
-      .filter(d => d.isDirectory() && /^\d{8}_\d{6}$/.test(d.name))
+      .filter(d => d.isDirectory() && /^\d{8}_\d{6}(_\d{3})?$/.test(d.name))
       .map(d => d.name)
       .sort()
       .reverse();
@@ -204,9 +205,8 @@ function cleanShadowRetention(backupDir, cfg) {
   if (mode === 'days') {
     const cutoff = Date.now() - days * 86400000;
     for (const name of dirs) {
-      const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
-      if (!m) continue;
-      const dt = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`);
+      const dt = parseShadowTimestamp(name);
+      if (!dt) continue;
       if (dt.getTime() < cutoff) {
         fs.rmSync(path.join(backupDir, name), { recursive: true, force: true });
         removed++;
@@ -354,4 +354,4 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
   return { kept: keepCount, pruned: total - keepCount, mode, rebuilt: true };
 }
 
-module.exports = { listBackups, cleanShadowRetention, cleanGitRetention };
+module.exports = { listBackups, cleanShadowRetention, cleanGitRetention, parseShadowTimestamp };

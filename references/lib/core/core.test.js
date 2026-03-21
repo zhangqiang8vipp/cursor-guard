@@ -12,6 +12,8 @@ const { listBackups, cleanShadowRetention } = require('./backups');
 const { restoreFile, previewProjectRestore, executeProjectRestore, createPreRestoreSnapshot, validateShadowSource } = require('./restore');
 const { runFixes } = require('./doctor-fix');
 const { getBackupStatus } = require('./status');
+const { createChangeTracker, recordChange, checkAnomaly, getAlertStatus, saveAlert, loadActiveAlert, clearExpiredAlert, clearAlert, alertFilePath } = require('./anomaly');
+const { getDashboard, dirSizeBytes, formatBytes, relativeTime } = require('./dashboard');
 
 let passed = 0;
 let failed = 0;
@@ -298,6 +300,154 @@ test('listBackups before filter applies to snapshot ref', () => {
   }
 });
 
+test('listBackups filters out non-guard commits from auto-backup ref', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    // Manually seed refs/guard/auto-backup from HEAD (simulating old behavior)
+    execFileSync('git', ['update-ref', 'refs/guard/auto-backup',
+      execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim()
+    ], { cwd: tmpDir, stdio: 'pipe' });
+
+    const result = listBackups(tmpDir);
+    const autoBackups = result.sources.filter(s => s.type === 'git-auto-backup');
+    assert.strictEqual(autoBackups.length, 0, 'should NOT list user commits as auto-backups');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createGitSnapshot creates orphan commit when ref does not exist', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    const ref = 'refs/guard/test-orphan';
+
+    const snap = createGitSnapshot(tmpDir, cfg, { branchRef: ref });
+    assert.strictEqual(snap.status, 'created');
+    assert.ok(snap.commitHash);
+
+    const parents = execFileSync('git', ['rev-parse', `${ref}^`], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim();
+    assert.fail('orphan commit should have no parent, but rev-parse succeeded');
+  } catch (e) {
+    if (e.code === 'ERR_ASSERTION') throw e;
+    // Expected: git rev-parse fails because orphan has no parent
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createGitSnapshot drops files when protect scope narrows', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    fs.mkdirSync(path.join(tmpDir, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'docs', 'readme.md'), 'docs');
+
+    const wideCfg = { ...loadConfig(tmpDir).cfg, protect: ['src/**', 'docs/**'] };
+    const snap1 = createGitSnapshot(tmpDir, wideCfg);
+    assert.strictEqual(snap1.status, 'created');
+
+    const tree1Files = execFileSync('git', ['ls-tree', '--name-only', '-r', snap1.commitHash], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim().split('\n');
+    assert.ok(tree1Files.includes('docs/readme.md'), 'wide protect should include docs/readme.md');
+
+    const narrowCfg = { ...loadConfig(tmpDir).cfg, protect: ['src/**'] };
+    const snap2 = createGitSnapshot(tmpDir, narrowCfg);
+    assert.strictEqual(snap2.status, 'created');
+
+    const tree2Files = execFileSync('git', ['ls-tree', '--name-only', '-r', snap2.commitHash], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim().split('\n');
+    assert.ok(!tree2Files.includes('docs/readme.md'), 'narrow protect must NOT include docs/readme.md');
+    assert.ok(tree2Files.includes('src/app.js'), 'narrow protect should still include src/app.js');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createGitSnapshot with basename-only protect matches nested files', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const cfg = { ...loadConfig(tmpDir).cfg, protect: ['app.js'] };
+    const result = createGitSnapshot(tmpDir, cfg);
+    assert.strictEqual(result.status, 'created');
+
+    const treeFiles = execFileSync('git', ['ls-tree', '--name-only', '-r', result.commitHash], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim().split('\n');
+    assert.ok(treeFiles.includes('src/app.js'), 'basename "app.js" should match nested src/app.js');
+    assert.ok(!treeFiles.includes('hello.txt'), 'unprotected files should be excluded');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createGitSnapshot with basename-only ignore excludes nested files', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const cfg = { ...loadConfig(tmpDir).cfg, ignore: ['app.js'] };
+    const result = createGitSnapshot(tmpDir, cfg);
+    assert.strictEqual(result.status, 'created');
+
+    const treeFiles = execFileSync('git', ['ls-tree', '--name-only', '-r', result.commitHash], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim().split('\n');
+    assert.ok(!treeFiles.includes('src/app.js'), 'basename ignore should exclude nested src/app.js');
+    assert.ok(treeFiles.includes('hello.txt'), 'non-ignored files should remain');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createShadowCopy avoids collision within same second', () => {
+  const tmpDir = createTempDir();
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'content');
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+
+    const r1 = createShadowCopy(tmpDir, cfg);
+    assert.strictEqual(r1.status, 'created');
+
+    const r2 = createShadowCopy(tmpDir, cfg);
+    assert.strictEqual(r2.status, 'created');
+
+    assert.notStrictEqual(r1.timestamp, r2.timestamp, 'timestamps should differ');
+    assert.ok(fs.existsSync(r1.snapshotDir), 'first snapshot should still exist');
+    assert.ok(fs.existsSync(r2.snapshotDir), 'second snapshot should exist');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createShadowCopy retries beyond single ms fallback', () => {
+  const tmpDir = createTempDir();
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'content');
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+
+    const r1 = createShadowCopy(tmpDir, cfg);
+    assert.strictEqual(r1.status, 'created');
+    const r2 = createShadowCopy(tmpDir, cfg);
+    assert.strictEqual(r2.status, 'created');
+    const r3 = createShadowCopy(tmpDir, cfg);
+    assert.strictEqual(r3.status, 'created');
+
+    const allTs = [r1.timestamp, r2.timestamp, r3.timestamp];
+    const unique = new Set(allTs);
+    assert.strictEqual(unique.size, 3, `all 3 timestamps must be unique, got: ${allTs.join(', ')}`);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 test('cleanShadowRetention respects count mode', () => {
   const tmpDir = createTempDir();
   const backupDir = path.join(tmpDir, '.cursor-guard-backup');
@@ -446,7 +596,9 @@ test('restoreFile rejects path-traversal shadow source', () => {
 
 test('validateShadowSource accepts valid timestamps and rejects traversals', () => {
   assert.strictEqual(validateShadowSource('20260321_143205').valid, true);
+  assert.strictEqual(validateShadowSource('20260321_143205_042').valid, true);
   assert.strictEqual(validateShadowSource('pre-restore-20260321_143205').valid, true);
+  assert.strictEqual(validateShadowSource('pre-restore-20260321_143205_999').valid, true);
   assert.strictEqual(validateShadowSource('../../etc').valid, false);
   assert.strictEqual(validateShadowSource('..\\..\\Windows').valid, false);
   assert.strictEqual(validateShadowSource('some-arbitrary-name').valid, false);
@@ -478,6 +630,29 @@ test('createPreRestoreSnapshot creates ref under refs/guard/pre-restore/', () =>
     assert.strictEqual(result.status, 'created');
     assert.ok(result.ref.startsWith('refs/guard/pre-restore/'));
     assert.ok(result.shortHash);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('createPreRestoreSnapshot avoids same-ms ref collision', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'v1');
+    const r1 = createPreRestoreSnapshot(tmpDir);
+    assert.strictEqual(r1.status, 'created');
+
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'v2');
+    const r2 = createPreRestoreSnapshot(tmpDir);
+    assert.strictEqual(r2.status, 'created');
+
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'v3');
+    const r3 = createPreRestoreSnapshot(tmpDir);
+    assert.strictEqual(r3.status, 'created');
+
+    const refs = [r1.ref, r2.ref, r3.ref];
+    const unique = new Set(refs);
+    assert.strictEqual(unique.size, 3, `all 3 pre-restore refs must be unique, got: ${refs.join(', ')}`);
   } finally {
     cleanupDir(tmpDir);
   }
@@ -528,6 +703,33 @@ test('previewProjectRestore returns file list', () => {
     assert.ok(result.totalChanged > 0);
     const filePaths = result.files.map(f => f.path);
     assert.ok(filePaths.includes('hello.txt'));
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('previewProjectRestore handles rename entries', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+
+    execFileSync('git', ['mv', 'hello.txt', 'greeting.txt'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'rename', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+
+    const result = previewProjectRestore(tmpDir, headHash);
+    assert.strictEqual(result.status, 'ok');
+
+    const renamed = result.files.filter(f => f.change === 'renamed');
+    if (renamed.length > 0) {
+      assert.ok(renamed[0].path, 'renamed entry should have path');
+      assert.ok(renamed[0].oldPath, 'renamed entry should have oldPath');
+      assert.ok(!renamed[0].path.includes('\t'), 'path must not contain raw tab');
+    } else {
+      const added = result.files.filter(f => f.change === 'added');
+      const deleted = result.files.filter(f => f.change === 'deleted');
+      assert.ok(added.length > 0 || deleted.length > 0, 'should show changes even if rename detection is off');
+    }
   } finally {
     cleanupDir(tmpDir);
   }
@@ -615,6 +817,82 @@ test('executeProjectRestore errors on invalid source', () => {
   try {
     const result = executeProjectRestore(tmpDir, 'nonexistent-ref');
     assert.strictEqual(result.status, 'error');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('previewProjectRestore includes untracked files', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    fs.writeFileSync(path.join(tmpDir, 'untracked.txt'), 'not added to git');
+
+    const result = previewProjectRestore(tmpDir, headHash);
+    assert.strictEqual(result.status, 'ok');
+    const untracked = result.files.filter(f => f.change === 'untracked');
+    assert.ok(untracked.length >= 1, 'should list untracked files');
+    assert.ok(untracked.some(f => f.path === 'untracked.txt'), 'should include untracked.txt');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('executeProjectRestore cleans untracked files by default', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'changed');
+    execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'change', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+
+    fs.writeFileSync(path.join(tmpDir, 'leftover.txt'), 'untracked leftover');
+
+    const result = executeProjectRestore(tmpDir, headHash, { preserveCurrent: false });
+    assert.strictEqual(result.status, 'restored');
+    assert.ok(result.untrackedCleaned >= 1, 'should clean untracked files');
+    assert.ok(!fs.existsSync(path.join(tmpDir, 'leftover.txt')), 'untracked file should be removed');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('executeProjectRestore filesRestored excludes untracked cleanup count', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'changed');
+    execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'change', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+
+    fs.writeFileSync(path.join(tmpDir, 'untracked1.txt'), 'u1');
+    fs.writeFileSync(path.join(tmpDir, 'untracked2.txt'), 'u2');
+
+    const result = executeProjectRestore(tmpDir, headHash, { preserveCurrent: false });
+    assert.strictEqual(result.status, 'restored');
+    assert.ok(result.untrackedCleaned >= 2, 'should clean untracked files');
+    assert.ok(result.filesRestored > 0, 'should have restored tracked files');
+    assert.ok(result.filesRestored <= result.files.filter(f => f.change !== 'untracked').length,
+      'filesRestored should not include untracked count');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('executeProjectRestore respects cleanUntracked=false', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'changed');
+    execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'change', '--no-verify'], { cwd: tmpDir, stdio: 'pipe' });
+
+    fs.writeFileSync(path.join(tmpDir, 'keep-me.txt'), 'should stay');
+
+    const result = executeProjectRestore(tmpDir, headHash, { preserveCurrent: false, cleanUntracked: false });
+    assert.strictEqual(result.status, 'restored');
+    assert.strictEqual(result.untrackedCleaned, 0, 'should not clean when disabled');
+    assert.ok(fs.existsSync(path.join(tmpDir, 'keep-me.txt')), 'untracked file should remain');
   } finally {
     cleanupDir(tmpDir);
   }
@@ -853,7 +1131,329 @@ test('getBackupStatus works for non-git directory', () => {
   }
 });
 
+// ── core/anomaly.js ─────────────────────────────────────────────
+
+console.log('\ncore/anomaly:');
+
+test('createChangeTracker returns tracker with config', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  assert.ok(Array.isArray(tracker.events));
+  assert.ok(Array.isArray(tracker.alerts));
+  assert.strictEqual(tracker.config.enabled, true);
+  assert.strictEqual(tracker.config.filesPerWindow, 20);
+  assert.strictEqual(tracker.config.windowSeconds, 10);
+});
+
+test('createChangeTracker respects proactive_alert=false', () => {
+  const cfg = {
+    proactive_alert: false,
+    alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  assert.strictEqual(tracker.config.enabled, false);
+});
+
+test('recordChange adds events to tracker', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 5, ['a.js', 'b.js']);
+  assert.strictEqual(tracker.events.length, 1);
+  assert.strictEqual(tracker.events[0].fileCount, 5);
+  recordChange(tracker, 3);
+  assert.strictEqual(tracker.events.length, 2);
+});
+
+test('recordChange skips when disabled', () => {
+  const cfg = {
+    proactive_alert: false,
+    alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 5);
+  assert.strictEqual(tracker.events.length, 0);
+});
+
+test('checkAnomaly detects high velocity', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 5, window_seconds: 60, cooldown_seconds: 1 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 3);
+  recordChange(tracker, 3);
+  const result = checkAnomaly(tracker);
+  assert.strictEqual(result.anomaly, true);
+  assert.ok(result.alert);
+  assert.strictEqual(result.alert.type, 'high_change_velocity');
+  assert.strictEqual(result.alert.fileCount, 6);
+});
+
+test('checkAnomaly returns false when below threshold', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 20, window_seconds: 60, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 3);
+  const result = checkAnomaly(tracker);
+  assert.strictEqual(result.anomaly, false);
+});
+
+test('checkAnomaly suppresses during cooldown', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 5, window_seconds: 60, cooldown_seconds: 600 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 10);
+  const first = checkAnomaly(tracker);
+  assert.strictEqual(first.anomaly, true);
+  assert.ok(!first.suppressed);
+  recordChange(tracker, 10);
+  const second = checkAnomaly(tracker);
+  assert.strictEqual(second.anomaly, true);
+  assert.strictEqual(second.suppressed, true);
+});
+
+test('getAlertStatus returns summary', () => {
+  const cfg = {
+    proactive_alert: true,
+    alert_thresholds: { files_per_window: 5, window_seconds: 60, cooldown_seconds: 1 },
+  };
+  const tracker = createChangeTracker(cfg);
+  recordChange(tracker, 10);
+  checkAnomaly(tracker);
+  const status = getAlertStatus(tracker);
+  assert.strictEqual(status.enabled, true);
+  assert.strictEqual(status.hasActiveAlert, true);
+  assert.ok(status.latestAlert);
+  assert.strictEqual(status.alertCount, 1);
+});
+
+test('getAlertStatus with disabled tracker', () => {
+  const cfg = {
+    proactive_alert: false,
+    alert_thresholds: { files_per_window: 5, window_seconds: 60, cooldown_seconds: 60 },
+  };
+  const tracker = createChangeTracker(cfg);
+  const status = getAlertStatus(tracker);
+  assert.strictEqual(status.enabled, false);
+  assert.strictEqual(status.hasActiveAlert, false);
+});
+
+test('saveAlert and loadActiveAlert round-trip', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const alert = {
+      type: 'high_change_velocity',
+      timestamp: new Date().toISOString(),
+      fileCount: 25,
+      windowSeconds: 10,
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    };
+    saveAlert(tmpDir, alert);
+    const loaded = loadActiveAlert(tmpDir);
+    assert.ok(loaded);
+    assert.strictEqual(loaded.type, 'high_change_velocity');
+    assert.strictEqual(loaded.fileCount, 25);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('loadActiveAlert returns null for expired alert without deleting file', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const alert = {
+      type: 'high_change_velocity',
+      timestamp: new Date(Date.now() - 600000).toISOString(),
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    };
+    saveAlert(tmpDir, alert);
+    const loaded = loadActiveAlert(tmpDir);
+    assert.strictEqual(loaded, null);
+    assert.ok(fs.existsSync(alertFilePath(tmpDir)), 'expired file should still exist (load is read-only)');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('clearAlert removes alert file', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const alert = {
+      type: 'test',
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    };
+    saveAlert(tmpDir, alert);
+    assert.ok(loadActiveAlert(tmpDir));
+    clearAlert(tmpDir);
+    assert.strictEqual(loadActiveAlert(tmpDir), null);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('clearExpiredAlert removes expired file but leaves active ones', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const expired = {
+      type: 'high_change_velocity',
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    };
+    saveAlert(tmpDir, expired);
+    assert.ok(fs.existsSync(alertFilePath(tmpDir)));
+    const removed = clearExpiredAlert(tmpDir);
+    assert.strictEqual(removed, true);
+    assert.ok(!fs.existsSync(alertFilePath(tmpDir)));
+
+    const active = {
+      type: 'high_change_velocity',
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+    };
+    saveAlert(tmpDir, active);
+    const removedActive = clearExpiredAlert(tmpDir);
+    assert.strictEqual(removedActive, false);
+    assert.ok(fs.existsSync(alertFilePath(tmpDir)));
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+// ── core/dashboard.js ───────────────────────────────────────────
+
+console.log('\ncore/dashboard:');
+
+test('formatBytes formats correctly', () => {
+  assert.strictEqual(formatBytes(500), '500B');
+  assert.strictEqual(formatBytes(1536), '1.5KB');
+  assert.strictEqual(formatBytes(1048576), '1.0MB');
+  assert.strictEqual(formatBytes(1073741824), '1.0GB');
+});
+
+test('relativeTime returns human-readable time', () => {
+  const now = new Date().toISOString();
+  const result = relativeTime(now);
+  assert.ok(result.endsWith('s ago') || result === 'just now');
+  assert.strictEqual(relativeTime(null), null);
+});
+
+test('getDashboard returns structured result for git repo', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const cfg = { protect: [], ignore: [], secrets_patterns: [], backup_strategy: 'git' };
+    createGitSnapshot(tmpDir, cfg, { branchRef: 'refs/guard/auto-backup' });
+
+    const dash = getDashboard(tmpDir);
+    assert.ok(typeof dash.strategy === 'string');
+    assert.ok(typeof dash.counts === 'object');
+    assert.ok(typeof dash.counts.git.commits === 'number');
+    assert.ok(typeof dash.counts.shadow.snapshots === 'number');
+    assert.ok(typeof dash.diskUsage === 'object');
+    assert.ok(typeof dash.diskUsage.git.display === 'string');
+    assert.ok(typeof dash.protectionScope === 'object');
+    assert.ok(typeof dash.protectionScope.fileCount === 'number');
+    assert.ok(typeof dash.health === 'object');
+    assert.ok(['healthy', 'warning', 'critical'].includes(dash.health.status));
+    assert.ok(Array.isArray(dash.health.issues));
+    assert.ok(typeof dash.alerts === 'object');
+    assert.ok(typeof dash.watcher === 'object');
+    assert.ok(typeof dash.disk === 'object');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('getDashboard works for non-git directory', () => {
+  const tmpDir = createTempDir();
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'test.txt'), 'hello');
+    const dash = getDashboard(tmpDir);
+    assert.ok(typeof dash.strategy === 'string');
+    assert.ok(typeof dash.health === 'object');
+    assert.ok(dash.protectionScope.fileCount >= 0);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('getDashboard includes active alert in health issues', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const alert = {
+      type: 'high_change_velocity',
+      timestamp: new Date().toISOString(),
+      fileCount: 30,
+      windowSeconds: 10,
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+      recommendation: 'Check recent changes',
+    };
+    saveAlert(tmpDir, alert);
+
+    const dash = getDashboard(tmpDir);
+    assert.strictEqual(dash.alerts.active, true);
+    assert.ok(dash.alerts.latest);
+    assert.ok(dash.health.issues.some(i => i.includes('Active alert')));
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('getDashboard reports shadow copy count', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const cfg = { protect: [], ignore: [], secrets_patterns: [], backup_strategy: 'shadow' };
+    createShadowCopy(tmpDir, cfg);
+    createShadowCopy(tmpDir, cfg);
+
+    const dash = getDashboard(tmpDir);
+    assert.ok(dash.counts.shadow.snapshots >= 1);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('dirSizeBytes returns size for directory', () => {
+  const tmpDir = createTempDir();
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'hello world');
+    const size = dirSizeBytes(tmpDir);
+    assert.ok(size > 0);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 // ── Summary ─────────────────────────────────────────────────────
+
+test('executeProjectRestore with only untracked files and cleanUntracked=false is a no-op', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    fs.writeFileSync(path.join(tmpDir, 'keep-me.txt'), 'should stay');
+
+    const result = executeProjectRestore(tmpDir, headHash, { preserveCurrent: true, cleanUntracked: false });
+    assert.strictEqual(result.status, 'restored');
+    assert.strictEqual(result.filesRestored, 0);
+    assert.strictEqual(result.files.length, 0, 'no files should be reported as restored');
+    assert.strictEqual(result.preRestoreRef, null, 'no pre-restore snapshot should be created for a no-op');
+    assert.ok(fs.existsSync(path.join(tmpDir, 'keep-me.txt')), 'untracked file should remain');
+
+    const refs = execFileSync('git', ['for-each-ref', 'refs/guard/pre-restore/', '--format=%(refname)'], {
+      cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
+    }).trim();
+    assert.strictEqual(refs, '', 'no pre-restore refs should be created');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
 
 console.log(`\n${passed + failed} tests: \x1b[32m${passed} passed\x1b[0m` + (failed ? `, \x1b[31m${failed} failed\x1b[0m` : ''));
 process.exit(failed > 0 ? 1 : 0);
