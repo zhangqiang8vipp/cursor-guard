@@ -4,6 +4,72 @@ Replace `<path>` / `<file>` with real paths. Run from repository root. **Review 
 
 ---
 
+## Preserve current version before restore / 恢复前保留当前版本
+
+> **Default behavior**: Every restore operation must first preserve current state.
+>
+> **默认行为**：每次恢复操作前必须先保留当前版本。
+
+### Single file / 单文件
+
+```powershell
+# Preserve current file state via temp index (does not touch staging area)
+# 通过临时索引保留当前文件（不影响暂存区）
+$guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
+$env:GIT_INDEX_FILE = $guardIdx
+git read-tree HEAD
+git add -- <file>
+$tree = git write-tree
+$env:GIT_INDEX_FILE = $null
+Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
+$commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore"
+git update-ref refs/guard/pre-restore $commit
+Write-Host "Pre-restore backup: $($commit.Substring(0,7))"
+```
+
+### Entire project / 整个项目
+
+```powershell
+# Same as above but with git add -A
+$guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
+$env:GIT_INDEX_FILE = $guardIdx
+git read-tree HEAD
+git add -A
+$tree = git write-tree
+$env:GIT_INDEX_FILE = $null
+Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
+$commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore"
+git update-ref refs/guard/pre-restore $commit
+Write-Host "Pre-restore backup: $($commit.Substring(0,7))"
+```
+
+### Non-Git fallback (shadow copy) / 非 Git 备选方案
+
+```powershell
+$ts = Get-Date -Format 'yyyyMMdd_HHmmss'
+$dir = ".cursor-guard-backup/pre-restore-$ts"
+New-Item -ItemType Directory -Force $dir | Out-Null
+Copy-Item "<file>" "$dir/<filename>"
+Write-Host "Pre-restore shadow copy: $dir"
+```
+
+### Undo a restore (recover pre-restore state) / 撤销恢复（回到恢复前的状态）
+
+```bash
+# Restore single file to pre-restore state
+# 将单个文件恢复到恢复前的状态
+git restore --source=refs/guard/pre-restore -- <file>
+
+# Restore entire project to pre-restore state
+# 将整个项目恢复到恢复前的状态
+git restore --source=refs/guard/pre-restore -- .
+
+# From shadow copy / 从影子拷贝恢复
+Copy-Item ".cursor-guard-backup/pre-restore-<ts>/<file>" "<original-path>"
+```
+
+---
+
 ## Inspect current state
 
 ```bash

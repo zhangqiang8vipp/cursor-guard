@@ -157,7 +157,9 @@ The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` 
 
 ## Recovery
 
-If something goes wrong, just tell the AI agent in natural language:
+If something goes wrong, just tell the AI agent in natural language.
+
+**Default behavior**: Before any restore, the agent automatically preserves your current version so you can undo the restore if needed. You don't need to ask for this — it happens by default. To skip, explicitly say "don't preserve current version" or "skip backup before restore".
 
 ### By time
 
@@ -176,7 +178,14 @@ If something goes wrong, just tell the AI agent in natural language:
 > "restore src/app.py to 10 minutes ago"
 > "restore src/app.py to the previous version"
 
-The agent will automatically search Git history and auto-backup snapshots, show you matching versions to choose from, and restore after your confirmation.
+The agent will:
+1. **Preserve your current version** first (unless you opt out)
+2. Search Git history and auto-backup snapshots
+3. Show matching versions for you to choose
+4. Restore after your confirmation
+5. Report both the pre-restore backup ref and the restore result
+
+If the pre-restore backup fails, the agent will **not** proceed — it will wait for your explicit confirmation before restoring without a safety net.
 
 ### Recovery priority
 

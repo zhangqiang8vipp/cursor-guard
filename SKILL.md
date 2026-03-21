@@ -302,7 +302,104 @@ Recommended: #1 (closest to target time). Restore this one? / 推荐 #1（最接
   - If still nothing, report clearly: "No snapshot found before that time. The earliest available is [hash] at [time]. Do you want to use it?"
 - **Never silently pick a version.** Always show and confirm.
 
-### Step 4: Execute Recovery
+### Step 4: Preserve Current Version Before Restore (MANDATORY)
+
+> **Rule: `restore_requires_preserve_current_by_default`**
+>
+> Every restore operation MUST first preserve the current state, THEN restore. This is non-negotiable unless the user explicitly opts out.
+
+**4a. Check if user opted out**
+
+Skip preservation ONLY if the user explicitly said one of:
+- "不保留当前版本" / "不用备份当前版本" / "直接覆盖恢复"
+- "skip backup before restore" / "don't preserve current" / "just restore"
+
+If opted out, inform: "你已明确表示不保留当前版本，我将直接恢复。" and jump to Step 5.
+
+**4b. Determine preservation scope**
+
+| Restore scope | What to preserve |
+|---------------|-----------------|
+| Single file | Only that file's current state |
+| Multiple files | All files that will be overwritten |
+| Entire project | Full project snapshot |
+
+**4c. Check if there are changes to preserve**
+
+```bash
+# For single file: check if file differs from the restore target
+git diff <target-commit> -- <file>
+
+# For project: check overall status
+git status --porcelain
+```
+
+If the file/project is **identical** to the restore target (no diff), inform:
+"当前版本与目标版本相同，无需保留，跳过备份。" / "Current version is identical to target, no backup needed."
+Then jump to Step 5.
+
+If the working tree is clean AND HEAD matches the restore target, inform:
+"当前无可保留变更，直接恢复。" / "No changes to preserve, proceeding with restore."
+Then jump to Step 5.
+
+**4d. Create preservation snapshot**
+
+Use the same temp-index plumbing as §2a to avoid polluting the user's staging area:
+
+**Git repo (preferred):**
+
+```powershell
+$guardIdx = Join-Path (git rev-parse --git-dir) "guard-pre-restore-index"
+$env:GIT_INDEX_FILE = $guardIdx
+
+# For single file: read HEAD tree then update just the target file
+git read-tree HEAD
+git add -- <file>
+
+# For project: snapshot everything
+git read-tree HEAD
+git add -A
+
+$tree = git write-tree
+$env:GIT_INDEX_FILE = $null
+Remove-Item $guardIdx -Force -ErrorAction SilentlyContinue
+
+$commit = git commit-tree $tree -p HEAD -m "guard: preserve current before restore to <target>"
+git update-ref refs/guard/pre-restore $commit
+```
+
+Record the short hash and the ref `refs/guard/pre-restore`.
+
+**Non-Git fallback (shadow copy):**
+
+```powershell
+$ts = Get-Date -Format 'yyyyMMdd_HHmmss'
+$dir = ".cursor-guard-backup/pre-restore-$ts"
+New-Item -ItemType Directory -Force $dir | Out-Null
+Copy-Item "<file>" "$dir/<file>"
+```
+
+**4e. Handle preservation failure**
+
+If the snapshot fails (e.g. disk full, permission error):
+1. **Do NOT proceed with restore.** Default is to abort.
+2. Inform the user: "当前版本保留失败。默认不继续恢复；如果你确认不保留当前状态也要继续，请明确说明。" / "Failed to preserve current version. Restore aborted by default. If you want to continue without backup, please confirm explicitly."
+3. Only proceed if the user explicitly confirms: "即使不保留也继续" / "continue without backup".
+
+**4f. Inform user of preservation result**
+
+Before executing restore, tell the user:
+```
+在恢复前，我已保留当前版本：
+- 备份引用: refs/guard/pre-restore (abc1234)
+- 恢复方式: git restore --source=refs/guard/pre-restore -- <file>
+
+Current version preserved before restore:
+- Backup ref: refs/guard/pre-restore (abc1234)
+- To undo: git restore --source=refs/guard/pre-restore -- <file>
+```
+
+### Step 5: Execute Recovery
 
 **Single file recovery:**
 
@@ -330,12 +427,23 @@ Get-ChildItem .cursor-guard-backup/ -Directory | Sort-Object Name -Descending
 Copy-Item ".cursor-guard-backup/<timestamp>/<file>" "<original-path>"
 ```
 
-### Step 5: Verify & Report
+### Step 6: Verify & Report
 
 After restoring, always:
 1. Show the restored file content (or diff) so the user can verify
-2. Report the recovery in the status block (§6)
-3. Suggest creating a new snapshot of the current (restored) state
+2. Report the recovery in the status block (§6a), including **both** the pre-restore backup ref and the restore target
+3. Tell the user how to undo the restore if needed
+
+**Status block for restore operations:**
+
+```markdown
+**Cursor Guard — restore status**
+- **Pre-restore backup**: `refs/guard/pre-restore` (`<short-hash>`) or `shadow copy at .cursor-guard-backup/pre-restore-<ts>/` or `skipped (user opted out)` or `skipped (no changes)`
+- **Restored to**: `<target-hash>` / `<target description>`
+- **Scope**: single file `<path>` / N files / entire project
+- **Result**: success / failed
+- **To undo restore**: `git restore --source=refs/guard/pre-restore -- <file>`
+```
 
 ---
 
@@ -360,15 +468,17 @@ Skip the block for unrelated turns.
 
 1. **MUST snapshot before high-risk ops** — git commit or shadow copy. No exceptions unless user explicitly declines.
 2. **MUST Read before Write** — never overwrite a file the agent hasn't read in the current turn.
-3. **Do not** treat Timeline/Checkpoints as the only or primary recovery path.
-4. **Do not** recommend Checkpoints as long-term or sole backup.
-5. **No automatic push** to remotes; local commits only unless user requests push.
-6. **Be honest** about limits: terminal side effects, binary files, and non-tracked paths are not fully reversible without prior commits.
-7. **Do not** run `git clean`, `reset --hard`, or other destructive Git commands unless the user clearly asked; always show what would be affected first.
-8. **Do not** delete files via the Delete tool without explicit per-file confirmation from the user.
-9. **Do not** modify or delete `.cursor-guard.json` unless the user explicitly asks — accidental config changes silently alter protection scope.
-10. **Use `--no-verify`** on all guard snapshot commits to bypass pre-commit hooks that could fail or modify files.
-11. **Concurrent agents**: if multiple Agent threads are active, warn the user to avoid simultaneous writes to the same file. Snapshots cannot prevent race conditions between parallel agents.
+3. **MUST preserve current version before restore** — every restore operation must first snapshot the current state (§5a Step 4). Skip ONLY when: (a) user explicitly opts out, (b) current state is identical to target, or (c) no changes exist. If preservation fails, abort restore by default.
+4. **Do not** treat Timeline/Checkpoints as the only or primary recovery path.
+5. **Do not** recommend Checkpoints as long-term or sole backup.
+6. **No automatic push** to remotes; local commits only unless user requests push.
+7. **Be honest** about limits: terminal side effects, binary files, and non-tracked paths are not fully reversible without prior commits.
+8. **Do not** run `git clean`, `reset --hard`, or other destructive Git commands unless the user clearly asked; always show what would be affected first.
+9. **Do not** delete files via the Delete tool without explicit per-file confirmation from the user.
+10. **Do not** modify or delete `.cursor-guard.json` unless the user explicitly asks — accidental config changes silently alter protection scope.
+11. **Use `--no-verify`** on all guard snapshot commits to bypass pre-commit hooks that could fail or modify files.
+12. **Concurrent agents**: if multiple Agent threads are active, warn the user to avoid simultaneous writes to the same file. Snapshots cannot prevent race conditions between parallel agents.
+13. **Preservation must not pollute** — all pre-restore backups use temp index + dedicated ref (`refs/guard/pre-restore`). The user's staging area, working tree, and commit history on their branch are never modified by the preservation process.
 
 ---
 
