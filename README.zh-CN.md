@@ -153,18 +153,32 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 
 ## 自动备份脚本
 
-在使用 Cursor 时，在**单独的终端窗口**中运行：
+在使用 Cursor 时，在**单独的终端窗口**中运行。跨平台——需要 Node.js >= 18。
 
-```powershell
-.\auto-backup.ps1 -Path "D:\MyProject"
+```bash
+# 通过 npx（npm 安装后）
+npx cursor-guard-backup --path /my/project
+npx cursor-guard-backup --path /my/project --interval 30
 
-# 自定义间隔（默认 60 秒）：
-.\auto-backup.ps1 -Path "D:\MyProject" -IntervalSeconds 30
+# Windows PowerShell
+.\references\auto-backup.ps1 -Path "D:\MyProject"
+
+# macOS / Linux
+./references/auto-backup.sh /my/project
 ```
 
-脚本使用 Git 底层命令快照到 `cursor-guard/auto-backup` 分支——不会切换分支，也不会影响你的工作索引。
+脚本使用 Git 底层命令快照到 `cursor-guard/auto-backup` 分支——不会切换分支，也不会影响你的工作索引。支持 `shadow` 模式用于非 Git 目录。
 
-> **注意**：请在独立的 PowerShell 窗口中运行此脚本，不要在 Cursor 的集成终端中运行，因为 Cursor 终端可能干扰 Git 底层命令。
+### 健康检查
+
+```bash
+npx cursor-guard-doctor --path /my/project
+
+# Windows: .\references\guard-doctor.ps1 -Path "D:\MyProject"
+# macOS/Linux: ./references/guard-doctor.sh /my/project
+```
+
+> **注意**：请在独立终端窗口中运行备份/检查脚本，不要在 Cursor 集成终端中运行。
 
 ---
 

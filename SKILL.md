@@ -522,9 +522,29 @@ Skip the block for unrelated turns.
 ## Further Reading
 
 - Recovery commands: [references/recovery.md](references/recovery.md)
-- Auto-backup script: [references/auto-backup.ps1](references/auto-backup.ps1)
+- Auto-backup (Node.js core): [references/lib/auto-backup.js](references/lib/auto-backup.js)
+- Guard doctor (Node.js core): [references/lib/guard-doctor.js](references/lib/guard-doctor.js)
+- Shared utilities: [references/lib/utils.js](references/lib/utils.js)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)
 - Config field reference (EN): [references/config-reference.md](references/config-reference.md)
 - 配置参数说明（中文）: [references/config-reference.zh-CN.md](references/config-reference.zh-CN.md)
-- Health check: [references/guard-doctor.ps1](references/guard-doctor.ps1) — run `.\guard-doctor.ps1 -Path .` to verify setup
+
+### Running scripts
+
+Cross-platform (requires Node.js >= 18):
+
+```bash
+# Via npx (if installed from npm)
+npx cursor-guard-backup --path /my/project --interval 60
+npx cursor-guard-doctor --path /my/project
+
+# Via thin wrapper (from skill directory)
+# Windows PowerShell:
+.\references\auto-backup.ps1 -Path "D:\MyProject"
+.\references\guard-doctor.ps1 -Path "D:\MyProject"
+
+# macOS / Linux:
+./references/auto-backup.sh /my/project
+./references/guard-doctor.sh /my/project
+```

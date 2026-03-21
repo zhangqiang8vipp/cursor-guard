@@ -1,0 +1,233 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const {
+  color, loadConfig, gitAvailable, git, isGitRepo, gitDir, gitVersion,
+  walkDir, matchesAny, diskFreeGB,
+} = require('./utils');
+
+function runDoctor(projectDir) {
+  let pass = 0, warn = 0, fail = 0;
+
+  function check(name, status, detail) {
+    const tag = `[${status}]`;
+    const line = detail ? `  ${tag} ${name} — ${detail}` : `  ${tag} ${name}`;
+    switch (status) {
+      case 'PASS': pass++; console.log(color.green(line)); break;
+      case 'WARN': warn++; console.log(color.yellow(line)); break;
+      case 'FAIL': fail++; console.log(color.red(line)); break;
+      default: console.log(line);
+    }
+  }
+
+  console.log('');
+  console.log(color.cyan('=== Cursor Guard Doctor ==='));
+  console.log(color.cyan(`  Target: ${projectDir}`));
+  console.log('');
+
+  // 1. Git availability
+  const hasGit = gitAvailable();
+  if (hasGit) {
+    check('Git installed', 'PASS', `version ${gitVersion()}`);
+  } else {
+    check('Git installed', 'WARN', 'git not found in PATH; only shadow strategy available');
+  }
+
+  // 2. Git repo status
+  let repo = false;
+  let gDir = null;
+  let isWorktree = false;
+  if (hasGit) {
+    repo = isGitRepo(projectDir);
+    if (repo) {
+      gDir = gitDir(projectDir);
+      try {
+        const commonDir = git(['rev-parse', '--git-common-dir'], { cwd: projectDir, allowFail: true });
+        const currentDir = git(['rev-parse', '--git-dir'], { cwd: projectDir, allowFail: true });
+        isWorktree = commonDir && currentDir && commonDir !== currentDir;
+      } catch { /* ignore */ }
+      if (isWorktree) {
+        check('Git repository', 'PASS', `worktree detected (git-dir: ${gDir})`);
+      } else {
+        check('Git repository', 'PASS', 'standard repo');
+      }
+    } else {
+      check('Git repository', 'WARN', 'not a Git repo; git/both strategies won\'t work');
+    }
+  }
+
+  // 3. Config file
+  const { cfg, loaded, error } = loadConfig(projectDir);
+  if (loaded) {
+    check('Config file', 'PASS', '.cursor-guard.json found and valid JSON');
+  } else if (error) {
+    check('Config file', 'FAIL', `JSON parse error: ${error}`);
+  } else {
+    check('Config file', 'WARN', 'no .cursor-guard.json found; using defaults (protect everything)');
+  }
+
+  // 4. Strategy vs environment
+  const strategy = cfg.backup_strategy;
+  if (strategy === 'git' || strategy === 'both') {
+    if (!repo) {
+      check('Strategy compatibility', 'FAIL', `backup_strategy='${strategy}' but directory is not a Git repo`);
+    } else {
+      check('Strategy compatibility', 'PASS', `backup_strategy='${strategy}' and Git repo exists`);
+    }
+  } else if (strategy === 'shadow') {
+    check('Strategy compatibility', 'PASS', "backup_strategy='shadow' — no Git required");
+  } else {
+    check('Strategy compatibility', 'FAIL', `unknown backup_strategy='${strategy}' (must be git/shadow/both)`);
+  }
+
+  // 5. Backup branch
+  if (repo) {
+    const branchRef = 'refs/heads/cursor-guard/auto-backup';
+    const exists = git(['rev-parse', '--verify', branchRef], { cwd: projectDir, allowFail: true });
+    if (exists) {
+      const count = git(['rev-list', '--count', branchRef], { cwd: projectDir, allowFail: true }) || '?';
+      check('Backup branch', 'PASS', `cursor-guard/auto-backup exists (${count} commits)`);
+    } else {
+      check('Backup branch', 'WARN', 'cursor-guard/auto-backup not created yet (will be created on first backup)');
+    }
+  }
+
+  // 6. Guard refs
+  if (repo) {
+    const refs = git(['for-each-ref', 'refs/guard/', '--format=%(refname)'], { cwd: projectDir, allowFail: true });
+    if (refs) {
+      const refList = refs.split('\n').filter(Boolean);
+      const preRestoreCount = refList.filter(r => r.includes('pre-restore/')).length;
+      check('Guard refs', 'PASS', `${refList.length} ref(s) found (${preRestoreCount} pre-restore snapshots)`);
+    } else {
+      check('Guard refs', 'WARN', 'no guard refs yet (created on first snapshot or restore)');
+    }
+  }
+
+  // 7. Shadow copy directory
+  const backupDir = path.join(projectDir, '.cursor-guard-backup');
+  if (fs.existsSync(backupDir)) {
+    let snapCount = 0;
+    let totalBytes = 0;
+    try {
+      const dirs = fs.readdirSync(backupDir, { withFileTypes: true })
+        .filter(d => d.isDirectory() && (/^\d{8}_\d{6}$/.test(d.name) || d.name.startsWith('pre-restore-')));
+      snapCount = dirs.length;
+    } catch { /* ignore */ }
+    try {
+      const allFiles = walkDir(backupDir, backupDir);
+      for (const f of allFiles) {
+        try { totalBytes += fs.statSync(f.full).size; } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+    check('Shadow copies', 'PASS', `${snapCount} snapshot(s), ${totalMB} MB total`);
+  } else {
+    check('Shadow copies', 'WARN', '.cursor-guard-backup/ not found (will be created on first shadow backup)');
+  }
+
+  // 8. .gitignore / exclude coverage
+  if (repo) {
+    const ignored = git(['check-ignore', '.cursor-guard-backup/test'], { cwd: projectDir, allowFail: true });
+    if (ignored) {
+      check('Backup dir ignored', 'PASS', '.cursor-guard-backup/ is git-ignored');
+    } else {
+      check('Backup dir ignored', 'WARN', '.cursor-guard-backup/ may NOT be git-ignored — backup changes could trigger commits');
+    }
+  }
+
+  // 9. Config field validation
+  if (loaded) {
+    const validStrategies = ['git', 'shadow', 'both'];
+    if (cfg.backup_strategy && !validStrategies.includes(cfg.backup_strategy)) {
+      check('Config: backup_strategy', 'FAIL', `invalid value '${cfg.backup_strategy}'`);
+    }
+    const validPreRestore = ['always', 'ask', 'never'];
+    if (cfg.pre_restore_backup && !validPreRestore.includes(cfg.pre_restore_backup)) {
+      check('Config: pre_restore_backup', 'FAIL', `invalid value '${cfg.pre_restore_backup}'`);
+    } else if (cfg.pre_restore_backup === 'never') {
+      check('Config: pre_restore_backup', 'WARN', "set to 'never' — restores won't auto-preserve current version");
+    }
+    if (cfg.auto_backup_interval_seconds && cfg.auto_backup_interval_seconds < 5) {
+      check('Config: interval', 'WARN', `${cfg.auto_backup_interval_seconds}s is below minimum (5s), will be clamped`);
+    }
+    if (cfg.retention && cfg.retention.mode) {
+      const validModes = ['days', 'count', 'size'];
+      if (!validModes.includes(cfg.retention.mode)) {
+        check('Config: retention.mode', 'FAIL', `invalid value '${cfg.retention.mode}'`);
+      }
+    }
+    if (cfg.git_retention && cfg.git_retention.mode) {
+      const validGitModes = ['days', 'count'];
+      if (!validGitModes.includes(cfg.git_retention.mode)) {
+        check('Config: git_retention.mode', 'FAIL', `invalid value '${cfg.git_retention.mode}'`);
+      }
+    }
+  }
+
+  // 10. Protect / Ignore effectiveness
+  if (loaded && cfg.protect.length > 0) {
+    const allFiles = walkDir(projectDir, projectDir);
+    let protectedCount = 0;
+    for (const f of allFiles) {
+      if (matchesAny(cfg.protect, f.rel)) protectedCount++;
+    }
+    check('Protect patterns', 'PASS', `${protectedCount} / ${allFiles.length} files matched by protect patterns`);
+  }
+
+  // 11. Disk space
+  const freeGB = diskFreeGB(projectDir);
+  if (freeGB !== null) {
+    const rounded = freeGB.toFixed(1);
+    if (freeGB < 1) {
+      check('Disk space', 'FAIL', `${rounded} GB free — critically low`);
+    } else if (freeGB < 5) {
+      check('Disk space', 'WARN', `${rounded} GB free`);
+    } else {
+      check('Disk space', 'PASS', `${rounded} GB free`);
+    }
+  } else {
+    check('Disk space', 'WARN', 'could not determine free space');
+  }
+
+  // 12. Lock file
+  const lockFile = gDir
+    ? path.join(gDir, 'cursor-guard.lock')
+    : path.join(backupDir, 'cursor-guard.lock');
+  if (fs.existsSync(lockFile)) {
+    let content = '';
+    try { content = fs.readFileSync(lockFile, 'utf-8').trim(); } catch { /* ignore */ }
+    check('Lock file', 'WARN', `lock file exists — another instance may be running. ${content}`);
+  } else {
+    check('Lock file', 'PASS', 'no lock file (no running instance)');
+  }
+
+  // 13. Node.js version
+  const nodeVer = process.version;
+  const major = parseInt(nodeVer.slice(1), 10);
+  if (major >= 18) {
+    check('Node.js', 'PASS', `${nodeVer}`);
+  } else {
+    check('Node.js', 'WARN', `${nodeVer} — recommended >=18`);
+  }
+
+  // Summary
+  console.log('');
+  console.log(color.cyan('=== Summary ==='));
+  const summaryColor = fail > 0 ? 'red' : warn > 0 ? 'yellow' : 'green';
+  console.log(color[summaryColor](`  PASS: ${pass}  |  WARN: ${warn}  |  FAIL: ${fail}`));
+  console.log('');
+  if (fail > 0) {
+    console.log(color.red('  Fix FAIL items before relying on Cursor Guard.'));
+  } else if (warn > 0) {
+    console.log(color.yellow('  Review WARN items to ensure everything works as expected.'));
+  } else {
+    console.log(color.green('  All checks passed. Cursor Guard is ready.'));
+  }
+  console.log('');
+
+  return fail > 0 ? 1 : 0;
+}
+
+module.exports = { runDoctor };

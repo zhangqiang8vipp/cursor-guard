@@ -153,18 +153,32 @@ Regardless of config, you can always override per-request:
 
 ## Auto-Backup Script
 
-Run in a separate terminal while working in Cursor:
+Run in a separate terminal while working in Cursor. Cross-platform — requires Node.js >= 18.
 
-```powershell
-.\auto-backup.ps1 -Path "D:\MyProject"
+```bash
+# Via npx (after npm install)
+npx cursor-guard-backup --path /my/project
+npx cursor-guard-backup --path /my/project --interval 30
 
-# Custom interval (default 60s):
-.\auto-backup.ps1 -Path "D:\MyProject" -IntervalSeconds 30
+# Windows PowerShell
+.\references\auto-backup.ps1 -Path "D:\MyProject"
+
+# macOS / Linux
+./references/auto-backup.sh /my/project
 ```
 
-The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` branch — it never switches branches or touches your working index.
+The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` branch — it never switches branches or touches your working index. Supports `shadow` mode for non-Git directories.
 
-> **Note**: Run this script in a separate PowerShell window, NOT inside Cursor's integrated terminal. Cursor's terminal may interfere with Git plumbing commands.
+### Health Check
+
+```bash
+npx cursor-guard-doctor --path /my/project
+
+# Windows: .\references\guard-doctor.ps1 -Path "D:\MyProject"
+# macOS/Linux: ./references/guard-doctor.sh /my/project
+```
+
+> **Note**: Run backup/doctor scripts in a separate terminal, NOT inside Cursor's integrated terminal.
 
 ---
 
