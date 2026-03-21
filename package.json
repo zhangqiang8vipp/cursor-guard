@@ -35,8 +35,19 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "references/",
-    "!references/lib/utils.test.js"
+    "references/auto-backup.ps1",
+    "references/auto-backup.sh",
+    "references/guard-doctor.ps1",
+    "references/guard-doctor.sh",
+    "references/bin/",
+    "references/lib/auto-backup.js",
+    "references/lib/guard-doctor.js",
+    "references/lib/utils.js",
+    "references/config-reference.md",
+    "references/config-reference.zh-CN.md",
+    "references/cursor-guard.example.json",
+    "references/cursor-guard.schema.json",
+    "references/recovery.md"
   ],
   "main": "SKILL.md"
 }
