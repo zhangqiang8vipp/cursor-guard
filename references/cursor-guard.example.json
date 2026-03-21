@@ -1,9 +1,9 @@
 {
-  "_comment_schema": "Optional: add \"$schema\" pointing to cursor-guard.schema.json for IDE validation. Adjust the path accordingly. | 可选：添加 \"$schema\" 指向 cursor-guard.schema.json 以启用 IDE 校验，请根据实际位置调整路径。",
+  "_comment_schema_en": "Optional: add \"$schema\" pointing to cursor-guard.schema.json for IDE validation. Adjust the path accordingly.",
+  "_comment_schema_zh": "可选：添加 \"$schema\" 指向 cursor-guard.schema.json 以启用 IDE 校验，请根据实际位置调整路径。",
 
-  "_comment_mode": "Two modes: whitelist ('protect') or blacklist ('ignore'). If both are set, 'protect' is checked first, then 'ignore' excludes from it. | 两种模式：白名单 (protect) 或黑名单 (ignore)。同时设置时，先匹配 protect，再用 ignore 排除。",
-
-  "_comment_protect": "Glob patterns for files to protect. If empty or missing, all files are protected. | 需要保护的文件 glob 模式。留空或不设置则保护所有文件。",
+  "_comment_protect_en": "Glob patterns for files to protect. If empty or missing, all files are protected.",
+  "_comment_protect_zh": "需要保护的文件 glob 模式。留空或不设置则保护所有文件。",
   "protect": [
     "src/**",
     "lib/**",
@@ -14,7 +14,8 @@
     ".env.example"
   ],
 
-  "_comment_ignore": "Glob patterns for files to exclude from protection, even if matched by 'protect'. | 排除保护的文件 glob 模式，即使被 protect 匹配也会跳过。",
+  "_comment_ignore_en": "Glob patterns for files to exclude from protection, even if matched by 'protect'.",
+  "_comment_ignore_zh": "排除保护的文件 glob 模式，即使被 protect 匹配也会跳过。",
   "ignore": [
     "node_modules/**",
     "dist/**",
@@ -26,13 +27,16 @@
     ".cursor-guard-backup/**"
   ],
 
-  "_comment_backup_strategy": "'git': local commits to dedicated branch (default). 'shadow': file copies to .cursor-guard-backup/. 'both': git + shadow. | 'git'：提交到专用分支（默认）。'shadow'：文件拷贝到 .cursor-guard-backup/。'both'：两者同时。",
+  "_comment_backup_strategy_en": "'git' (default): local commits to dedicated branch. 'shadow': file copies to .cursor-guard-backup/. 'both': git + shadow.",
+  "_comment_backup_strategy_zh": "'git'（默认）：提交到专用分支。'shadow'：文件拷贝到 .cursor-guard-backup/。'both'：两者同时。",
   "backup_strategy": "git",
 
-  "_comment_auto_backup_interval_seconds": "Interval in seconds for auto-backup.ps1 to check for changes. Minimum 5. | 自动备份脚本检查变更的间隔秒数，最小 5。",
+  "_comment_auto_backup_interval_seconds_en": "Interval in seconds for auto-backup.ps1 to check for changes. Minimum 5.",
+  "_comment_auto_backup_interval_seconds_zh": "自动备份脚本检查变更的间隔秒数，最小 5。",
   "auto_backup_interval_seconds": 60,
 
-  "_comment_secrets_patterns": "Glob patterns for sensitive files — auto-excluded from backup even if matched by 'protect'. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*. | 敏感文件 glob 模式——即使被 protect 匹配也自动排除备份。内置默认值：.env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*。",
+  "_comment_secrets_patterns_en": "Glob patterns for sensitive files — auto-excluded from backup even if matched by 'protect'. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*.",
+  "_comment_secrets_patterns_zh": "敏感文件 glob 模式——即使被 protect 匹配也自动排除备份。内置默认值：.env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*。",
   "secrets_patterns": [
     ".env",
     ".env.*",
@@ -40,11 +44,14 @@
     "*.pem"
   ],
 
-  "_comment_pre_restore_backup": "'always' (default): auto-preserve current version before every restore. 'ask': prompt user each time to decide. 'never': skip preservation (not recommended). User's explicit instruction in the message always overrides this config. | 'always'（默认）：恢复前自动保留当前版本。'ask'：每次恢复前询问用户。'never'：不保留（不推荐）。用户在消息中的明确指令始终优先于此配置。",
+  "_comment_pre_restore_backup_en": "'always' (default): auto-preserve current version before every restore. 'ask': prompt user each time. 'never': skip (not recommended). User's explicit message instruction always overrides this.",
+  "_comment_pre_restore_backup_zh": "'always'（默认）：恢复前自动保留当前版本。'ask'：每次恢复前询问用户。'never'：不保留（不推荐）。用户在消息中的明确指令始终优先于此配置。",
   "pre_restore_backup": "always",
 
-  "_comment_retention": "Retention policy for shadow copies only (git snapshots are not auto-cleaned). mode: 'days' (keep N days, default 30), 'count' (keep N newest snapshots), 'size' (keep total under N MB). | 影子拷贝的保留策略（git 快照不自动清理）。mode：'days'（保留 N 天，默认 30）、'count'（保留最新 N 份）、'size'（总大小不超过 N MB）。",
-  "_comment_retention_fields": "days: used when mode='days'. max_count: used when mode='count'. max_size_mb: used when mode='size'. | days：mode='days' 时生效。max_count：mode='count' 时生效。max_size_mb：mode='size' 时生效。",
+  "_comment_retention_en": "Retention policy for shadow copies only (git snapshots are not auto-cleaned). mode: 'days' (keep N days), 'count' (keep N newest), 'size' (keep under N MB).",
+  "_comment_retention_zh": "影子拷贝的保留策略（git 快照不自动清理）。mode：'days'（保留 N 天）、'count'（保留最新 N 份）、'size'（总大小不超 N MB）。",
+  "_comment_retention_fields_en": "days: when mode='days' (default 30). max_count: when mode='count' (default 100). max_size_mb: when mode='size' (default 500).",
+  "_comment_retention_fields_zh": "days：mode='days' 时生效（默认 30）。max_count：mode='count' 时生效（默认 100）。max_size_mb：mode='size' 时生效（默认 500）。",
   "retention": {
     "mode": "days",
     "days": 30,
