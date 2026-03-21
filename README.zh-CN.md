@@ -167,8 +167,18 @@ npx cursor-guard-backup --path /my/project
 
 在使用 Cursor 时，在**单独的终端窗口**中运行。跨平台——需要 Node.js >= 18。
 
+这点很重要：
+
+- 命令可以在任何目录执行
+- 但 `--path` 必须指向你要保护的项目根目录
+- 如果你当前已经在项目根目录，可以写 `--path .`
+- 如果你当前不在项目根目录，就不要写 `--path .`，要写完整路径
+
 ```bash
-# 通过 npx（npm 安装后）
+# 如果当前就在项目根目录
+npx cursor-guard-backup --path .
+
+# 如果当前不在项目根目录
 npx cursor-guard-backup --path /my/project
 npx cursor-guard-backup --path /my/project --interval 30
 
@@ -177,6 +187,14 @@ npx cursor-guard-backup --path /my/project --interval 30
 
 # macOS / Linux
 ./references/auto-backup.sh /my/project
+```
+
+错误示例：
+
+```bash
+# 你当前在别的目录
+# 这时 --path . 保护的是当前目录，不是你真正想保护的项目
+npx cursor-guard-backup --path .
 ```
 
 脚本使用 Git 底层命令快照到 `refs/guard/auto-backup`——不会切换分支，也不会影响你的工作索引。该引用位于 `refs/heads/` 之外，`git push --all` 不会推送它。支持 `shadow` 模式用于非 Git 目录。

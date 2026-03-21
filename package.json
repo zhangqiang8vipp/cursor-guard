@@ -47,7 +47,8 @@
     "references/config-reference.zh-CN.md",
     "references/cursor-guard.example.json",
     "references/cursor-guard.schema.json",
-    "references/recovery.md"
+    "references/recovery.md",
+    "references/quickstart.zh-CN.md"
   ],
   "main": "SKILL.md"
 }

@@ -167,8 +167,18 @@ Regardless of config, you can always override per-request:
 
 Run in a separate terminal while working in Cursor. Cross-platform — requires Node.js >= 18.
 
+Important:
+
+- You can run the command from any directory
+- But `--path` must point to the project root you want to protect
+- If you are already in the project root, `--path .` is fine
+- If you are not in the project root, do not use `--path .`; use the full target path instead
+
 ```bash
-# Via npx (after npm install)
+# If you are already in the project root
+npx cursor-guard-backup --path .
+
+# If you are not in the project root
 npx cursor-guard-backup --path /my/project
 npx cursor-guard-backup --path /my/project --interval 30
 
@@ -177,6 +187,14 @@ npx cursor-guard-backup --path /my/project --interval 30
 
 # macOS / Linux
 ./references/auto-backup.sh /my/project
+```
+
+Wrong example:
+
+```bash
+# You are in some other directory
+# In that case --path . protects the current directory, not your real project
+npx cursor-guard-backup --path .
 ```
 
 The script uses Git plumbing commands to snapshot to `refs/guard/auto-backup` — it never switches branches or touches your working index. The ref lives outside `refs/heads/` so `git push --all` won't push it. Supports `shadow` mode for non-Git directories.
