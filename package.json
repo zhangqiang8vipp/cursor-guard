@@ -35,7 +35,8 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "references/"
+    "references/",
+    "!references/lib/utils.test.js"
   ],
   "main": "SKILL.md"
 }
