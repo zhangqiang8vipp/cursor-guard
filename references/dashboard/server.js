@@ -8,7 +8,6 @@ const path = require('path');
 const { getDashboard } = require('../lib/core/dashboard');
 const { runDiagnostics } = require('../lib/core/doctor');
 const { listBackups } = require('../lib/core/backups');
-const { loadActiveAlert } = require('../lib/core/anomaly');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEFAULT_PORT = 3120;

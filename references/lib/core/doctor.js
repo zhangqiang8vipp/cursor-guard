@@ -221,7 +221,6 @@ function runDiagnostics(projectDir) {
   // Search multiple candidate locations for SDK package.json
   const sdkCandidates = [
     path.join(skillRoot, 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json'),
-    path.join(__dirname, '..', '..', '..', 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json'),
   ];
   for (const candidate of sdkCandidates) {
     try {

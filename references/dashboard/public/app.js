@@ -166,7 +166,7 @@ const I18N = {
     'detail.node_ok':                   '{v}',
     'detail.node_old':                  '{v} — recommended >=18',
     'detail.mcp_ok':                    'server.js found, SDK {v}',
-    'detail.mcp_no_sdk':                'server.js found but @modelcontextprotocol/sdk not installed — run: cd <skill-dir> && npm install',
+    'detail.mcp_no_sdk':                'server.js found but @modelcontextprotocol/sdk not installed — run: cd <skill-dir>; npm install',
     'detail.mcp_no_server':             'SDK installed ({v}) but server.js not found at expected path',
     'detail.mcp_not_configured':        'MCP not configured (optional — cursor-guard works without it)',
     'detail.mcp_version_mismatch':      'running v{mem} but disk has v{disk} — restart Cursor to load the new version',
@@ -332,7 +332,7 @@ const I18N = {
     'detail.node_ok':                   '{v}',
     'detail.node_old':                  '{v}——建议 >=18',
     'detail.mcp_ok':                    'server.js 已找到，SDK {v}',
-    'detail.mcp_no_sdk':                'server.js 已找到但 @modelcontextprotocol/sdk 未安装——请运行：cd <skill-dir> && npm install',
+    'detail.mcp_no_sdk':                'server.js 已找到但 @modelcontextprotocol/sdk 未安装——请运行：cd <skill-dir>; npm install',
     'detail.mcp_no_server':             'SDK 已安装（{v}）但 server.js 未在预期路径找到',
     'detail.mcp_not_configured':        'MCP 未配置（可选——cursor-guard 无需 MCP 也能工作）',
     'detail.mcp_version_mismatch':      '运行中 v{mem}，磁盘为 v{disk}——请重启 Cursor 加载新版本',
@@ -378,7 +378,7 @@ function t(key, params) {
   let text = dict[key] || I18N['en-US'][key] || key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      text = text.replace(`{${k}}`, v);
+      text = text.replaceAll(`{${k}}`, String(v));
     }
   }
   return text;
@@ -770,6 +770,7 @@ function renderFilterBar() {
     { key: 'all',                label: 'backups.filterAll' },
     { key: 'git-auto-backup',   label: 'type.git-auto-backup' },
     { key: 'git-pre-restore',   label: 'type.git-pre-restore' },
+    { key: 'git-snapshot',      label: 'type.git-snapshot' },
     { key: 'shadow',            label: 'type.shadow' },
     { key: 'shadow-pre-restore',label: 'type.shadow-pre-restore' },
   ];
