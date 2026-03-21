@@ -2,29 +2,39 @@
 
 Protects your code from accidental AI overwrite or deletion in [Cursor](https://cursor.com).
 
-## What It Does
+保护你的代码免受 [Cursor](https://cursor.com) AI 代理意外覆写或删除。
+
+---
+
+## What It Does / 功能介绍
 
 When Cursor's AI agent edits your files, there's a risk of accidental overwrites, deletions, or loss of work. **Cursor Guard** enforces a safety protocol:
 
-- **Mandatory pre-write snapshots** — Git commit or shadow copy before any destructive operation
-- **Read before Write** — The agent must read a file before overwriting it
-- **Review before apply** — Diff previews and explicit confirmation for dangerous ops
-- **Deterministic recovery** — Clear priority-ordered recovery paths (Git → shadow copies → conversation context → editor history)
-- **Configurable scope** — Protect only what matters via `.cursor-guard.json`
-- **Secrets filtering** — Sensitive files (`.env`, keys, certificates) are auto-excluded from backups
-- **Auto-backup script** — A PowerShell watcher that periodically snapshots to a dedicated Git branch without disturbing your working tree
+当 Cursor 的 AI 代理编辑你的文件时，可能会意外覆盖、删除或丢失代码。**Cursor Guard** 强制执行一套安全协议：
 
-## Installation
+- **Mandatory pre-write snapshots / 强制写前快照** — Git commit or shadow copy before any destructive operation / 在任何破坏性操作前自动 Git 提交或影子拷贝
+- **Read before Write / 先读后写** — The agent must read a file before overwriting it / 代理必须先读取文件内容，才能覆写
+- **Review before apply / 预览再执行** — Diff previews and explicit confirmation for dangerous ops / 危险操作前展示 diff 预览并要求确认
+- **Deterministic recovery / 确定性恢复** — Clear priority-ordered recovery paths (Git → shadow copies → conversation context → editor history) / 按优先级的恢复路径（Git → 影子拷贝 → 对话上下文 → 编辑器历史）
+- **Configurable scope / 可配置保护范围** — Protect only what matters via `.cursor-guard.json` / 通过配置文件只保护你关心的文件
+- **Secrets filtering / 敏感文件过滤** — Sensitive files (`.env`, keys, certificates) are auto-excluded from backups / `.env`、密钥、证书等敏感文件自动排除
+- **Auto-backup script / 自动备份脚本** — A PowerShell watcher that periodically snapshots to a dedicated Git branch without disturbing your working tree / 定期快照到独立 Git 分支，不干扰工作区
 
-### For Cursor (as an Agent Skill)
+---
+
+## Installation / 安装
+
+### For Cursor (as an Agent Skill) / 作为 Cursor 代理技能
 
 Copy the `cursor-guard/` folder into your Cursor skills directory:
+
+将 `cursor-guard/` 文件夹复制到 Cursor 技能目录：
 
 ```
 ~/.cursor/skills/cursor-guard/
 ```
 
-Or per-project:
+Or per-project / 或按项目配置：
 
 ```
 <project-root>/.cursor/skills/cursor-guard/
@@ -32,15 +42,19 @@ Or per-project:
 
 The skill activates automatically when the AI agent detects risky operations (file edits, deletes, renames) or when you mention recovery-related terms.
 
-### Project Configuration (Optional)
+技能会在 AI 代理检测到高风险操作（文件编辑、删除、重命名）或你提到恢复相关词汇时自动激活。
+
+### Project Configuration (Optional) / 项目配置（可选）
 
 Copy the example config to your workspace root and customize:
+
+将示例配置复制到项目根目录并自定义：
 
 ```bash
 cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guard.json
 ```
 
-Edit `.cursor-guard.json` to define which files to protect:
+Edit `.cursor-guard.json` to define which files to protect / 编辑 `.cursor-guard.json` 定义保护哪些文件：
 
 ```json
 {
@@ -52,54 +66,76 @@ Edit `.cursor-guard.json` to define which files to protect:
 }
 ```
 
-## Auto-Backup Script
+---
+
+## Auto-Backup Script / 自动备份脚本
 
 Run in a separate terminal while working in Cursor:
+
+在使用 Cursor 时，在**单独的终端窗口**中运行：
 
 ```powershell
 .\auto-backup.ps1 -Path "D:\MyProject"
 
-# Custom interval (default 60s):
+# Custom interval (default 60s) / 自定义间隔（默认 60 秒）：
 .\auto-backup.ps1 -Path "D:\MyProject" -IntervalSeconds 30
 ```
 
 The script uses Git plumbing commands to snapshot to `cursor-guard/auto-backup` branch — it never switches branches or touches your working index.
 
-## Recovery
+脚本使用 Git 底层命令快照到 `cursor-guard/auto-backup` 分支——不会切换分支，也不会影响你的工作索引。
+
+> **Note / 注意**: Run this script in a separate PowerShell window, NOT inside Cursor's integrated terminal. Cursor's terminal may interfere with Git plumbing commands.
+>
+> 请在独立的 PowerShell 窗口中运行此脚本，不要在 Cursor 的集成终端中运行，因为 Cursor 终端可能干扰 Git 底层命令。
+
+---
+
+## Recovery / 恢复
 
 If something goes wrong, recovery follows this priority:
 
+出问题时，按以下优先级恢复：
+
 1. **Git** — `git restore`, `git reset`, `git reflog`
-2. **Shadow copies** — `.cursor-guard-backup/<timestamp>/`
-3. **Conversation context** — Original file content captured by agent Read calls
-4. **Editor history** — VS Code/Cursor Timeline (auxiliary)
+2. **Shadow copies / 影子拷贝** — `.cursor-guard-backup/<timestamp>/`
+3. **Conversation context / 对话上下文** — Original file content captured by agent Read calls / 代理 Read 调用捕获的原始内容
+4. **Editor history / 编辑器历史** — VS Code/Cursor Timeline (auxiliary / 辅助)
 
-See [references/recovery.md](references/recovery.md) for detailed commands.
+See [references/recovery.md](references/recovery.md) for detailed commands / 详细命令见恢复文档。
 
-## Trigger Keywords
+---
 
-The skill activates on these signals:
+## Trigger Keywords / 触发关键词
 
-- File edits, deletes, renames by the AI agent
-- Recovery requests: "回滚", "误删", "丢版本", "rollback", "undo", "recover"
-- History issues: checkpoints missing, Timeline not working, save failures
+The skill activates on these signals / 技能在以下信号时激活：
 
-## Files
+- File edits, deletes, renames by the AI agent / AI 代理的文件编辑、删除、重命名
+- Recovery requests / 恢复请求："回滚"、"误删"、"丢版本"、"rollback"、"undo"、"recover"
+- History issues / 历史问题：checkpoints missing、Timeline not working、save failures
 
-| File | Purpose |
+---
+
+## Files / 文件说明
+
+| File / 文件 | Purpose / 用途 |
 |------|---------|
-| `SKILL.md` | Main skill instructions for the AI agent |
-| `references/auto-backup.ps1` | PowerShell auto-backup watcher script |
-| `references/recovery.md` | Recovery command templates |
-| `references/cursor-guard.example.json` | Example project configuration |
-| `references/cursor-guard.schema.json` | JSON Schema for config validation |
+| `SKILL.md` | Main skill instructions for the AI agent / AI 代理的主要技能指令 |
+| `references/auto-backup.ps1` | PowerShell auto-backup watcher script / PowerShell 自动备份监控脚本 |
+| `references/recovery.md` | Recovery command templates / 恢复命令模板 |
+| `references/cursor-guard.example.json` | Example project configuration / 示例项目配置 |
+| `references/cursor-guard.schema.json` | JSON Schema for config validation / 配置文件的 JSON Schema |
 
-## Requirements
+---
 
-- **Git** (for primary backup strategy)
-- **PowerShell 5.1+** (for auto-backup script; Windows built-in)
-- **Cursor IDE** with Agent mode enabled
+## Requirements / 环境要求
 
-## License
+- **Git** — for primary backup strategy / 主要备份策略
+- **PowerShell 5.1+** — for auto-backup script (Windows built-in) / 自动备份脚本（Windows 自带）
+- **Cursor IDE** — with Agent mode enabled / 需启用 Agent 模式
+
+---
+
+## License / 许可证
 
 MIT
