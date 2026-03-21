@@ -499,7 +499,7 @@ Skip the block for unrelated turns.
 
 - If the workspace has `.cursor-guard.json`, the agent MUST read and follow it (see §0).
 - If `.cursor-guard-backup/` folder exists, align shadow copy paths with it.
-- Template config: [references/cursor-guard.example.json](references/cursor-guard.example.json) — copy to workspace root and customize.
+- Template config: [references/cursor-guard.example.json](references/cursor-guard.example.json) — copy to workspace root and customize. Field docs: [references/config-reference.md](references/config-reference.md).
 
 ---
 
@@ -509,3 +509,4 @@ Skip the block for unrelated turns.
 - Auto-backup script: [references/auto-backup.ps1](references/auto-backup.ps1)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
 - Example config: [references/cursor-guard.example.json](references/cursor-guard.example.json)
+- Config field reference (EN/中文): [references/config-reference.md](references/config-reference.md)
