@@ -217,17 +217,35 @@ function runDiagnostics(projectDir) {
 
   let mcpSdkAvailable = false;
   let mcpSdkVersion = null;
-  try {
-    const mcpPkgPath = require.resolve('@modelcontextprotocol/sdk/package.json');
-    const mcpPkg = JSON.parse(fs.readFileSync(mcpPkgPath, 'utf-8'));
-    mcpSdkAvailable = true;
-    mcpSdkVersion = mcpPkg.version;
-  } catch { /* not installed */ }
+  // Try resolving SDK from the skill package's own node_modules first,
+  // then fall back to the running process's require paths.
+  const skillRoot = path.resolve(__dirname, '../../..');
+  const sdkCandidates = [
+    path.join(skillRoot, 'node_modules', '@modelcontextprotocol', 'sdk', 'package.json'),
+  ];
+  for (const candidate of sdkCandidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        const mcpPkg = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+        mcpSdkAvailable = true;
+        mcpSdkVersion = mcpPkg.version;
+        break;
+      }
+    } catch { /* ignore */ }
+  }
+  if (!mcpSdkAvailable) {
+    try {
+      const mcpPkgPath = require.resolve('@modelcontextprotocol/sdk/package.json');
+      const mcpPkg = JSON.parse(fs.readFileSync(mcpPkgPath, 'utf-8'));
+      mcpSdkAvailable = true;
+      mcpSdkVersion = mcpPkg.version;
+    } catch { /* not installed */ }
+  }
 
   if (mcpServerExists && mcpSdkAvailable) {
     check('MCP server', 'PASS', `server.js found, SDK ${mcpSdkVersion}`);
   } else if (mcpServerExists && !mcpSdkAvailable) {
-    check('MCP server', 'WARN', 'server.js found but @modelcontextprotocol/sdk not installed — run npm install');
+    check('MCP server', 'WARN', 'server.js found but @modelcontextprotocol/sdk not installed — run: cd <skill-dir> && npm install');
   } else if (!mcpServerExists && mcpSdkAvailable) {
     check('MCP server', 'WARN', `SDK installed (${mcpSdkVersion}) but server.js not found at expected path`);
   } else {

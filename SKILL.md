@@ -202,7 +202,7 @@ git update-ref refs/guard/snapshot $commit
 
 1. **Quick git init** (preferred):
    ```
-   git init && git add -A && git commit -m "guard: initial snapshot" --no-verify
+   git init; git add -A; git commit -m "guard: initial snapshot" --no-verify
    ```
 2. **Shadow copy** (fallback if user declines git):
    - Copy the target file(s) to `.cursor-guard-backup/<timestamp>/` via Shell.

@@ -29,39 +29,46 @@
 
 ## 安装
 
-### 方式一：npm 安装
+### 方式一：npm 安装（推荐）
 
 ```bash
 npm install cursor-guard
+npx cursor-guard-init
 ```
 
-安装后，将技能文件复制到 Cursor 技能目录：
+`init` 命令一键完成：复制技能文件到 `.cursor/skills/cursor-guard/`、安装 MCP 依赖、添加 `.gitignore` 条目。
 
-**Windows (PowerShell):**
-
-```powershell
-# 全局安装（所有项目生效）
-Copy-Item -Recurse node_modules/cursor-guard "$env:USERPROFILE/.cursor/skills/cursor-guard"
-
-# 项目级安装（仅当前项目生效）
-Copy-Item -Recurse node_modules/cursor-guard .cursor/skills/cursor-guard
-```
-
-**macOS / Linux:**
+可选参数：
 
 ```bash
-# 全局安装
-cp -r node_modules/cursor-guard ~/.cursor/skills/cursor-guard
-
-# 项目级安装
-cp -r node_modules/cursor-guard .cursor/skills/cursor-guard
+npx cursor-guard-init              # 项目级安装（默认）
+npx cursor-guard-init --global     # 全局安装（~/.cursor/skills/）
+npx cursor-guard-init --path /my/project  # 指定项目根目录
 ```
 
-复制完成后，如果不需要保留在 `node_modules` 中，可以卸载：
+初始化完成后，`node_modules` 中的 npm 包已不再需要：
 
 ```bash
 npm uninstall cursor-guard
 ```
+
+<details>
+<summary>手动安装（不使用 init 命令）</summary>
+
+如果你更喜欢手动操作，复制文件后需要手动安装依赖：
+
+```bash
+# 复制
+cp -r node_modules/cursor-guard .cursor/skills/cursor-guard
+
+# 在 skill 目录中安装 MCP 依赖
+cd .cursor/skills/cursor-guard && npm install --omit=dev && cd -
+
+# 添加到 .gitignore，防止 node_modules 被 git 快照捕获
+echo ".cursor/skills/**/node_modules/" >> .gitignore
+```
+
+</details>
 
 ### 方式二：Git 克隆
 
