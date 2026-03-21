@@ -20,7 +20,7 @@ if (-not $nodeCmd) {
     exit 1
 }
 
-$script = Join-Path $PSScriptRoot "bin" "cursor-guard-backup.js"
+$script = Join-Path (Join-Path $PSScriptRoot "bin") "cursor-guard-backup.js"
 $args_ = @($script, "--path", $Path)
 if ($IntervalSeconds -gt 0) { $args_ += @("--interval", $IntervalSeconds) }
 

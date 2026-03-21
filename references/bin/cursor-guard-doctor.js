@@ -5,7 +5,7 @@ const path = require('path');
 const { parseArgs } = require('../lib/utils');
 
 const args = parseArgs(process.argv);
-const targetPath = args.path || args._?.[0] || '.';
+const targetPath = args.path || '.';
 const resolved = path.resolve(targetPath);
 
 const { runDoctor } = require('../lib/guard-doctor');

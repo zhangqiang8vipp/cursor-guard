@@ -67,7 +67,7 @@
 - **最小值**：`5`
 - **默认值**：`60`
 
-自动备份脚本 `auto-backup.ps1` 检查变更并创建快照的间隔秒数。
+自动备份脚本检查变更并创建快照的间隔秒数。
 
 ```json
 "auto_backup_interval_seconds": 60
@@ -80,10 +80,25 @@
 - **类型**：`string[]`（glob 模式）
 - **默认值**：内置列表（见下）
 
-敏感文件 glob 模式。匹配的文件**自动排除**备份，即使在 `protect` 范围内。内置默认值（始终生效）：`.env`、`.env.*`、`*.key`、`*.pem`、`*.p12`、`*.pfx`、`credentials*`。设置此字段可覆盖为自定义模式。
+敏感文件 glob 模式。匹配的文件**自动排除**备份，即使在 `protect` 范围内。内置默认值：`.env`、`.env.*`、`*.key`、`*.pem`、`*.p12`、`*.pfx`、`credentials*`。
+
+**设置此字段会完全替换内置默认值。** 如果只想追加模式，请使用 `secrets_patterns_extra`。
 
 ```json
 "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"]
+```
+
+---
+
+## `secrets_patterns_extra`
+
+- **类型**：`string[]`（glob 模式）
+- **默认值**：未设置
+
+追加到当前 `secrets_patterns`（含默认值）的额外 glob 模式。使用此字段可在不丢失 `.p12`、`.pfx`、`credentials*` 等内置保护的情况下添加自定义模式。
+
+```json
+"secrets_patterns_extra": ["*.secret", "tokens.*"]
 ```
 
 ---

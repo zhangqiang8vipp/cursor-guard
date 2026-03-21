@@ -19,7 +19,7 @@
 - **确定性恢复** — 按优先级的恢复路径（Git → 影子拷贝 → 对话上下文 → 编辑器历史）
 - **可配置保护范围** — 通过 `.cursor-guard.json` 配置文件只保护你关心的文件
 - **敏感文件过滤** — `.env`、密钥、证书等敏感文件自动排除备份
-- **自动备份脚本** — 定期快照到独立 Git 分支，不干扰工作区
+- **自动备份脚本** — 跨平台 (Node.js) 定期快照到独立 Git 分支，不干扰工作区
 
 ---
 
@@ -84,14 +84,26 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
 
 ```
 .cursor/skills/cursor-guard/
-├── SKILL.md                          # AI 代理指令
+├── SKILL.md                            # AI 代理指令
 ├── README.md
+├── README.zh-CN.md
 ├── LICENSE
+├── package.json
 └── references/
-    ├── auto-backup.ps1               # 自动备份脚本
-    ├── recovery.md                   # 恢复命令模板
-    ├── cursor-guard.example.json     # 示例配置
-    └── cursor-guard.schema.json      # 配置 Schema
+    ├── lib/
+    │   ├── auto-backup.js              # 备份核心 (Node.js)
+    │   ├── guard-doctor.js             # 健康检查核心
+    │   └── utils.js                    # 共享工具库
+    ├── bin/
+    │   ├── cursor-guard-backup.js      # CLI 入口：npx cursor-guard-backup
+    │   └── cursor-guard-doctor.js      # CLI 入口：npx cursor-guard-doctor
+    ├── auto-backup.ps1 / .sh           # 薄封装
+    ├── guard-doctor.ps1 / .sh
+    ├── recovery.md                     # 恢复命令模板
+    ├── cursor-guard.example.json       # 示例配置
+    ├── cursor-guard.schema.json        # 配置 Schema
+    ├── config-reference.md             # 配置说明（英文）
+    └── config-reference.zh-CN.md       # 配置说明（中文）
 ```
 
 技能会在 AI 代理检测到高风险操作（文件编辑、删除、重命名）或你提到恢复相关词汇时自动激活。无需其他设置，安装即生效。
@@ -118,8 +130,8 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 
 5. **（可选）运行自动备份** — 在独立终端运行：
 
-```powershell
-.\auto-backup.ps1 -Path "D:\MyProject"
+```bash
+npx cursor-guard-backup --path /my/project
 ```
 
 ### 项目配置
@@ -243,10 +255,18 @@ npx cursor-guard-doctor --path /my/project
 | 文件 | 用途 |
 |------|------|
 | `SKILL.md` | AI 代理的主要技能指令 |
-| `references/auto-backup.ps1` | PowerShell 自动备份监控脚本 |
+| `references/lib/auto-backup.js` | 自动备份核心逻辑 (Node.js) |
+| `references/lib/guard-doctor.js` | 健康检查核心逻辑 (Node.js) |
+| `references/lib/utils.js` | 共享工具库（配置、glob、git、manifest） |
+| `references/bin/cursor-guard-backup.js` | CLI 入口：`npx cursor-guard-backup` |
+| `references/bin/cursor-guard-doctor.js` | CLI 入口：`npx cursor-guard-doctor` |
+| `references/auto-backup.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
+| `references/guard-doctor.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
 | `references/recovery.md` | 恢复命令模板 |
 | `references/cursor-guard.example.json` | 示例项目配置 |
 | `references/cursor-guard.schema.json` | 配置文件的 JSON Schema |
+| `references/config-reference.md` | 配置字段说明（英文） |
+| `references/config-reference.zh-CN.md` | 配置字段说明（中文） |
 
 ---
 
@@ -255,15 +275,15 @@ npx cursor-guard-doctor --path /my/project
 - **二进制文件**：Git 快照可以存储二进制文件（图片、编译产物），但无法进行有意义的 diff 或部分恢复。
 - **未跟踪文件**：从未提交到 Git 的文件无法从 Git 历史恢复。影子拷贝（`backup_strategy: "shadow"` 或 `"both"`）是未跟踪文件的唯一安全网。
 - **并发 Agent**：如果多个 AI 代理线程同时写入同一文件，快照无法防止竞态条件。请避免并行编辑同一文件。
-- **外部工具修改索引**：在 `auto-backup.ps1` 运行期间，其他修改 Git 索引的工具（如 Git GUI、IDE Git 集成）可能冲突。脚本使用临时索引来最小化风险，但边缘情况仍存在。
+- **外部工具修改索引**：在自动备份运行期间，其他修改 Git 索引的工具（如 Git GUI、IDE Git 集成）可能冲突。脚本使用临时索引来最小化风险，但边缘情况仍存在。
 - **Git worktree**：自动备份脚本支持 worktree 布局（`git rev-parse --git-dir`），但未在所有特殊配置下测试（如 `--separate-git-dir`）。
-- **Cursor 终端干扰**：Cursor 集成终端会向 `git commit` 命令注入 `--trailer` 标志，导致 `commit-tree` 等底层命令异常。请始终在**独立的 PowerShell 窗口**中运行 `auto-backup.ps1`。
+- **Cursor 终端干扰**：Cursor 集成终端会向 `git commit` 命令注入 `--trailer` 标志，导致 `commit-tree` 等底层命令异常。请始终在**独立的终端窗口**中运行自动备份脚本。
 - **大型仓库**：对于非常大的仓库，备份循环中的 `git add -A` 可能较慢。使用 `.cursor-guard.json` 中的 `protect` 模式缩小范围。
 
 ## 环境要求
 
-- **Git** — 主要备份策略
-- **PowerShell 5.1+** — 自动备份脚本（Windows 自带）
+- **Node.js >= 18** — 备份与健康检查脚本的核心运行时
+- **Git** — 主要备份策略（仅影子拷贝模式不需要）
 - **Cursor IDE** — 需启用 Agent 模式
 
 ---

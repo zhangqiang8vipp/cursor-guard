@@ -67,7 +67,7 @@ Blacklist glob patterns. Matching files are excluded from protection even if the
 - **Minimum**: `5`
 - **Default**: `60`
 
-Interval in seconds for `auto-backup.ps1` to check for changes and create snapshots.
+Interval in seconds for the auto-backup script to check for changes and create snapshots.
 
 ```json
 "auto_backup_interval_seconds": 60
@@ -80,10 +80,25 @@ Interval in seconds for `auto-backup.ps1` to check for changes and create snapsh
 - **Type**: `string[]` (glob patterns)
 - **Default**: built-in list (see below)
 
-Glob patterns for sensitive files. Matching files are **auto-excluded** from backup, even if within `protect` scope. Built-in defaults (always active): `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `credentials*`. Set this field to override with your own patterns.
+Glob patterns for sensitive files. Matching files are **auto-excluded** from backup, even if within `protect` scope. Built-in defaults: `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `credentials*`.
+
+**Setting this field replaces the built-in defaults entirely.** If you only need to add patterns, use `secrets_patterns_extra` instead.
 
 ```json
 "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"]
+```
+
+---
+
+## `secrets_patterns_extra`
+
+- **Type**: `string[]` (glob patterns)
+- **Default**: not set
+
+Additional glob patterns **appended** to the current `secrets_patterns` (including defaults). Use this to add custom patterns without losing the built-in protection for `.p12`, `.pfx`, `credentials*`, etc.
+
+```json
+"secrets_patterns_extra": ["*.secret", "tokens.*"]
 ```
 
 ---

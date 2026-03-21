@@ -52,7 +52,11 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
   "pre_restore_backup": "always",
 
   // Retention for shadow copies. mode: "days" | "count" | "size"
-  "retention": { "mode": "days", "days": 30, "max_count": 100, "max_size_mb": 500 }
+  "retention": { "mode": "days", "days": 30, "max_count": 100, "max_size_mb": 500 },
+
+  // Retention for Git auto-backup branch. Disabled by default.
+  // "count": keep N newest commits. "days": keep commits from last N days.
+  "git_retention": { "enabled": false, "mode": "count", "max_count": 200 }
 }
 ```
 
@@ -201,21 +205,24 @@ There are two distinct backup mechanisms. Do not confuse them:
 | | **Git branch snapshot** | **Shadow copy** |
 |---|---|---|
 | **What** | Commits to `cursor-guard/auto-backup` branch via plumbing | File copies to `.cursor-guard-backup/<timestamp>/` |
-| **Who creates** | `auto-backup.ps1` (when `backup_strategy` = `git` or `both`) | `auto-backup.ps1` (when `backup_strategy` = `shadow` or `both`); or the agent manually (§2b) |
-| **Who cleans up** | Manual: `git branch -D cursor-guard/auto-backup` | `auto-backup.ps1` per `retention` config; or manual |
-| **Restore** | `git restore --source=cursor-guard/auto-backup -- <file>` | `Copy-Item ".cursor-guard-backup/<ts>/<file>" "<path>"` |
+| **Who creates** | Auto-backup script (when `backup_strategy` = `git` or `both`) | Auto-backup script (when `backup_strategy` = `shadow` or `both`); or the agent manually (§2b) |
+| **Who cleans up** | `git_retention` config (auto, opt-in); or manual `git branch -D` | `retention` config (auto); or manual |
+| **Restore** | `git restore --source=cursor-guard/auto-backup -- <file>` | Copy file from `.cursor-guard-backup/<ts>/<file>` to original path |
 | **Requires Git** | Yes | No (fallback for non-git repos) |
 
 **Priority order for the agent:**
 
 1. **Guard ref snapshot** (`refs/guard/snapshot`) — agent creates before each high-risk edit using temp index (§2a). Does not pollute user's branch or staging area.
-2. **Git branch auto-backup** (`cursor-guard/auto-backup`) — periodic snapshots by `auto-backup.ps1`.
+2. **Git branch auto-backup** (`cursor-guard/auto-backup`) — periodic snapshots by auto-backup script.
 3. **Shadow copy** (`.cursor-guard-backup/`) — fallback for non-git repos, or as extra insurance when `backup_strategy = "both"`.
 4. **Editor habits** — Ctrl+S frequently; optional extensions are user-configured, mention only if asked.
 
 **Hard default:** Do NOT `git push` unless the user explicitly asks. Scope = **local only**.
 
-**Retention:** The `retention` config in `.cursor-guard.json` controls cleanup of **shadow copy directories** only. Git branch snapshots are not subject to retention; clean them manually (see [references/recovery.md](references/recovery.md)).
+**Retention:**
+- **Shadow copies**: controlled by `retention` in `.cursor-guard.json` (mode: days/count/size).
+- **Git branch**: controlled by `git_retention` in `.cursor-guard.json` (disabled by default; enable with `"enabled": true`, mode: count/days). Safely rebuilds the backup branch as an orphan chain containing only kept snapshots — never touches user history. Run `git gc` to reclaim disk space.
+- See [references/config-reference.md](references/config-reference.md) for full field docs.
 
 ---
 

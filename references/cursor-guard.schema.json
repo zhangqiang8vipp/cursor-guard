@@ -24,12 +24,17 @@
       "type": "integer",
       "minimum": 5,
       "default": 60,
-      "description": "Interval in seconds for auto-backup.ps1 to check for changes."
+      "description": "Interval in seconds for auto-backup script to check for changes."
     },
     "secrets_patterns": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Glob patterns for sensitive files auto-excluded from backups. Built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*"
+      "description": "Glob patterns for sensitive files auto-excluded from backups. Overrides built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*. Use secrets_patterns_extra to add without replacing."
+    },
+    "secrets_patterns_extra": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Additional glob patterns appended to secrets_patterns (including defaults). Use this to add patterns without losing built-in protection."
     },
     "pre_restore_backup": {
       "type": "string",
@@ -99,5 +104,5 @@
       "additionalProperties": false
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

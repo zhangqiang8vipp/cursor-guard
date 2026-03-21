@@ -19,7 +19,7 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Deterministic recovery** — Clear priority-ordered recovery paths (Git → shadow copies → conversation context → editor history)
 - **Configurable scope** — Protect only what matters via `.cursor-guard.json`
 - **Secrets filtering** — Sensitive files (`.env`, keys, certificates) are auto-excluded from backups
-- **Auto-backup script** — A PowerShell watcher that periodically snapshots to a dedicated Git branch without disturbing your working tree
+- **Auto-backup script** — A cross-platform watcher (Node.js) that periodically snapshots to a dedicated Git branch without disturbing your working tree
 
 ---
 
@@ -84,14 +84,26 @@ After installation, your directory structure should look like this:
 
 ```
 .cursor/skills/cursor-guard/
-├── SKILL.md                          # AI agent instructions
+├── SKILL.md                            # AI agent instructions
 ├── README.md
+├── README.zh-CN.md
 ├── LICENSE
+├── package.json
 └── references/
-    ├── auto-backup.ps1               # Auto-backup script
-    ├── recovery.md                   # Recovery commands
-    ├── cursor-guard.example.json     # Example config
-    └── cursor-guard.schema.json      # Config schema
+    ├── lib/
+    │   ├── auto-backup.js              # Backup core (Node.js)
+    │   ├── guard-doctor.js             # Health check core
+    │   └── utils.js                    # Shared utilities
+    ├── bin/
+    │   ├── cursor-guard-backup.js      # CLI entry: npx cursor-guard-backup
+    │   └── cursor-guard-doctor.js      # CLI entry: npx cursor-guard-doctor
+    ├── auto-backup.ps1 / .sh           # Thin wrappers
+    ├── guard-doctor.ps1 / .sh
+    ├── recovery.md                     # Recovery commands
+    ├── cursor-guard.example.json       # Example config
+    ├── cursor-guard.schema.json        # Config schema
+    ├── config-reference.md             # Config docs (EN)
+    └── config-reference.zh-CN.md       # Config docs (CN)
 ```
 
 The skill activates automatically when the AI agent detects risky operations or when you mention recovery-related terms. No extra setup needed.
@@ -118,8 +130,8 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 
 5. **(Optional) Run auto-backup** in a separate terminal:
 
-```powershell
-.\auto-backup.ps1 -Path "D:\MyProject"
+```bash
+npx cursor-guard-backup --path /my/project
 ```
 
 ### Project Configuration
@@ -243,10 +255,18 @@ The skill activates on these signals:
 | File | Purpose |
 |------|---------|
 | `SKILL.md` | Main skill instructions for the AI agent |
-| `references/auto-backup.ps1` | PowerShell auto-backup watcher script |
+| `references/lib/auto-backup.js` | Auto-backup core logic (Node.js) |
+| `references/lib/guard-doctor.js` | Health check core logic (Node.js) |
+| `references/lib/utils.js` | Shared utilities (config, glob, git, manifest) |
+| `references/bin/cursor-guard-backup.js` | CLI entry: `npx cursor-guard-backup` |
+| `references/bin/cursor-guard-doctor.js` | CLI entry: `npx cursor-guard-doctor` |
+| `references/auto-backup.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
+| `references/guard-doctor.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
 | `references/recovery.md` | Recovery command templates |
 | `references/cursor-guard.example.json` | Example project configuration |
 | `references/cursor-guard.schema.json` | JSON Schema for config validation |
+| `references/config-reference.md` | Config field docs (English) |
+| `references/config-reference.zh-CN.md` | Config field docs (Chinese) |
 
 ---
 
@@ -255,15 +275,15 @@ The skill activates on these signals:
 - **Binary files**: Git diffs and snapshots work on text files. Binary files (images, compiled assets) are stored but cannot be meaningfully diffed or partially restored.
 - **Untracked files**: Files never committed to Git cannot be recovered from Git history. Shadow copy (`backup_strategy: "shadow"` or `"both"`) is the only safety net for untracked files.
 - **Concurrent agents**: If multiple AI agent threads write to the same file simultaneously, snapshots cannot prevent race conditions. Avoid parallel edits to the same file.
-- **External tools modifying the index**: Tools that alter Git's index (e.g. other Git GUIs, IDE Git integrations) while `auto-backup.ps1` is running may conflict. The script uses a temporary index to minimize this, but edge cases exist.
+- **External tools modifying the index**: Tools that alter Git's index (e.g. other Git GUIs, IDE Git integrations) while auto-backup is running may conflict. The script uses a temporary index to minimize this, but edge cases exist.
 - **Git worktree**: The auto-backup script supports worktree layouts (`git rev-parse --git-dir`), but has not been tested with all exotic setups (e.g. `--separate-git-dir`).
-- **Cursor terminal interference**: Cursor's integrated terminal injects `--trailer` flags into `git commit` commands, which breaks plumbing commands like `commit-tree`. Always run `auto-backup.ps1` in a **separate PowerShell window**.
+- **Cursor terminal interference**: Cursor's integrated terminal injects `--trailer` flags into `git commit` commands, which breaks plumbing commands like `commit-tree`. Always run auto-backup in a **separate terminal window**.
 - **Large repos**: For very large repositories, `git add -A` in the backup loop may be slow. Use `protect` patterns in `.cursor-guard.json` to narrow scope.
 
 ## Requirements
 
-- **Git** — for primary backup strategy
-- **PowerShell 5.1+** — for auto-backup script (Windows built-in)
+- **Node.js >= 18** — core runtime for backup and health check scripts
+- **Git** — for primary backup strategy (not needed for shadow-only mode)
 - **Cursor IDE** — with Agent mode enabled
 
 ---

@@ -59,6 +59,7 @@ function walkDir(dir, rootDir) {
     const full = path.join(dir, entry.name);
     const rel = path.relative(rootDir, full).replace(/\\/g, '/');
     if (ALWAYS_SKIP.test('/' + rel + '/')) continue;
+    if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
       results.push(...walkDir(full, rootDir));
     } else if (entry.isFile()) {
@@ -96,9 +97,13 @@ function loadConfig(projectDir) {
     if (Array.isArray(raw.protect))          cfg.protect = raw.protect;
     if (Array.isArray(raw.ignore))           cfg.ignore = raw.ignore;
     if (Array.isArray(raw.secrets_patterns)) cfg.secrets_patterns = raw.secrets_patterns;
-    if (raw.backup_strategy)                 cfg.backup_strategy = raw.backup_strategy;
-    if (raw.auto_backup_interval_seconds)    cfg.auto_backup_interval_seconds = raw.auto_backup_interval_seconds;
-    if (raw.pre_restore_backup)              cfg.pre_restore_backup = raw.pre_restore_backup;
+    if (Array.isArray(raw.secrets_patterns_extra)) {
+      const merged = [...new Set([...cfg.secrets_patterns, ...raw.secrets_patterns_extra])];
+      cfg.secrets_patterns = merged;
+    }
+    if (typeof raw.backup_strategy === 'string')          cfg.backup_strategy = raw.backup_strategy;
+    if (typeof raw.auto_backup_interval_seconds === 'number') cfg.auto_backup_interval_seconds = raw.auto_backup_interval_seconds;
+    if (typeof raw.pre_restore_backup === 'string')       cfg.pre_restore_backup = raw.pre_restore_backup;
     if (raw.retention) {
       if (raw.retention.mode)        cfg.retention.mode = raw.retention.mode;
       if (raw.retention.days)        cfg.retention.days = raw.retention.days;

@@ -11,10 +11,12 @@ const {
 
 // ── Secrets filter (remove from temp git index) ─────────────────
 
-function removeSecretsFromIndex(secretsPatterns, cwd, logger) {
+function removeSecretsFromIndex(secretsPatterns, cwd, env, logger) {
   let files;
   try {
-    const out = git(['ls-files', '--cached'], { cwd, allowFail: true });
+    const out = execFileSync('git', ['ls-files', '--cached'], {
+      cwd, env, stdio: 'pipe', encoding: 'utf-8',
+    }).trim();
     files = out ? out.split('\n').filter(Boolean) : [];
   } catch { return; }
 
@@ -22,7 +24,11 @@ function removeSecretsFromIndex(secretsPatterns, cwd, logger) {
   for (const f of files) {
     const leaf = path.basename(f);
     if (matchesAny(secretsPatterns, f) || matchesAny(secretsPatterns, leaf)) {
-      git(['rm', '--cached', '--ignore-unmatch', '-q', '--', f], { cwd, allowFail: true });
+      try {
+        execFileSync('git', ['rm', '--cached', '--ignore-unmatch', '-q', '--', f], {
+          cwd, env, stdio: 'pipe',
+        });
+      } catch { /* ignore */ }
       excluded.push(f);
     }
   }
@@ -94,7 +100,6 @@ function shadowRetention(backupDir, cfg, logger) {
     logger.log(`Retention (${mode}): cleaned ${removed} old snapshot(s)`, 'gray');
   }
 
-  // Disk warning
   const freeGB = diskFreeGB(backupDir);
   if (freeGB !== null) {
     if (freeGB < 1) logger.error(`WARNING: disk critically low — ${freeGB.toFixed(1)} GB free`);
@@ -102,15 +107,41 @@ function shadowRetention(backupDir, cfg, logger) {
   }
 }
 
-// ── Git branch retention (best-effort) ──────────────────────────
+// ── Git branch retention (best-effort, safe rebuild) ────────────
+//
+// The backup branch inherits the user's real commit history as its
+// ancestor chain.  We must NEVER graft/replace any of those commits
+// because git-replace refs have global visibility and would corrupt
+// the user's branches.
+//
+// Strategy: enumerate only guard-created commits (message prefix
+// "guard: auto-backup"), then rebuild the kept slice as an orphan
+// chain via commit-tree so the branch no longer references any user
+// history.  Old objects become unreachable and are collected by gc.
 
 function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
   if (!cfg.git_retention.enabled) return;
 
-  const out = git(['rev-list', branchRef], { cwd, allowFail: true });
+  const out = git(['log', branchRef, '--format=%H %aI %s'], { cwd, allowFail: true });
   if (!out) return;
-  const commits = out.split('\n').filter(Boolean);
-  const total = commits.length;
+
+  const lines = out.split('\n').filter(Boolean);
+  const guardCommits = [];
+  for (const line of lines) {
+    const firstSpace = line.indexOf(' ');
+    const secondSpace = line.indexOf(' ', firstSpace + 1);
+    const hash = line.substring(0, firstSpace);
+    const dateISO = line.substring(firstSpace + 1, secondSpace);
+    const subject = line.substring(secondSpace + 1);
+    if (subject.startsWith('guard: auto-backup')) {
+      guardCommits.push({ hash, dateISO, subject });
+    } else {
+      break;
+    }
+  }
+
+  const total = guardCommits.length;
+  if (total === 0) return;
 
   let keepCount = total;
   const { mode, days, max_count } = cfg.git_retention;
@@ -118,21 +149,36 @@ function gitRetention(branchRef, gitDirPath, cfg, cwd, logger) {
   if (mode === 'count') {
     keepCount = Math.min(total, max_count);
   } else if (mode === 'days') {
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
-    const kept = git(['rev-list', branchRef, `--after=${cutoff}`], { cwd, allowFail: true });
-    keepCount = kept ? kept.split('\n').filter(Boolean).length : 0;
+    const cutoff = Date.now() - days * 86400000;
+    keepCount = 0;
+    for (const c of guardCommits) {
+      if (new Date(c.dateISO).getTime() >= cutoff) keepCount++;
+      else break;
+    }
     keepCount = Math.max(keepCount, 10);
   }
 
   if (keepCount >= total) return;
 
-  // Best-effort: point the branch ref to the Nth commit, orphaning older ones.
-  // Git gc will eventually collect them. We don't rewrite history.
-  const newBase = commits[keepCount - 1];
-  git(['update-ref', branchRef, newBase], { cwd, allowFail: true });
+  // Rebuild kept commits as a new orphan chain (oldest-to-keep first)
+  const toKeep = guardCommits.slice(0, keepCount).reverse();
+
+  const rootTree = git(['rev-parse', `${toKeep[0].hash}^{tree}`], { cwd, allowFail: true });
+  if (!rootTree) return;
+  let prevHash = git(['commit-tree', rootTree, '-m', toKeep[0].subject], { cwd, allowFail: true });
+  if (!prevHash) return;
+
+  for (let i = 1; i < toKeep.length; i++) {
+    const tree = git(['rev-parse', `${toKeep[i].hash}^{tree}`], { cwd, allowFail: true });
+    if (!tree) return;
+    prevHash = git(['commit-tree', tree, '-p', prevHash, '-m', toKeep[i].subject], { cwd, allowFail: true });
+    if (!prevHash) return;
+  }
+
+  git(['update-ref', branchRef, prevHash], { cwd, allowFail: true });
 
   const pruned = total - keepCount;
-  logger.log(`Git retention (${mode}): logically pruned ${pruned} old commit(s), kept ${keepCount}. Run 'git gc' to reclaim space.`, 'gray');
+  logger.log(`Git retention (${mode}): rebuilt branch with ${keepCount} newest snapshots, pruned ${pruned}. Run 'git gc' to reclaim space.`, 'gray');
 }
 
 // ── Shadow copy ─────────────────────────────────────────────────
@@ -168,7 +214,9 @@ function shadowCopy(projectDir, backupDir, cfg, logger) {
 function gitSnapshot(projectDir, branchRef, guardIndex, cfg, logger) {
   const cwd = projectDir;
   const env = { ...process.env, GIT_INDEX_FILE: guardIndex };
-  const opts = { cwd, env, allowFail: true };
+
+  // Clean up stale temp index from prior crash
+  try { fs.unlinkSync(guardIndex); } catch { /* doesn't exist */ }
 
   try {
     const parentHash = git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
@@ -178,17 +226,17 @@ function gitSnapshot(projectDir, branchRef, guardIndex, cfg, logger) {
 
     if (cfg.protect.length > 0) {
       for (const p of cfg.protect) {
-        execFileSync('git', ['add', '--', p], { cwd, env, stdio: 'pipe' }).toString();
+        execFileSync('git', ['add', '--', p], { cwd, env, stdio: 'pipe' });
       }
     } else {
       execFileSync('git', ['add', '-A'], { cwd, env, stdio: 'pipe' });
     }
 
     for (const ig of cfg.ignore) {
-      execFileSync('git', ['rm', '--cached', '--ignore-unmatch', '-rq', '--', ig], { cwd, env, stdio: 'pipe' }).toString();
+      execFileSync('git', ['rm', '--cached', '--ignore-unmatch', '-rq', '--', ig], { cwd, env, stdio: 'pipe' });
     }
 
-    removeSecretsFromIndex(cfg.secrets_patterns, cwd, logger);
+    removeSecretsFromIndex(cfg.secrets_patterns, cwd, env, logger);
 
     const newTree = execFileSync('git', ['write-tree'], { cwd, env, stdio: 'pipe', encoding: 'utf-8' }).trim();
     const parentTree = parentHash
@@ -241,6 +289,11 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function isProcessAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch { return false; }
+}
+
 // ── Main ────────────────────────────────────────────────────────
 
 async function runBackup(projectDir, intervalOverride) {
@@ -258,9 +311,12 @@ async function runBackup(projectDir, intervalOverride) {
   const guardIndex = gDir ? path.join(gDir, 'cursor-guard-index') : null;
 
   // Load config
-  const { cfg, loaded, error } = loadConfig(projectDir);
+  let { cfg, loaded, error } = loadConfig(projectDir);
   let interval = intervalOverride || cfg.auto_backup_interval_seconds || 60;
   if (interval < 5) interval = 5;
+  let cfgMtime = 0;
+  const cfgPath = path.join(projectDir, '.cursor-guard.json');
+  try { cfgMtime = fs.statSync(cfgPath).mtimeMs; } catch { /* no config */ }
 
   if (error) {
     console.log(color.yellow(`[guard] WARNING: .cursor-guard.json parse error — using defaults. ${error}`));
@@ -287,13 +343,36 @@ async function runBackup(projectDir, intervalOverride) {
   // Ensure backup dir
   fs.mkdirSync(backupDir, { recursive: true });
 
-  // Lock file
+  // Lock file with stale detection
   if (fs.existsSync(lockFile)) {
-    console.log(color.red(`[guard] ERROR: Lock file exists (${lockFile}).`));
-    console.log(color.red('  If no other instance is running, delete it and retry.'));
-    process.exit(1);
+    let stale = false;
+    try {
+      const content = fs.readFileSync(lockFile, 'utf-8');
+      const pidMatch = content.match(/pid=(\d+)/);
+      if (pidMatch) {
+        const oldPid = parseInt(pidMatch[1], 10);
+        if (!isProcessAlive(oldPid)) {
+          stale = true;
+          console.log(color.yellow(`[guard] Stale lock detected (pid ${oldPid} not running). Cleaning up.`));
+          fs.unlinkSync(lockFile);
+        }
+      }
+    } catch { /* ignore */ }
+    if (!stale) {
+      console.log(color.red(`[guard] ERROR: Lock file exists (${lockFile}).`));
+      console.log(color.red('  If no other instance is running, delete it and retry.'));
+      process.exit(1);
+    }
   }
-  fs.writeFileSync(lockFile, `pid=${process.pid}\nstarted=${new Date().toISOString()}`);
+  try {
+    fs.writeFileSync(lockFile, `pid=${process.pid}\nstarted=${new Date().toISOString()}`, { flag: 'wx' });
+  } catch (e) {
+    if (e.code === 'EEXIST') {
+      console.log(color.red('[guard] ERROR: Another instance just acquired the lock.'));
+      process.exit(1);
+    }
+    throw e;
+  }
 
   // Cleanup on exit
   function cleanup() {
@@ -314,7 +393,6 @@ async function runBackup(projectDir, intervalOverride) {
       console.log(color.green(`[guard] Created branch: ${branch}`));
     }
 
-    // Ensure .cursor-guard-backup/ is git-ignored
     const excludeFile = path.join(gDir, 'info', 'exclude');
     fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
     const entry = '.cursor-guard-backup/';
@@ -340,35 +418,74 @@ async function runBackup(projectDir, intervalOverride) {
     await sleep(interval * 1000);
     cycle++;
 
-    // Detect changes
+    // Hot-reload config every 10 cycles
+    if (cycle % 10 === 0) {
+      try {
+        const newMtime = fs.statSync(cfgPath).mtimeMs;
+        if (newMtime !== cfgMtime) {
+          const reload = loadConfig(projectDir);
+          if (reload.loaded && !reload.error) {
+            cfg = reload.cfg;
+            cfgMtime = newMtime;
+            logger.info('Config reloaded (file changed)');
+          }
+        }
+      } catch { /* no config file or read error, keep current */ }
+    }
+
+    // Detect changes (manifest write is deferred until shadow copy succeeds)
     let hasChanges = false;
-    if (repo) {
-      const dirty = git(['status', '--porcelain'], { cwd: projectDir, allowFail: true });
-      hasChanges = !!dirty;
-    } else {
-      const allFiles = walkDir(projectDir, projectDir);
-      const filtered = filterFiles(allFiles, cfg);
-      const newManifest = buildManifest(filtered);
-      const oldManifest = loadManifest(backupDir);
-      hasChanges = manifestChanged(oldManifest, newManifest);
-      if (hasChanges) saveManifest(backupDir, newManifest);
+    let pendingManifest = null;
+    try {
+      if (repo) {
+        const dirty = git(['status', '--porcelain'], { cwd: projectDir, allowFail: true });
+        hasChanges = !!dirty;
+      } else {
+        const allFiles = walkDir(projectDir, projectDir);
+        const filtered = filterFiles(allFiles, cfg);
+        const newManifest = buildManifest(filtered);
+        const oldManifest = loadManifest(backupDir);
+        hasChanges = manifestChanged(oldManifest, newManifest);
+        if (hasChanges) pendingManifest = newManifest;
+      }
+    } catch (e) {
+      logger.error(`Change detection failed: ${e.message}`);
+      continue;
     }
     if (!hasChanges) continue;
 
-    // Git snapshot
+    // Git snapshot (with error protection)
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
-      gitSnapshot(projectDir, branchRef, guardIndex, cfg, logger);
+      try {
+        gitSnapshot(projectDir, branchRef, guardIndex, cfg, logger);
+      } catch (e) {
+        logger.error(`Git snapshot failed: ${e.message}`);
+      }
     }
 
-    // Shadow copy
+    // Shadow copy (with error protection)
     if (cfg.backup_strategy === 'shadow' || cfg.backup_strategy === 'both') {
-      shadowCopy(projectDir, backupDir, cfg, logger);
+      try {
+        shadowCopy(projectDir, backupDir, cfg, logger);
+        if (pendingManifest) {
+          saveManifest(backupDir, pendingManifest);
+          pendingManifest = null;
+        }
+      } catch (e) {
+        logger.error(`Shadow copy failed: ${e.message}`);
+      }
     }
 
     // Periodic retention every 10 cycles
     if (cycle % 10 === 0) {
-      shadowRetention(backupDir, cfg, logger);
-      if (repo) gitRetention(branchRef, gDir, cfg, projectDir, logger);
+      try { shadowRetention(backupDir, cfg, logger); } catch (e) {
+        logger.error(`Shadow retention failed: ${e.message}`);
+      }
+      if (repo) {
+        try { gitRetention(branchRef, gDir, cfg, projectDir, logger); } catch (e) {
+          logger.error(`Git retention failed: ${e.message}`);
+        }
+      }
     }
   }
 }

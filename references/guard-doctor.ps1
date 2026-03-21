@@ -18,5 +18,5 @@ if (-not $nodeCmd) {
     exit 1
 }
 
-$script = Join-Path $PSScriptRoot "bin" "cursor-guard-doctor.js"
+$script = Join-Path (Join-Path $PSScriptRoot "bin") "cursor-guard-doctor.js"
 & $nodeCmd $script --path $Path
