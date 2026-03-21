@@ -91,11 +91,19 @@ server.tool(
     path: z.string().describe('Absolute path to the project directory'),
     strategy: z.enum(['git', 'shadow', 'both']).optional().describe('Backup strategy (default: from config, or "git")'),
     message: z.string().optional().describe('Custom commit message for git snapshot'),
+    scope: z.enum(['protected', 'all']).optional().describe('Snapshot scope: "protected" = only files matching protect patterns (default when protect is configured); "all" = all files regardless of protect config'),
   },
-  async ({ path: projectPath, strategy, message }) => {
+  async ({ path: projectPath, strategy, message, scope }) => {
     const resolved = path.resolve(projectPath);
     const { loadConfig } = require('../lib/utils');
     const { cfg } = loadConfig(resolved);
+
+    if (scope === 'all') {
+      cfg.protect = [];
+    } else if (scope === 'protected' && cfg.protect.length === 0) {
+      // "protected" requested but no protect patterns configured — snapshot all
+      // (no way to filter without patterns)
+    }
 
     const effectiveStrategy = strategy || cfg.backup_strategy || 'git';
     const results = {};

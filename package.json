@@ -27,6 +27,7 @@
     "test": "node references/lib/utils.test.js && node references/lib/core/core.test.js && node references/mcp/mcp.test.js"
   },
   "bin": {
+    "cursor-guard-init": "references/bin/cursor-guard-init.js",
     "cursor-guard-backup": "references/bin/cursor-guard-backup.js",
     "cursor-guard-doctor": "references/bin/cursor-guard-doctor.js",
     "cursor-guard-mcp": "references/mcp/server.js"

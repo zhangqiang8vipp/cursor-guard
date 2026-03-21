@@ -121,13 +121,13 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
 
     git(['update-ref', branchRef, commitHash], { cwd });
 
-    let fileCount = 0;
+    const lsOut = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
+    const fileCount = lsOut ? lsOut.split('\n').filter(Boolean).length : 0;
+
+    let changedCount;
     if (parentTree) {
       const diff = git(['diff-tree', '--no-commit-id', '--name-only', '-r', parentTree, newTree], { cwd, allowFail: true });
-      fileCount = diff ? diff.split('\n').filter(Boolean).length : 0;
-    } else {
-      const all = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
-      fileCount = all ? all.split('\n').filter(Boolean).length : 0;
+      changedCount = diff ? diff.split('\n').filter(Boolean).length : 0;
     }
 
     return {
@@ -135,6 +135,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       commitHash,
       shortHash: commitHash.substring(0, 7),
       fileCount,
+      changedCount,
       secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : undefined,
     };
   } catch (e) {

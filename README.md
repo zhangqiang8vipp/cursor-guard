@@ -29,39 +29,46 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 
 ## Installation
 
-### Method 1: npm
+### Method 1: npm (Recommended)
 
 ```bash
 npm install cursor-guard
+npx cursor-guard-init
 ```
 
-After installation, copy the skill files to your Cursor skills directory:
+The `init` command copies skill files to `.cursor/skills/cursor-guard/`, installs MCP dependencies, and adds `.gitignore` entries — all in one step.
 
-**Windows (PowerShell):**
-
-```powershell
-# Global (all projects)
-Copy-Item -Recurse node_modules/cursor-guard "$env:USERPROFILE/.cursor/skills/cursor-guard"
-
-# Per-project (current project only)
-Copy-Item -Recurse node_modules/cursor-guard .cursor/skills/cursor-guard
-```
-
-**macOS / Linux:**
+Options:
 
 ```bash
-# Global
-cp -r node_modules/cursor-guard ~/.cursor/skills/cursor-guard
-
-# Per-project
-cp -r node_modules/cursor-guard .cursor/skills/cursor-guard
+npx cursor-guard-init              # project-local (default)
+npx cursor-guard-init --global     # global (~/.cursor/skills/)
+npx cursor-guard-init --path /my/project  # specify project root
 ```
 
-After copying, you can remove the npm dependency if you don't need it in `node_modules`:
+After init, the npm package in `node_modules` is no longer needed:
 
 ```bash
 npm uninstall cursor-guard
 ```
+
+<details>
+<summary>Manual installation (without init command)</summary>
+
+If you prefer manual setup, copy files then install dependencies:
+
+```bash
+# Copy
+cp -r node_modules/cursor-guard .cursor/skills/cursor-guard
+
+# Install MCP dependencies in the skill directory
+cd .cursor/skills/cursor-guard && npm install --omit=dev && cd -
+
+# Add to .gitignore so node_modules aren't captured by git snapshots
+echo ".cursor/skills/**/node_modules/" >> .gitignore
+```
+
+</details>
 
 ### Method 2: Git clone
 
