@@ -94,9 +94,11 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
   if (!gDir) return { status: 'error', error: 'not a git repository' };
 
   const guardIndex = path.join(gDir, 'cursor-guard-index');
+  const guardIndexLock = guardIndex + '.lock';
   const env = { ...process.env, GIT_INDEX_FILE: guardIndex };
 
   try { fs.unlinkSync(guardIndex); } catch { /* doesn't exist */ }
+  try { fs.unlinkSync(guardIndexLock); } catch { /* doesn't exist */ }
 
   try {
     const parentHash = git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
@@ -164,6 +166,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     return { status: 'error', error: e.message };
   } finally {
     try { fs.unlinkSync(guardIndex); } catch { /* ignore */ }
+    try { fs.unlinkSync(guardIndexLock); } catch { /* ignore */ }
   }
 }
 

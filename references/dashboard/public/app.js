@@ -95,6 +95,11 @@ const I18N = {
     'trigger.manual':       'Manual (agent)',
     'trigger.pre-restore':  'Pre-Restore',
     'backups.col.summary':  'Changes',
+    'summary.modified':     'Modified',
+    'summary.added':        'Added',
+    'summary.deleted':      'Deleted',
+    'summary.renamed':      'Renamed',
+    'summary.files':        'files',
 
     'error.fetchFailed':    'Failed to fetch data',
     'error.sectionFailed':  'This section failed to load',
@@ -268,6 +273,11 @@ const I18N = {
     'trigger.manual':       '手动（Agent）',
     'trigger.pre-restore':  '恢复前快照',
     'backups.col.summary':  '变更',
+    'summary.modified':     '修改',
+    'summary.added':        '新增',
+    'summary.deleted':      '删除',
+    'summary.renamed':      '重命名',
+    'summary.files':        '个文件',
 
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
@@ -793,13 +803,27 @@ function renderFilterBar() {
   ).join('');
 }
 
+function translateSummary(raw) {
+  if (!raw) return raw;
+  return raw
+    .replace(/\bModified (\d+)/g, (_, n) => `${t('summary.modified')} ${n}`)
+    .replace(/\bAdded (\d+)/g, (_, n) => `${t('summary.added')} ${n}`)
+    .replace(/\bDeleted (\d+)/g, (_, n) => `${t('summary.deleted')} ${n}`)
+    .replace(/\bRenamed (\d+)/g, (_, n) => `${t('summary.renamed')} ${n}`);
+}
+
 function formatSummaryCell(b) {
   const parts = [];
-  if (b.filesChanged != null) parts.push(`<span class="text-sm">${b.filesChanged} files</span>`);
+  if (b.filesChanged != null) parts.push(`<span class="text-sm">${b.filesChanged} ${t('summary.files')}</span>`);
   if (b.trigger) parts.push(`<span class="badge badge-trigger">${t('trigger.' + b.trigger)}</span>`);
   if (b.summary) {
-    const short = b.summary.length > 60 ? b.summary.substring(0, 57) + '...' : b.summary;
+    const translated = translateSummary(b.summary);
+    const short = translated.length > 80 ? translated.substring(0, 77) + '...' : translated;
     parts.push(`<span class="text-muted text-sm">${esc(short)}</span>`);
+  }
+  if (b.message && !b.message.startsWith('guard:')) {
+    const msgShort = b.message.length > 50 ? b.message.substring(0, 47) + '...' : b.message;
+    parts.push(`<span class="text-muted text-sm">${esc(msgShort)}</span>`);
   }
   return parts.length > 0 ? parts.join(' ') : '<span class="text-muted text-sm">-</span>';
 }
@@ -929,7 +953,7 @@ function openRestoreDrawer(backup) {
   if (backup.commitHash) fields.push({ key: 'drawer.field.hash', val: backup.commitHash });
   if (backup.path) fields.push({ key: 'drawer.field.path', val: backup.path });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
-  if (backup.summary) fields.push({ key: 'drawer.field.summary', val: backup.summary });
+  if (backup.summary) fields.push({ key: 'drawer.field.summary', val: translateSummary(backup.summary) });
 
   const refText = backup.ref || backup.shortHash || backup.timestamp || '';
   const jsonText = JSON.stringify(backup, null, 2);

@@ -146,6 +146,15 @@ When the target file of an edit **falls outside the protected scope**, the agent
 **Before any High-risk operation on a protected file:**
 
 > **MCP shortcut**: if `snapshot_now` tool is available, call it with `{ "path": "<project>", "strategy": "git" }` instead of the shell commands below. The tool handles temp index, secrets exclusion, and ref creation internally, and returns `{ "git": { "status": "created", "commitHash": "...", "shortHash": "..." } }`. Report the `shortHash` to the user and proceed.
+>
+> **Best practice — descriptive messages**: Always provide a meaningful `message` parameter that describes *why* this snapshot is being created and *what* changes are at risk. This message appears in the dashboard restore-point list, helping users identify which snapshot to restore from. Example:
+> ```json
+> {
+>   "path": "/project",
+>   "strategy": "git",
+>   "message": "guard: before refactoring auth middleware — moving session logic from app.js to middleware/auth.js"
+> }
+> ```
 
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 

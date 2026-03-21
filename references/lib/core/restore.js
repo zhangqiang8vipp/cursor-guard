@@ -21,7 +21,7 @@ function validateRelativePath(file) {
 const VALID_SHADOW_SOURCE = /^\d{8}_\d{6}(_\d{3})?$|^pre-restore-\d{8}_\d{6}(_\d{3})?$/;
 
 const TOOL_DIRS = ['.cursor/', '.cursor\\'];
-const GUARD_CONFIGS = ['.cursor-guard.json'];
+const GUARD_CONFIGS = ['.cursor-guard.json', '.gitignore'];
 
 function isToolPath(filePath) {
   const normalized = filePath.replace(/\\/g, '/');

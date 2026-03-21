@@ -262,8 +262,37 @@ async function runBackup(projectDir, intervalOverride) {
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
       const context = { trigger: 'auto', changedFileCount };
       if (porcelain) {
-        const pLines = porcelain.split('\n').filter(Boolean).slice(0, 20);
-        context.summary = pLines.map(l => l.substring(0, 2).trim() + ' ' + l.substring(3)).join(', ');
+        let pLines = porcelain.split('\n').filter(Boolean);
+        if (cfg.protect.length > 0 || cfg.ignore.length > 0) {
+          pLines = pLines.filter(line => {
+            const filePart = line.substring(3);
+            const arrowIdx = filePart.indexOf(' -> ');
+            const raw = arrowIdx >= 0 ? filePart.substring(arrowIdx + 4) : filePart;
+            const rel = unquoteGitPath(raw);
+            const fakeFile = { rel, full: path.join(projectDir, rel) };
+            return filterFiles([fakeFile], cfg).length > 0;
+          });
+        }
+        if (pLines.length > 0) {
+          const groups = { M: [], A: [], D: [], R: [] };
+          for (const l of pLines) {
+            const code = l.substring(0, 2).trim();
+            const filePart = l.substring(3);
+            const arrowIdx = filePart.indexOf(' -> ');
+            const file = arrowIdx >= 0 ? filePart.substring(arrowIdx + 4) : filePart;
+            const key = code.startsWith('R') ? 'R'
+              : code.includes('D') ? 'D'
+              : code.includes('A') || code === '??' ? 'A'
+              : 'M';
+            groups[key].push(file);
+          }
+          const parts = [];
+          if (groups.M.length) parts.push(`Modified ${groups.M.length}: ${groups.M.slice(0, 5).join(', ')}`);
+          if (groups.A.length) parts.push(`Added ${groups.A.length}: ${groups.A.slice(0, 5).join(', ')}`);
+          if (groups.D.length) parts.push(`Deleted ${groups.D.length}: ${groups.D.slice(0, 5).join(', ')}`);
+          if (groups.R.length) parts.push(`Renamed ${groups.R.length}: ${groups.R.slice(0, 5).join(', ')}`);
+          context.summary = parts.join('; ');
+        }
       }
       const snapResult = createGitSnapshot(projectDir, cfg, { branchRef, context });
       if (snapResult.status === 'created') {
