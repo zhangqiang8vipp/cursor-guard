@@ -66,6 +66,11 @@
         {
           "id": "cursorGuardProjects",
           "name": "Projects"
+        },
+        {
+          "id": "cursorGuardDashboard",
+          "name": "Dashboard",
+          "type": "webview"
         }
       ]
     },

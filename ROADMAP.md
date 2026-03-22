@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.2`  
-> **文档状态**：`V2` ~ `V4.7.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.3`  
+> **文档状态**：`V2` ~ `V4.7.3` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,21 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.3：可视化图表侧边栏 ✅
+
+| 组件 | 说明 |
+|------|------|
+| **`sidebar-webview.js`** | 新增 `WebviewViewProvider`，在 Activity Bar 侧边栏底部渲染自定义 HTML/CSS 图表面板 |
+| **状态徽章行** | 4 个彩色卡片一行排列：Watcher（绿/红）、Alerts（红/绿）、Health（绿/黄/红）、Files（蓝） |
+| **告警横幅** | 活跃告警时显示红色横幅：文件数 + 窗口时间 + 阈值 + 倒计时 |
+| **进度条图表** | Backup Statistics 区域用 4 根彩色进度条展示：Git 备份数、Shadow 快照数、Git 磁盘、Shadow 磁盘，附系统剩余空间 |
+| **备份时间线** | Recent Backups 区域用圆点 + 时间 + 类型 + 摘要的紧凑列表展示最近 6 条备份 |
+| **健康问题列表** | 逐条展示 health issues，黄/红圆点标注严重度 |
+| **保护范围标签** | 用绿色/红色药丸标签展示 protect/ignore 规则 |
+| **快捷操作栏** | 4 个 hover 高亮按钮：Dashboard / Snapshot / Start / Stop |
+| **数据推送** | Poller 每 5 秒通过 `postMessage` 推送完整数据到 WebviewView，实时更新所有图表 |
+| **TreeView 精简** | 上方 TreeView 只保留项目概要（名称/状态/操作），详细数据全在图表面板 |
 
 ### V4.7.2：Sidebar Mini Dashboard + Watcher 修复 ✅
 

@@ -6,8 +6,9 @@ const { WebViewProvider } = require('./lib/webview-provider');
 const { StatusBarController } = require('./lib/status-bar');
 const { GuardTreeView } = require('./lib/tree-view');
 const { Poller } = require('./lib/poller');
+const { SidebarDashboardProvider } = require('./lib/sidebar-webview');
 
-let dashMgr, poller, statusBar, treeView, webviewProvider;
+let dashMgr, poller, statusBar, treeView, webviewProvider, sidebarProvider;
 
 async function activate(context) {
   dashMgr = new DashboardManager();
@@ -15,8 +16,11 @@ async function activate(context) {
   statusBar = new StatusBarController(poller);
   treeView = new GuardTreeView(poller, dashMgr);
   webviewProvider = new WebViewProvider(context, dashMgr);
+  sidebarProvider = new SidebarDashboardProvider(poller);
 
   context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('cursorGuardDashboard', sidebarProvider),
+
     vscode.commands.registerCommand('cursorGuard.openDashboard', () => {
       if (!dashMgr.running) {
         vscode.window.showWarningMessage('Cursor Guard: no projects detected. Add .cursor-guard.json to your workspace.');
@@ -83,6 +87,7 @@ async function activate(context) {
     poller,
     treeView,
     webviewProvider,
+    sidebarProvider,
   );
 
   const started = await dashMgr.autoStart(vscode.workspace.workspaceFolders);
@@ -105,6 +110,7 @@ function deactivate() {
   if (statusBar) statusBar.dispose();
   if (treeView) treeView.dispose();
   if (webviewProvider) webviewProvider.dispose();
+  if (sidebarProvider) sidebarProvider.dispose();
   if (dashMgr) dashMgr.dispose();
 }
 
