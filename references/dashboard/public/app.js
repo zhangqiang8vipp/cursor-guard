@@ -577,10 +577,45 @@ async function loadProjects() {
   }
 }
 
-async function loadPageData() {
+async function loadPageData(opts = {}) {
   if (!state.currentProjectId) return;
-  state.pageData = await fetchJson(`/api/page-data?id=${state.currentProjectId}`);
-  state.lastRefreshAt = Date.now();
+  const id = state.currentProjectId;
+
+  if (opts.progressive) {
+    state.pageData = { dashboard: null, doctor: null, backups: null };
+    const dashPromise = fetchJson(`/api/page-data?id=${id}&scope=dashboard`);
+    const restPromise = Promise.allSettled([
+      fetchJson(`/api/page-data?id=${id}&scope=backups`),
+      fetchJson(`/api/page-data?id=${id}&scope=doctor`),
+    ]);
+
+    const dash = await dashPromise;
+    state.pageData.dashboard = dash.dashboard;
+    state.lastRefreshAt = Date.now();
+    showContent();
+    if (dash.dashboard && !dash.dashboard.error) {
+      renderStrategyBadge(dash.dashboard.strategy);
+      renderOverview(dash.dashboard);
+      renderProtection(dash.dashboard.protectionScope);
+    }
+
+    const [backupsResult, doctorResult] = await restPromise;
+    if (backupsResult.status === 'fulfilled') {
+      state.pageData.backups = backupsResult.value.backups;
+      if (state.pageData.dashboard) {
+        renderBackupsSection(state.pageData.dashboard, Array.isArray(state.pageData.backups) ? state.pageData.backups : []);
+      }
+    }
+    if (doctorResult.status === 'fulfilled') {
+      state.pageData.doctor = doctorResult.value.doctor;
+      if (state.pageData.doctor && !state.pageData.doctor.error) {
+        renderDiagnostics(state.pageData.doctor);
+      }
+    }
+  } else {
+    state.pageData = await fetchJson(`/api/page-data?id=${state.currentProjectId}`);
+    state.lastRefreshAt = Date.now();
+  }
 }
 
 /* ── Refresh ──────────────────────────────────────────────── */
@@ -1128,7 +1163,7 @@ async function init() {
   try {
     await loadProjects();
     renderProjectSelect();
-    await loadPageData();
+    await loadPageData({ progressive: true });
     renderAll();
     startRefresh();
   } catch (e) {

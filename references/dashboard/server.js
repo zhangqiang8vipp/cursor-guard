@@ -121,13 +121,21 @@ function handleApi(pathname, query, registry, res) {
   }
 
   if (pathname === '/api/page-data') {
+    const scope = query.get('scope');
     const result = { timestamp: new Date().toISOString() };
-    try { result.dashboard = getDashboard(pp); }
-    catch (e) { result.dashboard = { error: e.message }; }
-    try { result.doctor = runDiagnostics(pp); }
-    catch (e) { result.doctor = { error: e.message }; }
-    try { result.backups = listBackups(pp, { limit: 50 }).sources || []; }
-    catch (e) { result.backups = { error: e.message }; }
+
+    if (!scope || scope === 'dashboard') {
+      try { result.dashboard = getDashboard(pp); }
+      catch (e) { result.dashboard = { error: e.message }; }
+    }
+    if (!scope || scope === 'doctor') {
+      try { result.doctor = runDiagnostics(pp); }
+      catch (e) { result.doctor = { error: e.message }; }
+    }
+    if (!scope || scope === 'backups') {
+      try { result.backups = listBackups(pp, { limit: 50 }).sources || []; }
+      catch (e) { result.backups = { error: e.message }; }
+    }
     return json(res, result);
   }
 
