@@ -400,9 +400,38 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
 
 // ── Get backup file details ─────────────────────────────────────
 
+/** Git's canonical empty tree (used as diff base for root/orphan commits). */
+const GIT_EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/** Normalize paths so numstat / name-status keys match (Windows vs /, quotes). */
+function _normalizeBackupPath(p) {
+  if (!p) return p;
+  let s = String(p).replace(/\\/g, '/');
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return s;
+}
+
+/** Parse one line of `git diff --numstat` (same semantics as CLI; binary => `- -`). */
+function _parseGitDiffNumstatLine(add, del) {
+  if (add === '-' || del === '-') {
+    return { added: 0, deleted: 0, binary: true };
+  }
+  const a = parseInt(add, 10);
+  const d = parseInt(del, 10);
+  return {
+    added: Number.isNaN(a) ? 0 : a,
+    deleted: Number.isNaN(d) ? 0 : d,
+    binary: false,
+  };
+}
+
 /**
  * Get structured file-level changes for a specific git backup commit.
- * Runs diff-tree --numstat + --name-status against parent (or ls-tree for root).
+ * Uses **only** `git diff --numstat` + `git diff --name-status` (same as terminal),
+ * so +/- counts match `git diff parent..commit` 100%. Root/orphan commits diff
+ * against the standard empty tree.
  *
  * @param {string} projectDir
  * @param {string} commitHash - Full or short commit hash
@@ -418,25 +447,18 @@ function getBackupFiles(projectDir, commitHash) {
     return { files: [], error: `cannot resolve commit: ${commitHash}` };
   }
 
-  const parentCheck = git(['rev-parse', '--verify', `${resolved}^`], { cwd: projectDir, allowFail: true });
+  const parentCommit = git(['rev-parse', '--verify', `${resolved}^`], { cwd: projectDir, allowFail: true });
+  const parent = parentCommit || GIT_EMPTY_TREE_SHA;
 
-  if (!parentCheck) {
-    const lsOut = git(['ls-tree', '--name-only', '-r', resolved], { cwd: projectDir, allowFail: true });
-    if (!lsOut) return { files: [] };
-    return {
-      files: lsOut.split('\n').filter(Boolean).map(f => ({ path: f, action: 'added', added: 0, deleted: 0 })),
-    };
-  }
-
-  const nameStatusOut = git(['diff-tree', '--no-commit-id', '--name-status', '-r', `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
-  const numstatOut = git(['diff-tree', '--no-commit-id', '--numstat', '-r', `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
+  const numstatOut = git(['diff', '--numstat', parent, resolved], { cwd: projectDir, allowFail: true });
+  const nameStatusOut = git(['diff', '--name-status', parent, resolved], { cwd: projectDir, allowFail: true });
 
   const stats = {};
   if (numstatOut) {
     for (const line of numstatOut.split('\n').filter(Boolean)) {
       const [add, del, ...nameParts] = line.split('\t');
-      const fname = nameParts.join('\t');
-      stats[fname] = { added: add === '-' ? 0 : parseInt(add, 10), deleted: del === '-' ? 0 : parseInt(del, 10) };
+      const fname = _normalizeBackupPath(nameParts.join('\t'));
+      stats[fname] = _parseGitDiffNumstatLine(add, del);
     }
   }
 
@@ -448,9 +470,17 @@ function getBackupFiles(projectDir, commitHash) {
       if (tab < 0) continue;
       const code = line.substring(0, tab).trim();
       const filePart = line.substring(tab + 1);
-      const action = code.startsWith('R') ? 'renamed' : (ACTION_MAP[code] || 'modified');
+      let action = ACTION_MAP[code];
+      if (code.startsWith('R')) action = 'renamed';
+      else if (code.startsWith('C')) action = 'copied';
+      else if (!action) action = 'modified';
+
       const fileName = filePart.split('\t').pop();
-      const s = stats[fileName] || { added: 0, deleted: 0 };
+      const norm = _normalizeBackupPath(fileName);
+      let s = stats[norm];
+      if (!s && fileName !== norm) s = stats[fileName];
+      if (!s) s = { added: 0, deleted: 0, binary: false };
+
       files.push({ path: fileName, action, added: s.added, deleted: s.deleted });
     }
   }

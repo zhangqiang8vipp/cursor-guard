@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.9.2`  
-> **文档状态**：`V2` ~ `V4.9.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.9.5`  
+> **文档状态**：`V2` ~ `V4.9.5` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -560,7 +560,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 
 | 层 | 改动 | 说明 |
 |----|------|------|
-| Core | `backups.js` 新增 `getBackupFiles(projectDir, commitHash)` | 对指定 commit 运行 `diff-tree --numstat + --name-status`，返回 `[{path, action, added, deleted}]`，按变化量降序。支持 rename 解析（`R` 前缀→取 tab 分割的最后一段）。无 parent 时退化为 `ls-tree` 列出全部文件 |
+| Core | `backups.js` 新增 `getBackupFiles(projectDir, commitHash)` | 对指定 commit 运行 `git diff --numstat` + `git diff --name-status`（与终端一致；V4.9.3+）。无 parent 时对 Git 空树 `4b825dc…`。返回 `[{path, action, added, deleted}]`，按变化量降序；`R`/`C` 前缀解析 rename/copy |
 | Server | `GET /api/backup-files?id=<project>&hash=<commit>` | 懒加载端点，不在 `list_backups` 中批量计算（50 条备份×`diff-tree` 会很慢）。400 校验 `hash` 必填 |
 | Dashboard | `parseSummaryToFiles(summary)` | 解析 summary 文本格式 `"Modified 3: a.js (+2 -1), b.js (+0 -5), ...; Added 2: c.js (+10 -0)"` → `[{path, action, added, deleted}]`。正则匹配 `(Modified|Added|Deleted|Renamed) N:` 段头，逐文件解析 `filename (+N -M)`，自动跳过 `...` 截断标记 |
 | Dashboard | `fetchBackupFiles(hash)` | 调用 `/api/backup-files` 端点，返回完整文件数组。网络失败静默降级（返回空数组） |
@@ -734,12 +734,28 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 }
 ```
 
-### V4.9.2：修复首次备份文件行数统计为 +0 -0 的 Bug ✅
+### V4.9.5 / V4.9.4：修复事件驱动 Watcher 因 `.git` 写入导致的疯狂自触发备份 ✅
 
 | 修复 | 说明 |
 |------|------|
-| **首次备份行数统计** | 当没有父提交（首次 auto-backup）时，所有新增文件的行数被硬编码为 `+0 -0`。修复后使用 Git 空树（`4b825dc...`）作为 diff 基准，`diff-tree --numstat` 可正确统计实际行数（如 `pom.xml +74 -0`） |
-| **首次备份摘要** | 摘要也同步显示正确行数，如 `Added 11: pom.xml (+74 -0), Application.java (+25 -0), ...` |
+| **根因** | v4.9.0 起 `fs.watch(recursive)` 监听整个仓库。每次快照会写 `.git/objects`、`refs/guard/…` 等，触发 watch → debounce 后又跑备份。Windows 下 `filename` 常为 `HEAD`、`objects/…` 等**不带** `.git/` 前缀 → **反馈环路** |
+| **完全避免（不靠延时）** | `shouldIgnoreFsWatchEvent`：凡可判定为「落在 Git 目录内」的事件一律不触发备份。**不用**快照后冷却计时；路径语义正确即可从根上断开环路 |
+| **真实 Git 目录** | 传入 `git rev-parse --git-dir` 解析后的路径（worktree / 子模块等下 `.git` 可能是文件），避免误用 `项目/.git` 字符串 |
+| **路径规则** | `.git/` 前缀、`.cursor-guard-backup`、多段路径在 `git-dir` 下存在、`path.relative(gitDir, resolve(项目,filename))` 落在仓库内 → 忽略 |
+| **V4.9.5** | 移除曾加入的 **3.5s 冷却**（用户要求：应全量避免，而非靠时间窗口兜底） |
+
+### V4.9.3：备份文件 +/- 与终端 `git diff` 完全一致 ✅
+
+| 变更 | 说明 |
+|------|------|
+| **唯一数据源** | `getBackupFiles` 只使用 `git diff --numstat <parent> <commit>` + `git diff --name-status <parent> <commit>`，与你在终端执行的 diff 统计一致（含 rename 检测、CRLF、二进制 `- -` 等） |
+| **根/orphan 提交** | 无父提交时 `parent` 使用 Git 标准空树 `4b825dc642cb6eb9a060e54bf8d69288fbee4904`，不再用 `ls-tree` + 手工行数 |
+| **移除** | 去掉 `diff-tree --numstat`、`--text` 及 `git show` 行数回退，避免与 CLI 语义分叉 |
+| **拷贝** | `git diff --name-status` 的 `C`（copy）映射为 `action: copied` |
+
+### V4.9.2：（已由 V4.9.3 替代）备份详情行数修复尝试
+
+> V4.9.2 的 `--text` + `git show` 回退已废弃；以 V4.9.3「纯 git diff」为准。
 
 ### V4.9.1：侧边栏"Last backup"实时计时 ✅
 

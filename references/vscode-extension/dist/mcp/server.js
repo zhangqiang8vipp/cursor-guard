@@ -35568,7 +35568,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.9.2",
+      version: "4.9.5",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -36598,6 +36598,27 @@ var require_backups = __commonJS({
       git(["update-ref", branchRef, prevHash], { cwd, allowFail: true });
       return { kept: keepCount, pruned: total - keepCount, mode, rebuilt: true };
     }
+    var GIT_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    function _normalizeBackupPath(p) {
+      if (!p) return p;
+      let s = String(p).replace(/\\/g, "/");
+      if (s.startsWith('"') && s.endsWith('"') || s.startsWith("'") && s.endsWith("'")) {
+        s = s.slice(1, -1).replace(/\\"/g, '"');
+      }
+      return s;
+    }
+    function _parseGitDiffNumstatLine(add, del) {
+      if (add === "-" || del === "-") {
+        return { added: 0, deleted: 0, binary: true };
+      }
+      const a = parseInt(add, 10);
+      const d = parseInt(del, 10);
+      return {
+        added: Number.isNaN(a) ? 0 : a,
+        deleted: Number.isNaN(d) ? 0 : d,
+        binary: false
+      };
+    }
     function getBackupFiles(projectDir, commitHash) {
       if (!isGitRepo(projectDir)) {
         return { files: [], error: "not a git repository" };
@@ -36606,22 +36627,16 @@ var require_backups = __commonJS({
       if (!resolved) {
         return { files: [], error: `cannot resolve commit: ${commitHash}` };
       }
-      const parentCheck = git(["rev-parse", "--verify", `${resolved}^`], { cwd: projectDir, allowFail: true });
-      if (!parentCheck) {
-        const lsOut = git(["ls-tree", "--name-only", "-r", resolved], { cwd: projectDir, allowFail: true });
-        if (!lsOut) return { files: [] };
-        return {
-          files: lsOut.split("\n").filter(Boolean).map((f) => ({ path: f, action: "added", added: 0, deleted: 0 }))
-        };
-      }
-      const nameStatusOut = git(["diff-tree", "--no-commit-id", "--name-status", "-r", `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
-      const numstatOut = git(["diff-tree", "--no-commit-id", "--numstat", "-r", `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
+      const parentCommit = git(["rev-parse", "--verify", `${resolved}^`], { cwd: projectDir, allowFail: true });
+      const parent = parentCommit || GIT_EMPTY_TREE_SHA;
+      const numstatOut = git(["diff", "--numstat", parent, resolved], { cwd: projectDir, allowFail: true });
+      const nameStatusOut = git(["diff", "--name-status", parent, resolved], { cwd: projectDir, allowFail: true });
       const stats = {};
       if (numstatOut) {
         for (const line of numstatOut.split("\n").filter(Boolean)) {
           const [add, del, ...nameParts] = line.split("	");
-          const fname = nameParts.join("	");
-          stats[fname] = { added: add === "-" ? 0 : parseInt(add, 10), deleted: del === "-" ? 0 : parseInt(del, 10) };
+          const fname = _normalizeBackupPath(nameParts.join("	"));
+          stats[fname] = _parseGitDiffNumstatLine(add, del);
         }
       }
       const ACTION_MAP = { M: "modified", A: "added", D: "deleted" };
@@ -36632,9 +36647,15 @@ var require_backups = __commonJS({
           if (tab < 0) continue;
           const code = line.substring(0, tab).trim();
           const filePart = line.substring(tab + 1);
-          const action = code.startsWith("R") ? "renamed" : ACTION_MAP[code] || "modified";
+          let action = ACTION_MAP[code];
+          if (code.startsWith("R")) action = "renamed";
+          else if (code.startsWith("C")) action = "copied";
+          else if (!action) action = "modified";
           const fileName = filePart.split("	").pop();
-          const s = stats[fileName] || { added: 0, deleted: 0 };
+          const norm = _normalizeBackupPath(fileName);
+          let s = stats[norm];
+          if (!s && fileName !== norm) s = stats[fileName];
+          if (!s) s = { added: 0, deleted: 0, binary: false };
           files.push({ path: fileName, action, added: s.added, deleted: s.deleted });
         }
       }

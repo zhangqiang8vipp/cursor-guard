@@ -22,6 +22,45 @@ function isProcessAlive(pid) {
   catch { return false; }
 }
 
+/**
+ * Ignore fs.watch events that originate inside the Git directory (including our snapshots).
+ * This is the **full** fix for the feedback loop: snapshot writes under `.git/` must never
+ * schedule another backup. No time-based cooldown — rely entirely on path semantics.
+ *
+ * On Windows, `filename` is often relative to the repo root but WITHOUT a `.git/` prefix
+ * (e.g. `HEAD`, `objects/ab/...`, `refs/guard/auto-backup`).
+ */
+const GIT_ONLY_TOP_NAMES = new Set([
+  'HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'COMMIT_EDITMSG', 'index', 'packed-refs',
+  'cursor-guard-index', 'cursor-guard-index.lock', 'cursor-guard.lock',
+  'refs', 'objects', 'logs', 'hooks', 'info', 'worktrees', 'modules', 'description',
+]);
+
+function shouldIgnoreFsWatchEvent(projectDir, filename, realGitDir) {
+  if (!filename) return true;
+  const norm = String(filename).replace(/\\/g, '/');
+  if (norm.startsWith('.git/') || norm === '.git') return true;
+  if (norm.startsWith('.cursor-guard-backup')) return true;
+
+  const gitRoot = realGitDir || path.join(projectDir, '.git');
+
+  try {
+    if (norm.includes('/') || GIT_ONLY_TOP_NAMES.has(norm)) {
+      const candidate = path.join(gitRoot, norm);
+      if (fs.existsSync(candidate)) return true;
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const abs = path.resolve(projectDir, filename);
+    const gitDirAbs = path.resolve(gitRoot);
+    const rel = path.relative(gitDirAbs, abs);
+    if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return true;
+  } catch { /* ignore */ }
+
+  return false;
+}
+
 // ── Main ────────────────────────────────────────────────────────
 
 async function runBackup(projectDir, intervalOverride, opts = {}) {
@@ -323,9 +362,8 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
 
     watcher.on('change', (_eventType, filename) => {
       if (!filename) return;
+      if (shouldIgnoreFsWatchEvent(projectDir, filename, gDir)) return;
       const f = filename.replace(/\\/g, '/');
-      if (f.startsWith('.git/') || f.startsWith('.git\\')) return;
-      if (f.startsWith('.cursor-guard-backup')) return;
       if (f === '.cursor-guard.json') {
         hotReloadConfig();
         return;
