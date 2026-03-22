@@ -326,10 +326,36 @@ main {
 .badge-trigger { background: var(--bg-tertiary); color: var(--text-secondary); font-size: 0.7rem; border-color: var(--border-subtle); }
 .badge-intent  { background: var(--blue-bg); color: var(--blue); font-size: 0.7rem; border-color: rgba(96,165,250,.15); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 
-.backup-summary-cell { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.backup-summary-cell .badge-trigger { margin-right: 4px; }
-.backup-summary-cell .badge-intent  { margin-left: 4px; }
-.backup-summary-cell .text-sm { font-size: 0.75rem; }
+.backup-summary-cell { max-width: 400px; }
+
+.summary-stack { display: flex; flex-direction: column; gap: 4px; }
+.summary-meta { display: flex; align-items: center; gap: 6px; }
+.summary-files { font-size: 13px; font-weight: 600; color: var(--text-heading); }
+.summary-intent {
+  font-size: 12px;
+  color: var(--blue);
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 380px;
+}
+.summary-message {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 380px;
+}
+.summary-detail {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 380px;
+}
 
 /* ── Stats Row ────────────────────────────────────────────── */
 

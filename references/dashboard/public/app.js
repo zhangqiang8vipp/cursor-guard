@@ -819,22 +819,28 @@ function translateSummary(raw) {
 }
 
 function formatSummaryCell(b) {
-  const parts = [];
-  if (b.filesChanged != null) parts.push(`<span class="text-sm">${b.filesChanged} ${t('summary.files')}</span>`);
-  if (b.trigger) parts.push(`<span class="badge badge-trigger">${t('trigger.' + b.trigger)}</span>`);
+  const line1 = [];
+  if (b.filesChanged != null) line1.push(`<span class="summary-files">${b.filesChanged} ${t('summary.files')}</span>`);
+  if (b.trigger) line1.push(`<span class="badge badge-trigger">${t('trigger.' + b.trigger)}</span>`);
+
+  let line2 = '';
+  if (b.intent) {
+    const intentShort = b.intent.length > 70 ? b.intent.substring(0, 67) + '...' : b.intent;
+    line2 = `<div class="summary-intent">${esc(intentShort)}</div>`;
+  } else if (b.message && !b.message.startsWith('guard:')) {
+    const msgShort = b.message.length > 70 ? b.message.substring(0, 67) + '...' : b.message;
+    line2 = `<div class="summary-message">${esc(msgShort)}</div>`;
+  }
+
+  let line3 = '';
   if (b.summary) {
     const translated = translateSummary(b.summary);
-    const short = translated.length > 80 ? translated.substring(0, 77) + '...' : translated;
-    parts.push(`<span class="text-muted text-sm">${esc(short)}</span>`);
+    const short = translated.length > 90 ? translated.substring(0, 87) + '...' : translated;
+    line3 = `<div class="summary-detail">${esc(short)}</div>`;
   }
-  if (b.intent) {
-    const intentShort = b.intent.length > 60 ? b.intent.substring(0, 57) + '...' : b.intent;
-    parts.push(`<span class="badge badge-intent">${esc(intentShort)}</span>`);
-  } else if (b.message && !b.message.startsWith('guard:')) {
-    const msgShort = b.message.length > 50 ? b.message.substring(0, 47) + '...' : b.message;
-    parts.push(`<span class="text-muted text-sm">${esc(msgShort)}</span>`);
-  }
-  return parts.length > 0 ? parts.join(' ') : '<span class="text-muted text-sm">-</span>';
+
+  if (!line1.length && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
+  return `<div class="summary-stack">${line1.length ? '<div class="summary-meta">' + line1.join(' ') + '</div>' : ''}${line2}${line3}</div>`;
 }
 
 function renderBackupTable(backups) {
