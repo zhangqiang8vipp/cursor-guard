@@ -15,6 +15,8 @@ const { getBackupStatus } = require('../lib/core/status');
 const { getDashboard } = require('../lib/core/dashboard');
 const { loadActiveAlert } = require('../lib/core/anomaly');
 
+const { writeIntentContext } = require('../lib/utils');
+
 const pkg = require('../../package.json');
 
 // ── Alert injection helper ──────────────────────────────────────
@@ -116,6 +118,11 @@ server.tool(
       if (intent) context.intent = intent;
       if (agent) context.agent = agent;
       if (session) context.session = session;
+
+      if (intent || agent || session) {
+        writeIntentContext(resolved, { intent, agent, session });
+      }
+
       results.git = createGitSnapshot(resolved, cfg, {
         branchRef: 'refs/guard/snapshot',
         message: message || `guard: manual snapshot ${new Date().toISOString()}`,
@@ -252,6 +259,32 @@ server.tool(
       ? { active: true, alert }
       : { active: false, message: 'No active alerts' };
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+// ── Tool 10: set_intent ──────────────────────────────────────────
+
+server.tool(
+  'set_intent',
+  'Declare the current operation intent BEFORE making code changes. The watcher will attach this context to the next auto-backup, so users can see WHY a backup was created. Call this before any file edits. Context expires after 10 minutes.',
+  {
+    path: z.string().describe('Absolute path to the project directory'),
+    intent: z.string().describe('What you are about to do (e.g. "refactoring calculator.js to use class syntax", "adding input validation to login form")'),
+    agent: z.string().optional().describe('AI model identifier (e.g. "claude-4-opus")'),
+    session: z.string().optional().describe('Conversation or session ID'),
+  },
+  async ({ path: projectPath, intent, agent, session }) => {
+    const resolved = path.resolve(projectPath);
+    const ok = writeIntentContext(resolved, { intent, agent, session });
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(ok
+          ? { status: 'ok', intent, ttl: '10m' }
+          : { status: 'error', error: 'Failed to write intent context (is this a git repo?)' },
+          null, 2),
+      }],
+    };
   }
 );
 

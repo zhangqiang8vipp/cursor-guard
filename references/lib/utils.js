@@ -426,6 +426,45 @@ function filterFiles(files, cfg) {
   return result;
 }
 
+// ── Intent Context ──────────────────────────────────────────────
+
+const INTENT_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function intentContextPath(projectDir) {
+  const gDir = gitDir(projectDir);
+  if (!gDir) return null;
+  return path.join(gDir, 'cursor-guard-context.json');
+}
+
+function writeIntentContext(projectDir, ctx) {
+  const fp = intentContextPath(projectDir);
+  if (!fp) return false;
+  const data = { ...ctx, updatedAt: new Date().toISOString() };
+  try {
+    fs.writeFileSync(fp, JSON.stringify(data, null, 2), 'utf-8');
+    return true;
+  } catch { return false; }
+}
+
+function readIntentContext(projectDir) {
+  const fp = intentContextPath(projectDir);
+  if (!fp) return null;
+  try {
+    const raw = fs.readFileSync(fp, 'utf-8');
+    const data = JSON.parse(raw);
+    if (!data.updatedAt) return null;
+    const age = Date.now() - new Date(data.updatedAt).getTime();
+    if (age > INTENT_TTL_MS) return null;
+    return data;
+  } catch { return null; }
+}
+
+function clearIntentContext(projectDir) {
+  const fp = intentContextPath(projectDir);
+  if (!fp) return;
+  try { fs.unlinkSync(fp); } catch { /* ignore */ }
+}
+
 // ── Exports ─────────────────────────────────────────────────────
 
 module.exports = {
@@ -452,4 +491,7 @@ module.exports = {
   parseArgs,
   filterFiles,
   unquoteGitPath,
+  writeIntentContext,
+  readIntentContext,
+  clearIntentContext,
 };

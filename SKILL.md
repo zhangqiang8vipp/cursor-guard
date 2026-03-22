@@ -147,7 +147,13 @@ When the target file of an edit **falls outside the protected scope**, the agent
 
 > **MCP shortcut**: if `snapshot_now` tool is available, call it with `{ "path": "<project>", "strategy": "git" }` instead of the shell commands below. The tool handles temp index, secrets exclusion, and ref creation internally, and returns `{ "git": { "status": "created", "commitHash": "...", "shortHash": "..." } }`. Report the `shortHash` to the user and proceed.
 >
-> **Best practice — intent context**: Always provide `intent` to describe *what operation you are about to perform and why*. This creates an audit trail so the user can later understand "what was the AI doing when this backup was made". Also pass `message` for the commit subject. Example:
+> **Best practice — declare intent before editing**: Before making ANY code changes, call `set_intent` to record what you are about to do. This writes a context file that the watcher picks up — so even auto-backups carry your intent. **This is the preferred way** (lighter than `snapshot_now`).
+>
+> ```json
+> { "path": "/project", "intent": "重构 calculator.js 的所有函数为 class 模式", "agent": "claude-4-opus", "session": "6290c87f" }
+> ```
+>
+> The context expires after 10 minutes. If you also call `snapshot_now`, include the same fields there too:
 > ```json
 > {
 >   "path": "/project",
@@ -158,7 +164,7 @@ When the target file of an edit **falls outside the protected scope**, the agent
 >   "session": "6290c87f"
 > }
 > ```
-> The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer, forming a complete audit trail per operation.
+> The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer. The watcher reads the context file before each auto-backup and attaches the intent — so users see not just "files changed" but "AI was about to refactor X" in the dashboard.
 
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 

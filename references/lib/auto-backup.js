@@ -7,6 +7,7 @@ const {
   color, loadConfig, gitAvailable, git, isGitRepo, gitDir: getGitDir,
   walkDir, filterFiles, buildManifest, loadManifest, saveManifest,
   manifestChanged, createLogger, unquoteGitPath,
+  readIntentContext, clearIntentContext,
 } = require('./utils');
 const { createGitSnapshot, createShadowCopy } = require('./core/snapshot');
 const { cleanShadowRetention, cleanGitRetention } = require('./core/backups');
@@ -288,6 +289,15 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     // Git snapshot via Core
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
       const context = { trigger: 'auto', changedFileCount };
+
+      const intentCtx = readIntentContext(projectDir);
+      if (intentCtx) {
+        if (intentCtx.intent) context.intent = intentCtx.intent;
+        if (intentCtx.agent) context.agent = intentCtx.agent;
+        if (intentCtx.session) context.session = intentCtx.session;
+        clearIntentContext(projectDir);
+      }
+
       const snapResult = createGitSnapshot(projectDir, cfg, { branchRef, context });
       if (snapResult.status === 'created') {
         let msg = `Git snapshot ${snapResult.shortHash} (${snapResult.fileCount} files)`;
