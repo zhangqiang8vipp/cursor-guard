@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.4.1`（V4 安全硬化版）  
-> **文档状态**：`V2` ~ `V4.4.1` 已实施（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.4.1`（V4 完美收官版）  
+> **文档状态**：`V2` ~ `V4.4.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -457,7 +457,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.3.4 | **运维加固**：`backup.log` 日志轮转（1MB / 3 文件）；watcher 单实例保护加固（锁文件时间戳 + 24h 超时）；`previewProjectRestore` 保护路径分组摘要（降低 token 消耗）；SKILL.md 硬规则 #15（升级后提交 skill 文件） | ✅ |
 | V4.3.5 | **Summary 准确性修复 + UI 优化**：备份摘要改用 `diff-tree` 增量对比（修复 porcelain 假摘要 bug）；仪表盘变更列三行堆叠布局；配色全面优化（背景层级 / 状态色 / 文字层级） | ✅ |
 | V4.4.0 | **V4 收官版**：首次快照 summary（无 parent 时生成 Added N: ...）；doctor 新增 Git retention 警告（>500 commits + disabled）和 Backup integrity 校验（`cat-file -t` tree 可达性）；`cursor-guard-init` 升级检测（已有配置提示） | ✅ |
-| V4.4.1 | **安全硬化版（5 项审计修复 + UX 优化）**：见下方详细说明 | ✅ |
+| V4.4.1 | **V4 完美收官版（安全硬化 + UX 优化）**：见下方详细说明 | ✅ 收官 |
 
 #### V4.4.1 详细内容
 
@@ -501,8 +501,10 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 缺口 | 现状 | 影响 | V5 改进方向 |
 |------|------|------|------------|
 | **Watcher 停止 = 裸奔** | Watcher 不运行期间的文件变更无任何自动备份 | 如果 AI agent 也没手动 snapshot，变更永久丢失 | **`always_watch` 配置项**：在 `.cursor-guard.json` 中设置 `"always_watch": true`，MCP server 启动时自动 fork watcher 进程。用户可选两种模式：轻量模式（默认，AI 手动 snapshot）和强保护模式（watcher 始终在后台） |
-| **保护依赖 AI 自觉** | SKILL.md 要求 AI 在写入前 snapshot，但没有强制机制 | AI 不遵守协议就直接写，保护形同虚设 | **embedded watcher**：MCP server 内嵌 watcher，检测到文件变更时自动创建 snapshot，不依赖 AI 调用。相当于 "write hook" 的等效实现 |
+| **保护依赖 AI 自觉** | SKILL.md 要求 AI 在写入前 snapshot，但没有强制机制 | AI 不遵守协议就直接写，保护形同虚设 | **embedded watcher + `begin_edit` 意图绑定**：MCP server 内嵌 watcher 循环 + 按文件路径匹配 intent，消除进程边界和并发竞争（详见 V5 设计） |
+| **自动备份无意图上下文** | auto-backup 只有 `trigger: auto`，不知道是谁改的、为什么改 | 事后回溯只能看到时间点快照，不知道操作意图 | **`begin_edit` → 文件路径绑定**：AI 编辑前声明意图和目标文件，embedded watcher 检测变更时按路径匹配 intent，自动备份也能带上下文 |
 | **无跨进程写拦截** | 当前 MCP 架构下无法拦截 Cursor 编辑器的文件写入 | 只能在写后检测，不能写前阻止 | 等待 MCP 协议支持 `notification` / `resource subscription`，或探索 fs watch + pre-commit 组合 |
+| **意图队列并发问题** | 曾考虑"意图队列"（AI 写文件 → watcher 读文件关联 intent），但存在 4 类并发竞态：多 Agent 竞争、意图-变更错位、意图堆积、空意图残留 | 文件 I/O 跨进程 + 时间顺序绑定 = 不可靠 | **同进程内存 Map + 文件路径绑定**：消灭进程边界后无 IPC，按路径而非时间匹配消除歧义（详见 V5 设计） |
 
 ### 进入 V5 的衡量标准
 
@@ -560,9 +562,100 @@ V5 不是"三个方向选一个"，而是把下面这条链路做完整：
 | `impact set` | 为高风险编辑记录受影响文件 / 符号 / 测试集合 | `impact_set` 字段 | 查询事件时能看到"这次改动可能波及哪里" |
 | `MCP / CLI surface` | 暴露最小可用接口给 Agent 和终端 | `register_intent` / `list_active_intents` / `audit_query` / `get_event` / `restore_from_event` | AI 不需要拼复杂 shell，就能完成查询与恢复 |
 | `dashboard / doctor` | 把活跃会话、冲突告警、最近 AI 事件纳入诊断和看板 | `dashboard` / `doctor` 扩展字段 | 用户能看见"现在谁在改、最近改了什么、哪里有冲突" |
-| `always_watch` | 配置项 `"always_watch": true`，MCP server 启动时自动 fork watcher 进程；用户选择保护力度：轻量模式（手动 snapshot）vs 强保护模式（始终后台备份） | `.cursor-guard.json` 配置 + MCP server 启动逻辑 | MCP server 启动后，`always_watch: true` 的项目自动有 watcher 保护，无需额外命令 |
-| `embedded watcher` | MCP server 进程内嵌 watcher 循环，检测到文件变更时自动创建 snapshot，不依赖 AI 手动调用 | MCP server 内部模块 | watcher 停止 = 裸奔的保护缺口彻底消除；AI 忘记 snapshot 也有兜底 |
+| `always_watch` | 配置项 `"always_watch": true`，MCP server 启动时自动内嵌 watcher 循环；用户可选两种保护模式：**轻量模式**（默认，AI 手动 `snapshot_now`）vs **强保护模式**（watcher 始终在后台，所有变更自动备份） | `.cursor-guard.json` 配置 + MCP server 启动逻辑 | MCP server 启动后，`always_watch: true` 的项目自动有 watcher 保护，无需额外命令；选择权在用户 |
+| `embedded watcher` | **消灭进程边界**：不再是独立后台进程，而是 MCP server 同进程内的 watcher 循环。同进程 = 无 IPC、无文件桥接、无并发竞争。检测到文件变更时自动创建 snapshot，不依赖 AI 手动调用 | MCP server 内部模块 | watcher 停止 = 裸奔的保护缺口彻底消除；AI 忘记 snapshot 也有兜底 |
+| `begin_edit` / `end_edit` | **意图-变更原子绑定**：AI 编辑前调 `begin_edit({ intent, files[], agent, session })`，在内存 `Map<session, EditScope>` 注册编辑意图和目标文件。embedded watcher 检测到变更时按**文件路径**匹配 intent，自动备份带完整上下文。`end_edit(session)` 或 TTL（默认 5 分钟）自动清除 | `begin_edit` / `end_edit` MCP 工具 + 内存 `activeEdits` Map | auto-backup 也能带 intent/agent/session；并发多 Agent 按文件路径消歧，不按时间顺序 |
 | `tests / docs` | 为事件链路补齐单测、集成测试和文档 | tests + schema docs | V5.0 的所有核心事件和恢复路径都有测试覆盖 |
+
+### V5 核心设计：Embedded Watcher + 文件路径意图绑定
+
+#### 问题根因
+
+V4 的自动备份（auto-backup）和意图上下文（intent）分属两个独立进程：
+
+```
+MCP Server 进程（知道 intent）  ←——×——→  Watcher 进程（知道文件变了）
+         ↑                                        ↑
+    AI agent 调用                              fs 检测循环
+    有上下文                                  无上下文
+```
+
+- `auto-backup.js` 调用 snapshot 时只传 `{ trigger: 'auto', changedFileCount }`，没有 intent/agent/session
+- 只有 `snapshot_now` MCP 工具支持 intent 参数
+- 曾考虑"意图队列"（AI 写文件 → watcher 读文件关联），但存在 4 类并发竞态：
+
+| 竞态场景 | 描述 |
+|---------|------|
+| 多 Agent 竞争 | A 提交意图 → B 提交意图 → watcher 触发 → 绑谁的？ |
+| 意图-变更错位 | A 提交意图但未改文件 → B 改了另一个文件 → A 的意图被错绑到 B 的变更 |
+| 意图堆积 | 一个 cycle 内多个 agent 提交意图 → watcher 只产生一次 commit → 意图丢失或错配 |
+| 空意图残留 | Agent 提交意图后放弃 → 意图留在队列 → 被绑到下一次无关变更 |
+
+根本原因：**意图提交和文件变更是两个独立事件，跨进程 + 按时间绑定 = 无法原子化**。
+
+#### 方案：同进程 + 按文件路径绑定
+
+```
+┌─────────────── MCP Server 进程（V5） ──────────────────┐
+│                                                         │
+│  AI agent 调用              内存 activeEdits             │
+│  begin_edit({               Map<session, {              │
+│    intent,              →     intent, files[],          │
+│    files[],                   agent, timestamp,         │
+│    agent,                     ttl                       │
+│    session               }>                             │
+│  })                              ↓ 直接读取（同进程）    │
+│                                                         │
+│  Embedded Watcher 循环 ←─── 检测到 src/auth.ts 变更     │
+│  查 activeEdits:                                        │
+│    s1 声明了 [src/auth.ts] → 匹配 ✅                     │
+│    s2 声明了 [src/style.css] → 不匹配 ❌                 │
+│  → 创建 auto-backup commit 带 s1 的 intent              │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**核心优势**：
+- **同进程**：无 IPC、无文件 I/O、无并发竞争（Node.js 单线程 event loop）
+- **按文件路径绑定**：不同 Agent 改不同文件时各自匹配，无歧义
+- **TTL 自动过期**：空意图 5 分钟后自动清除，不会残留
+- **多 Agent 同文件**：标记为 `multi-agent overlap`，附上所有匹配意图（同时作为冲突检测信号）
+
+#### 并发场景处理
+
+| 场景 | 处理方式 |
+|------|---------|
+| A 改 `auth.ts`，B 改 `style.css` | 各自匹配各自的 `begin_edit` scope，零歧义 |
+| A、B 都声明要改 `auth.ts` | `begin_edit` 时即检测到重叠，返回 advisory warning；auto-backup 附上两个 intent |
+| A 声明了意图但没改文件 | TTL 到期自动清除；`end_edit` 可提前关闭 |
+| 文件变更但没有任何 `begin_edit` | 降级为普通 auto-backup（和 V4 行为一致，无退化） |
+| AI 直接调 `snapshot_now(intent=...)` | 和现在一模一样，完全兼容 |
+
+#### 实现分期
+
+```
+Phase 1 (V5.0):
+  ├── always_watch: true → MCP server 内嵌 watcher 循环
+  ├── 新增 begin_edit / end_edit MCP 工具
+  ├── 内存 Map<session, EditScope> 管理活跃编辑意图
+  └── watcher 变更检测时查 Map，按文件路径匹配 intent → 写入 commit trailer
+
+Phase 2 (V5.x):
+  ├── begin_edit → 产生 intent_registered 事件（写入审计存储）
+  ├── 文件变更 → 产生 edit_applied 事件（关联 intent + before_ref）
+  ├── end_edit → 产生 intent_released 事件
+  └── 完整审计链闭环，支持 restore_from_event
+```
+
+#### 与"意图队列"方案的本质区别
+
+| | 意图队列（已否决） | embedded watcher + begin_edit |
+|---|---|---|
+| 通信方式 | 文件 I/O（跨进程） | 内存 Map（同进程） |
+| 绑定维度 | 时间顺序（先进先出） | 文件路径（精确匹配） |
+| 并发安全 | 4 类竞态条件 | 无竞态（单进程 event loop） |
+| 空意图处理 | 残留在文件中 | TTL 自动过期 + `end_edit` 显式关闭 |
+| 多 Agent 消歧 | 无法消歧 | 文件路径级消歧 + 冲突检测信号 |
 
 ### V5 主线 A：并发编辑安全（预防层）
 
@@ -690,6 +783,10 @@ V5 的关键不是"多打一行日志"，而是建立完整证据链：
 
 ### V5 完成标志（Definition of Done）
 
+- `always_watch: true` 配置生效后，MCP server 启动自动内嵌 watcher 循环，用户无需额外命令
+- `begin_edit` / `end_edit` MCP 工具可用，AI 能声明编辑意图和目标文件
+- embedded watcher 的自动备份能通过文件路径匹配关联 `begin_edit` 中的 intent/agent/session
+- 无 `begin_edit` 时自动备份行为与 V4 一致（无退化）
 - AI 能在高风险写入前注册意图并创建 `pre-edit` 快照
 - 用户能查询最近一次 AI 编辑的完整上下文
 - 给定 `event_id` 能找到对应快照并执行恢复
