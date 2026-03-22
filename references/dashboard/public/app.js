@@ -1295,18 +1295,18 @@ function renderProtection(scope) {
 
   el.innerHTML = `
     <div class="protection-grid">
-      <div class="pattern-card">
+      <div class="pattern-card pattern-card--protect">
         <h4>${t('protection.protect')}</h4>
         ${isAll
-          ? `<p class="text-muted text-sm">${t('protection.allFiles')}</p>`
-          : `<ul class="pattern-list">${protectList.map(p => `<li class="pattern-item">${esc(p)}</li>`).join('')}</ul>`
+          ? `<p class="pattern-empty pattern-empty--protect text-sm">${t('protection.allFiles')}</p>`
+          : `<ul class="pattern-list">${protectList.map(p => `<li class="pattern-item pattern-item--protect">${esc(p)}</li>`).join('')}</ul>`
         }
       </div>
-      <div class="pattern-card">
+      <div class="pattern-card pattern-card--ignore">
         <h4>${t('protection.ignore')}</h4>
         ${ignoreList.length === 0
-          ? `<p class="text-muted text-sm">${t('protection.noIgnore')}</p>`
-          : `<ul class="pattern-list">${ignoreList.map(p => `<li class="pattern-item">${esc(p)}</li>`).join('')}</ul>`
+          ? `<p class="pattern-empty pattern-empty--ignore text-sm">${t('protection.noIgnore')}</p>`
+          : `<ul class="pattern-list">${ignoreList.map(p => `<li class="pattern-item pattern-item--ignore">${esc(p)}</li>`).join('')}</ul>`
         }
       </div>
     </div>

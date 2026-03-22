@@ -57,7 +57,9 @@ class SidebarDashboardProvider {
   }
 
   _push(data) {
-    if (!this._view?.visible) return;
+    if (!this._view) return;
+    // Do not gate on webviewView.visible: on first load, `ready` can arrive while
+    // visible is still false, and we would never post `update` → stuck on "Waiting for data...".
 
     const payload = {};
     for (const [id, project] of data) {
@@ -107,8 +109,10 @@ function _getHtml(brandInnerHtml) {
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.12);
   --accent: var(--blue);
-  --glow-green: color-mix(in srgb, var(--green) 35%, transparent);
-  --glow-blue: color-mix(in srgb, var(--blue) 28%, transparent);
+  --glow-green: color-mix(in srgb, var(--green) 38%, transparent);
+  /* Shell: dark base + green haze (no blue wash) */
+  --shell-green-1: color-mix(in srgb, var(--green) 16%, #070907);
+  --shell-green-2: color-mix(in srgb, var(--green) 9%, #050805);
 }
 
 * { box-sizing: border-box; }
@@ -123,11 +127,198 @@ body {
 
 .cg-shell {
   position: relative;
-  padding: 10px 10px 18px;
+  padding: 8px 8px 14px;
   min-height: 100%;
   background:
-    radial-gradient(120% 80% at 0% -20%, var(--glow-blue), transparent 55%),
-    radial-gradient(90% 60% at 100% 0%, var(--glow-green), transparent 45%);
+    radial-gradient(110% 75% at 8% -15%, var(--shell-green-1), transparent 56%),
+    radial-gradient(95% 70% at 102% 108%, var(--shell-green-2), transparent 52%),
+    linear-gradient(168deg, #0a0c0f 0%, var(--surface) 48%, #0c100e 100%);
+}
+
+.cg-dashboard-scroll {
+  margin-top: 4px;
+}
+
+.cg-section-fold {
+  margin-bottom: 8px;
+}
+
+.cg-section-fold .cg-main-fold {
+  border-radius: 10px;
+}
+
+.cg-section-fold .cg-main-fold-head {
+  padding: 5px 8px;
+}
+
+.cg-section-fold .cg-main-fold-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.cg-section-fold .cg-main-fold-chevron {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.cg-section-fold .cg-main-fold-body {
+  padding: 0 6px 6px;
+}
+
+.cg-section-fold-body .hero {
+  margin-bottom: 0;
+  margin-top: 2px;
+  padding: 12px 10px;
+}
+
+.cg-section-fold-body .hero-title {
+  font-size: 16px;
+}
+
+.cg-section-fold-body > .card {
+  margin-bottom: 0;
+  margin-top: 2px;
+}
+
+.cg-section-fold-body .cg-actions-wrap {
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.cg-main-fold {
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.cg-main-fold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.cg-main-fold-head:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.cg-main-fold-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.cg-main-fold-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  transition: transform 0.2s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.cg-main-fold-head:hover .cg-main-fold-chevron {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
+.cg-main-fold--collapsed .cg-main-fold-chevron {
+  transform: rotate(-90deg);
+}
+
+.cg-main-fold-body {
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.cg-main-fold--collapsed .cg-main-fold-body {
+  display: none;
+}
+
+.cg-main-fold--collapsed .cg-main-fold-head {
+  border-bottom: none;
+}
+
+.cg-brand-section {
+  margin-bottom: 4px;
+}
+
+.cg-brand-section--compact .cg-brand-topbar {
+  padding: 4px 8px 2px;
+  gap: 6px;
+}
+
+.cg-brand-section--compact .cg-brand-topbar .lang-btn {
+  padding: 3px 8px;
+  font-size: 10px;
+}
+
+.cg-brand-section--compact .cg-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.cg-brand-section--compact .cg-brand-mark--has-img {
+  padding: 3px;
+}
+
+.cg-brand-section--compact .cg-brand {
+  padding: 6px 8px;
+  gap: 8px;
+  border-radius: 10px;
+}
+
+.cg-brand-section--compact .cg-brand-title {
+  font-size: 12px;
+}
+
+.cg-brand-section--compact .cg-brand-sub--project {
+  font-size: 10px;
+}
+
+.cg-brand-section--compact .cg-brand-sub--backup {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.cg-brand-section--compact .cg-brand {
+  margin-bottom: 0;
+}
+
+.cg-brand--details-only .cg-brand-text {
+  flex: 1;
+}
+
+.cg-brand-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px 4px;
+  background: transparent;
 }
 
 .cg-brand {
@@ -348,6 +539,8 @@ body {
   .card-head { transition: none; }
   .btn { transition: none; }
   .lang-btn { transition: none; }
+  .cg-main-fold-chevron { transition: none; }
+  .cg-section-fold .cg-main-fold-chevron { transition: none; }
 }
 
 .hero.risk {
@@ -553,20 +746,48 @@ body {
   border: 1px solid transparent;
 }
 
-.pill.green { background: rgba(154, 215, 162, 0.12); color: var(--green); }
+.pill.green {
+  background: color-mix(in srgb, var(--green) 18%, transparent);
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 42%, transparent);
+}
+.pill.ignore {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: color-mix(in srgb, var(--muted) 92%, var(--text));
+  border-color: color-mix(in srgb, var(--muted) 28%, transparent);
+}
 .pill.red { background: rgba(242, 159, 159, 0.12); color: var(--red); }
 .pill.orange { background: rgba(244, 179, 110, 0.12); color: var(--orange); }
-.pill.dim { background: rgba(154, 164, 189, 0.12); color: var(--muted); }
+.pill.dim { background: rgba(154, 164, 189, 0.1); color: var(--muted); border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 
-.tag-group { margin-top: 8px; }
+.tag-group { margin-top: 12px; }
+.pill-wrap + .tag-group { margin-top: 10px; }
+.tag-group--protect {
+  padding: 8px 8px 10px;
+  margin-left: -4px;
+  margin-right: -4px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--green) 32%, var(--border));
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+}
+.tag-group--ignore {
+  padding: 8px 8px 10px;
+  margin-left: -4px;
+  margin-right: -4px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--muted) 22%, var(--border));
+  background: color-mix(in srgb, var(--muted) 6%, transparent);
+}
 .tag-label {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.tag-group--protect .tag-label { color: var(--green); opacity: 0.95; }
+.tag-group--ignore .tag-label { color: color-mix(in srgb, var(--muted) 88%, var(--text)); }
 
 .tag-list {
   display: flex;
@@ -586,9 +807,16 @@ body {
 }
 
 .tag.green {
-  color: var(--green);
-  border-color: rgba(154, 215, 162, 0.3);
-  background: rgba(154, 215, 162, 0.08);
+  color: color-mix(in srgb, var(--green) 92%, #fff);
+  border-color: color-mix(in srgb, var(--green) 48%, transparent);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+.tag.ignore {
+  color: color-mix(in srgb, var(--muted) 95%, var(--text));
+  border-color: color-mix(in srgb, var(--muted) 38%, var(--border));
+  background: color-mix(in srgb, var(--muted) 10%, var(--surface-2));
 }
 
 .tag.red {
@@ -599,6 +827,8 @@ body {
 
 .tag.dim {
   color: var(--muted);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
 }
 
 .cg-actions-wrap {
@@ -658,23 +888,27 @@ body {
 </head>
 <body>
 <div class="cg-shell">
-  <header class="cg-brand" aria-label="Cursor Guard">
-    <div class="${brandMarkClass}" aria-hidden="true">${brandInnerHtml}</div>
-    <div class="cg-brand-text">
-      <span class="cg-brand-title" id="cg-brand-title">Cursor Guard</span>
-      <div class="cg-brand-meta">
-        <span class="cg-brand-sub cg-brand-sub--project" id="cg-brand-project">-</span>
-        <div class="cg-brand-sub cg-brand-sub--backup" id="cg-brand-backup">
-          <span class="cg-brand-backup-prefix" id="cg-brand-backup-prefix" hidden>Last backup </span><span id="cg-brand-backup-age" class="backup-age">-</span>
-        </div>
-      </div>
-    </div>
-    <div class="cg-brand-tools">
+  <section class="cg-brand-section cg-brand-section--compact" aria-label="Brand bar">
+    <div class="cg-brand-topbar">
       <button id="lang-toggle" class="lang-btn" type="button">中文</button>
     </div>
-  </header>
-  <div id="root">
-    <div class="empty">Waiting for data...</div>
+    <header class="cg-brand cg-brand--details-only" aria-label="Cursor Guard">
+      <div class="${brandMarkClass}" aria-hidden="true">${brandInnerHtml}</div>
+      <div class="cg-brand-text">
+        <span class="cg-brand-title" id="cg-brand-title">Cursor Guard</span>
+        <div class="cg-brand-meta">
+          <span class="cg-brand-sub cg-brand-sub--project" id="cg-brand-project">-</span>
+          <div class="cg-brand-sub cg-brand-sub--backup" id="cg-brand-backup">
+            <span class="cg-brand-backup-prefix" id="cg-brand-backup-prefix" hidden>Last backup </span><span id="cg-brand-backup-age" class="backup-age">-</span>
+          </div>
+        </div>
+      </div>
+    </header>
+  </section>
+  <div class="cg-dashboard-scroll" id="cg-dashboard-scroll">
+    <div id="root">
+      <div class="empty">Waiting for data...</div>
+    </div>
   </div>
 </div>
 <script>
@@ -694,6 +928,8 @@ const I18N = {
   'en-US': {
     'chrome.title': 'Cursor Guard',
     'chrome.switch': '\u4e2d\u6587',
+    'section.status': 'Status',
+    'section.actions': 'Actions',
     'state.waiting': 'Waiting for data...',
     'state.loading': 'Loading...',
     'state.empty': 'No projects detected.<br>Add .cursor-guard.json to get started.',
@@ -766,74 +1002,76 @@ const I18N = {
   'zh-CN': {
     'chrome.title': 'Cursor Guard',
     'chrome.switch': 'EN',
-    'state.waiting': '绛夊緟鏁版嵁涓?..',
-    'state.loading': '鍔犺浇涓?..',
-    'state.empty': '鏈娴嬪埌椤圭洰銆?br>娣诲姞 .cursor-guard.json 鍚庡嵆鍙惎鐢ㄣ€?,
-    'hero.pre.kicker': '浜嬪厛棰勮',
-    'hero.pre.title': '鍒犻櫎椋庨櫓',
-    'hero.pre.subtitle': '璇峰厛妫€鏌ヨ繖娆＄牬鍧忔€х紪杈?,
-    'hero.alert.kicker': '鍙樻洿鍛婅',
-    'hero.alert.subtitle': '妫€娴嬪埌寮傚父楂橀鏂囦欢鍙樻洿',
-    'hero.protection.kicker': '淇濇姢鐘舵€?,
-    'hero.protection.stopped': 'Watcher 鏈繍琛?,
-    'hero.protection.stoppedSub': '鍚姩 watcher 浠ュ紑鍚寔缁繚鎶?,
-    'hero.health.kicker': '鍋ュ悍鐘舵€?,
-    'hero.health.critical': '涓ラ噸闂',
-    'hero.health.check': '璇锋鏌ヨ瘖鏂粨鏋?,
-    'hero.protection.safe': '淇濇姢涓?,
-    'hero.protection.safeSub': 'Watcher 姝ｅ湪杩愯锛屽浠界姸鎬佸仴搴?,
-    'card.deletionRisk': '鍒犻櫎椋庨櫓',
-    'card.activeAlert': '娲昏穬鍛婅',
-    'card.quickStats': '蹇€熸瑙?,
-    'card.protectionScope': '淇濇姢鑼冨洿',
-    'row.file': '鏂囦欢',
-    'row.risk': '椋庨櫓',
-    'row.methodsRemoved': '绉婚櫎鐨勬柟娉曟暟',
-    'row.summary': '鎽樿',
-    'row.window': '绐楀彛',
-    'row.files': '鏂囦欢鏁?,
-    'row.threshold': '闃堝€?,
-    'row.expires': '鍓╀綑鏃堕棿',
-    'row.watcher': '\u76d1\u63a7',
-    'row.health': '\u5065\u5eb7',
-    'row.lastBackup': '涓婃澶囦唤',
-    'row.gitBackups': 'Git 澶囦唤鏁?,
-    'row.shadowCopies': 'Shadow 澶囦唤鏁?,
-    'row.diskFree': '鍓╀綑纾佺洏',
-    'status.watcher.running': '\u8fd0\u884c\u4e2d',
-    'status.watcher.stale': '\u9501\u6b8b\u7559',
-    'status.watcher.stopped': '\u5df2\u505c\u6b62',
-    'status.health.healthy': '\u5065\u5eb7',
-    'status.health.warning': '\u8b66\u544a',
-    'status.health.critical': '\u4e25\u91cd',
-    'pill.protected': '{n} 涓彈淇濇姢',
-    'pill.excluded': '{n} 涓帓闄?,
-    'pill.total': '{n} 涓€昏',
-    'tag.protect': '淇濇姢',
-    'tag.ignore': '蹇界暐',
-    'tag.more': '+{n} 涓洿澶?,
-    'actions.openDashboard': '鎵撳紑鐪嬫澘',
-    'actions.restore': '鎭㈠',
-    'actions.viewDetails': '鏌ョ湅璇︽儏',
-    'actions.snapshot': '绔嬪嵆蹇収',
-    'actions.watcherOn': '\u505c\u6b62 Watcher',
-    'actions.watcherOff': '\u542f\u52a8 Watcher',
-    'actions.doctor': '璇婃柇',
-    'brand.noWorkspace': '\u65e0\u5de5\u4f5c\u533a',
-    'brand.addConfig': '\u6dfb\u52a0 .cursor-guard.json',
-    'brand.loadingBackup': '\u5907\u4efd\u4fe1\u606f\u52a0\u8f7d\u4e2d...',
-    'brand.noGitBackup': '\u6682\u65e0 Git \u5907\u4efd',
-    'brand.backupPrefix': '\u4e0a\u6b21\u5907\u4efd',
-    'stats.never': '\u4ece\u672a',
-    'misc.unknown': '\u672a\u77e5',
+    'section.status': '\u72b6\u6001',
+    'section.actions': '\u64cd\u4f5c',
+    'state.waiting': '等待数据...',
+    'state.loading': '加载中...',
+    'state.empty': '未检测到项目。<br>添加 .cursor-guard.json 即可开始使用。',
+    'brand.noWorkspace': '无工作区',
+    'brand.addConfig': '添加 .cursor-guard.json',
+    'brand.loadingBackup': '备份信息加载中...',
+    'brand.noGitBackup': '暂无 Git 备份',
+    'brand.backupPrefix': '上次备份',
+    'hero.pre.kicker': '事先预警',
+    'hero.pre.title': '删除风险',
+    'hero.pre.subtitle': '请先检查此次破坏性编辑',
+    'hero.alert.kicker': '变更告警',
+    'hero.alert.subtitle': '检测到异常高频文件变更',
+    'hero.protection.kicker': '保护状态',
+    'hero.protection.stopped': 'Watcher 未运行',
+    'hero.protection.stoppedSub': '启动 watcher 以开启持续保护',
+    'hero.health.kicker': '健康状态',
+    'hero.health.critical': '严重问题',
+    'hero.health.check': '请检查诊断结果',
+    'hero.protection.safe': '已保护',
+    'hero.protection.safeSub': 'Watcher 正在运行，备份状态健康',
+    'card.deletionRisk': '删除风险',
+    'card.activeAlert': '活跃告警',
+    'card.quickStats': '快速概览',
+    'card.protectionScope': '保护范围',
+    'row.file': '文件',
+    'row.risk': '风险',
+    'row.methodsRemoved': '移除的方法数',
+    'row.summary': '摘要',
+    'row.window': '窗口',
+    'row.files': '文件数',
+    'row.threshold': '阈值',
+    'row.expires': '剩余时间',
+    'row.watcher': '监控',
+    'row.health': '健康',
+    'row.lastBackup': '上次备份',
+    'row.gitBackups': 'Git 备份数',
+    'row.shadowCopies': 'Shadow 备份数',
+    'row.diskFree': '剩余磁盘',
+    'status.watcher.running': '运行中',
+    'status.watcher.stale': '锁残留',
+    'status.watcher.stopped': '已停止',
+    'status.health.healthy': '健康',
+    'status.health.warning': '警告',
+    'status.health.critical': '严重',
+    'pill.protected': '{n} 个受保护',
+    'pill.excluded': '{n} 个排除',
+    'pill.total': '{n} 个总计',
+    'tag.protect': '保护',
+    'tag.ignore': '忽略',
+    'tag.more': '+{n} 个更多',
+    'actions.openDashboard': '打开看板',
+    'actions.restore': '恢复',
+    'actions.viewDetails': '查看详情',
+    'actions.snapshot': '立即快照',
+    'actions.watcherOn': '停止 Watcher',
+    'actions.watcherOff': '启动 Watcher',
+    'actions.doctor': '诊断',
+    'stats.never': '从未',
+    'misc.unknown': '未知',
     'misc.na': 'N/A',
-    'time.secondsAgo': '{n} 绉掑墠',
-    'time.minutesAgo': '{m} 鍒?{s} 绉掑墠',
-    'time.hoursAgo': '{h} 灏忔椂 {m} 鍒嗗墠',
-    'time.daysAgo': '{d} 澶╁墠',
-    'time.seconds': '{n} 绉?,
-    'time.minutes': '{m} 鍒?{s} 绉?,
-    'alert.filesChangedFast': '{count} 涓枃浠跺揩閫熷彉鏇?
+    'time.secondsAgo': '{n} 秒前',
+    'time.minutesAgo': '{m} 分 {s} 秒前',
+    'time.hoursAgo': '{h} 小时 {m} 分前',
+    'time.daysAgo': '{d} 天前',
+    'time.seconds': '{n} 秒',
+    'time.minutes': '{m} 分 {s} 秒',
+    'alert.filesChangedFast': '{count} 个文件快速变更'
   }
 };
 
@@ -868,6 +1106,50 @@ function updateChrome() {
   brandTitle.textContent = t('chrome.title');
   langToggle.textContent = t('chrome.switch');
   updateBrandBar(_projects);
+}
+
+function escAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;');
+}
+
+function sectionStorageKey(projectId, suffix) {
+  return String(projectId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_') + ':' + suffix;
+}
+
+function wrapSection(projectId, suffix, title, innerHtml, extraClass) {
+  extraClass = extraClass || '';
+  const sk = sectionStorageKey(projectId, suffix);
+  const pid = 'cg-sec-' + sk.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cls = 'cg-section-fold cg-main-fold cg-main-fold--open' + (extraClass ? ' ' + extraClass : '');
+  return (
+    '<div class="' + cls + '" data-section-key="' + escAttr(sk) + '">' +
+    '<button type="button" class="cg-main-fold-head cg-section-fold-head" aria-expanded="true" aria-controls="' + escAttr(pid) + '">' +
+    '<span class="cg-main-fold-title">' + esc(title) + '</span>' +
+    '<span class="cg-main-fold-chevron" aria-hidden="true">&#9662;</span></button>' +
+    '<div class="cg-main-fold-body cg-section-fold-body" id="' + escAttr(pid) + '">' + innerHtml + '</div></div>'
+  );
+}
+
+function bindSectionFolds(container) {
+  const PREFIX = 'cg-section-fold-v1:';
+  container.querySelectorAll('.cg-section-fold[data-section-key]').forEach(section => {
+    const key = section.getAttribute('data-section-key');
+    const btn = section.querySelector('.cg-section-fold-head');
+    if (!key || !btn) return;
+    if (sessionStorage.getItem(PREFIX + key) === '1') {
+      section.classList.add('cg-main-fold--collapsed');
+      section.classList.remove('cg-main-fold--open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    btn.addEventListener('click', () => {
+      const collapsed = section.classList.toggle('cg-main-fold--collapsed');
+      section.classList.toggle('cg-main-fold--open', !collapsed);
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      sessionStorage.setItem(PREFIX + key, collapsed ? '1' : '0');
+    });
+  });
 }
 
 function formatRelativeAge(ms) {
@@ -993,11 +1275,12 @@ function render(projects) {
       html += '<div class="empty">' + esc(t('state.loading')) + '</div>';
       continue;
     }
-    html += renderProject(dashboard);
+    html += renderProject(dashboard, id);
   }
-  html += renderActions(_projects);
+  html += renderActions(_projects, ids[0]);
   root.innerHTML = html;
   updateBrandBar(_projects);
+  bindSectionFolds(root);
 
   const alertCard = root.querySelector('.alert-card[data-expires]');
   _alertExpiresAt = alertCard ? parseInt(alertCard.dataset.expires, 10) || 0 : 0;
@@ -1009,7 +1292,7 @@ function render(projects) {
   });
 }
 
-function renderProject(dashboard) {
+function renderProject(dashboard, projectId) {
   const watcherRunning = dashboard.watcher?.running;
   const latestPreWarning = dashboard.preWarnings?.active ? dashboard.preWarnings.latest : null;
   const preWarning = latestPreWarning?.mode === 'dashboard' ? latestPreWarning : null;
@@ -1018,48 +1301,52 @@ function renderProject(dashboard) {
   const critical = health === 'critical';
   let html = '';
 
+  let heroHtml = '';
   if (preWarning) {
-    html += hero('risk', t('hero.pre.kicker'), t('hero.pre.title'), preWarning.summary || t('hero.pre.subtitle'));
+    heroHtml = hero('risk', t('hero.pre.kicker'), t('hero.pre.title'), preWarning.summary || t('hero.pre.subtitle'));
   } else if (alert) {
-    html += hero('alert', t('hero.alert.kicker'), t('alert.filesChangedFast', { count: displayCount(alert.fileCount) }), t('hero.alert.subtitle'));
+    heroHtml = hero('alert', t('hero.alert.kicker'), t('alert.filesChangedFast', { count: displayCount(alert.fileCount) }), t('hero.alert.subtitle'));
   } else if (!watcherRunning) {
-    html += hero('stopped', t('hero.protection.kicker'), t('hero.protection.stopped'), t('hero.protection.stoppedSub'));
+    heroHtml = hero('stopped', t('hero.protection.kicker'), t('hero.protection.stopped'), t('hero.protection.stoppedSub'));
   } else if (critical) {
-    html += hero('critical', t('hero.health.kicker'), t('hero.health.critical'), dashboard.health.issues?.[0] || t('hero.health.check'));
+    heroHtml = hero('critical', t('hero.health.kicker'), t('hero.health.critical'), dashboard.health.issues?.[0] || t('hero.health.check'));
   } else {
-    html += hero('protected', t('hero.protection.kicker'), t('hero.protection.safe'), t('hero.protection.safeSub'), { live: true });
+    heroHtml = hero('protected', t('hero.protection.kicker'), t('hero.protection.safe'), t('hero.protection.safeSub'), { live: true });
   }
+  html += wrapSection(projectId, 'status', t('section.status'), heroHtml, '');
 
   if (preWarning) {
-    html += '<div class="card risk-card">';
-    html += '<div class="card-title">' + esc(t('card.deletionRisk')) + '</div>';
-    html += row(t('row.file'), esc(preWarning.file || 'Unknown'), 'orange');
-    html += row(t('row.risk'), esc(String(preWarning.riskPercent || '?')) + '%', 'orange');
+    let inner = '<div class="card risk-card">';
+    inner += '<div class="card-title">' + esc(t('card.deletionRisk')) + '</div>';
+    inner += row(t('row.file'), esc(preWarning.file || 'Unknown'), 'orange');
+    inner += row(t('row.risk'), esc(String(preWarning.riskPercent || '?')) + '%', 'orange');
     if (preWarning.removedMethodCount) {
-      html += row(t('row.methodsRemoved'), esc(String(preWarning.removedMethodCount)), 'red');
+      inner += row(t('row.methodsRemoved'), esc(String(preWarning.removedMethodCount)), 'red');
     }
-    html += row(t('row.summary'), esc(preWarning.summary || t('hero.pre.subtitle')), 'orange');
-    html += '<div class="actions">';
-    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
-    html += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
-    html += '</div>';
-    html += '</div>';
+    inner += row(t('row.summary'), esc(preWarning.summary || t('hero.pre.subtitle')), 'orange');
+    inner += '<div class="actions">';
+    inner += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
+    inner += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
+    inner += '</div>';
+    inner += '</div>';
+    html += wrapSection(projectId, 'pre-warning', t('card.deletionRisk'), inner, '');
   }
 
   if (alert) {
     const expiresTs = alert.expiresAt ? new Date(alert.expiresAt).getTime() : 0;
     const remain = expiresTs ? Math.max(0, Math.ceil((expiresTs - Date.now()) / 1000)) : 0;
     const display = formatCountdown(remain);
-    html += '<div class="card alert-card" data-expires="' + expiresTs + '">';
-    html += '<div class="card-title">' + esc(t('card.activeAlert')) + '</div>';
-    html += row(t('row.window'), (alert.windowSeconds || '?') + 's', 'red');
-    html += row(t('row.files'), String(alert.fileCount || '?'), 'red');
-    html += row(t('row.threshold'), String(alert.threshold || '?'), 'yellow');
-    html += row(t('row.expires'), '<span class="alert-countdown">' + esc(display) + '</span>', 'yellow', true);
-    html += '<div class="actions">';
-    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.viewDetails')) + '</button>';
-    html += '</div>';
-    html += '</div>';
+    let inner = '<div class="card alert-card" data-expires="' + expiresTs + '">';
+    inner += '<div class="card-title">' + esc(t('card.activeAlert')) + '</div>';
+    inner += row(t('row.window'), (alert.windowSeconds || '?') + 's', 'red');
+    inner += row(t('row.files'), String(alert.fileCount || '?'), 'red');
+    inner += row(t('row.threshold'), String(alert.threshold || '?'), 'yellow');
+    inner += row(t('row.expires'), '<span class="alert-countdown">' + esc(display) + '</span>', 'yellow', true);
+    inner += '<div class="actions">';
+    inner += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.viewDetails')) + '</button>';
+    inner += '</div>';
+    inner += '</div>';
+    html += wrapSection(projectId, 'alert', t('card.activeAlert'), inner, '');
   }
 
   const gitCount = dashboard.counts?.git?.commits || 0;
@@ -1072,47 +1359,50 @@ function renderProject(dashboard) {
   const watcherInfo = watcherStateInfo(dashboard);
   const healthInfo = healthStateInfo(dashboard);
 
-  html += '<div class="card">';
-  html += '<div class="card-title">' + esc(t('card.quickStats')) + '</div>';
-  html += row(t('row.watcher'), watcherInfo.label, watcherInfo.tone);
-  html += row(t('row.health'), healthInfo.label, healthInfo.tone);
+  let statsInner = '<div class="card">';
+  statsInner += '<div class="card-title">' + esc(t('card.quickStats')) + '</div>';
+  statsInner += row(t('row.watcher'), watcherInfo.label, watcherInfo.tone);
+  statsInner += row(t('row.health'), healthInfo.label, healthInfo.tone);
   if (lastGitTs) {
-    html += '<div class="row"><span class="row-name">' + esc(t('row.lastBackup')) + '</span><span class="row-value green backup-age" data-backup-ts="' + new Date(lastGitTs).getTime() + '">' + esc(formatRelativeAge(new Date(lastGitTs).getTime())) + '</span></div>';
+    statsInner += '<div class="row"><span class="row-name">' + esc(t('row.lastBackup')) + '</span><span class="row-value green backup-age" data-backup-ts="' + new Date(lastGitTs).getTime() + '">' + esc(formatRelativeAge(new Date(lastGitTs).getTime())) + '</span></div>';
   } else {
-    html += row(t('row.lastBackup'), lastGit, 'green');
+    statsInner += row(t('row.lastBackup'), lastGit, 'green');
   }
-  html += row(t('row.gitBackups'), String(gitCount), 'blue');
-  if (shadowCount > 0) html += row(t('row.shadowCopies'), String(shadowCount), 'blue');
-  html += row(t('row.diskFree'), freeDisplay, diskWarn ? 'yellow' : 'green');
-  html += '</div>';
+  statsInner += row(t('row.gitBackups'), String(gitCount), 'blue');
+  if (shadowCount > 0) statsInner += row(t('row.shadowCopies'), String(shadowCount), 'blue');
+  statsInner += row(t('row.diskFree'), freeDisplay, diskWarn ? 'yellow' : 'green');
+  statsInner += '</div>';
+  html += wrapSection(projectId, 'quick-stats', t('card.quickStats'), statsInner, '');
 
   const scope = dashboard.protectionScope || {};
   const protect = scope.protect || [];
   const ignore = scope.ignore || [];
 
-  html += '<div class="card">';
-  html += '<div class="card-title">' + esc(t('card.protectionScope')) + '</div>';
-  html += '<div class="pill-wrap">';
-  html += '<span class="pill green">' + esc(t('pill.protected', { n: String(scope.fileCount || 0) })) + '</span>';
+  let scopeInner = '<div class="card">';
+  scopeInner += '<div class="card-title">' + esc(t('card.protectionScope')) + '</div>';
+  scopeInner += '<div class="pill-wrap">';
+  scopeInner += '<span class="pill green">' + esc(t('pill.protected', { n: String(scope.fileCount || 0) })) + '</span>';
   if ((scope.excludedCount || 0) > 0) {
-    html += '<span class="pill red">' + esc(t('pill.excluded', { n: String(scope.excludedCount || 0) })) + '</span>';
+    scopeInner += '<span class="pill ignore">' + esc(t('pill.excluded', { n: String(scope.excludedCount || 0) })) + '</span>';
   }
-  html += '<span class="pill dim">' + esc(t('pill.total', { n: String(scope.totalFiles || 0) })) + '</span>';
-  html += '</div>';
+  scopeInner += '<span class="pill dim">' + esc(t('pill.total', { n: String(scope.totalFiles || 0) })) + '</span>';
+  scopeInner += '</div>';
 
   if (protect.length > 0) {
-    html += renderTags(t('tag.protect'), protect, 'green');
+    scopeInner += renderTags(t('tag.protect'), protect, 'green', 'tag-group--protect');
   }
   if (ignore.length > 0) {
-    html += renderTags(t('tag.ignore'), ignore, 'red');
+    scopeInner += renderTags(t('tag.ignore'), ignore, 'ignore', 'tag-group--ignore');
   }
-  html += '</div>';
+  scopeInner += '</div>';
+  html += wrapSection(projectId, 'scope', t('card.protectionScope'), scopeInner, '');
 
   return html;
 }
 
-function renderTags(label, values, tone) {
-  let html = '<div class="tag-group">';
+function renderTags(label, values, tone, groupClass) {
+  const gc = groupClass ? ' ' + groupClass : '';
+  let html = '<div class="tag-group' + gc + '">';
   html += '<div class="tag-label">' + esc(label) + ' (' + values.length + ')</div>';
   html += '<div class="tag-list">';
   const shown = values.slice(0, 6);
@@ -1140,21 +1430,22 @@ function healthStateInfo(dashboard) {
   return { label: t('status.health.warning'), tone: 'yellow' };
 }
 
-function renderActions(projects) {
+function renderActions(projects, primaryProjectId) {
   const primary = pickPrimaryProject(projects || {});
   const dashboard = primary?.project?.dashboard || null;
   const watcherRunning = dashboard?.watcher?.running;
+  const pid = primaryProjectId || primary?.id || 'default';
 
-  let html = '<div class="cg-actions-wrap"><div class="actions">';
-  html += '<button class="btn primary" data-cmd="cursorGuard.snapshotNow">' + esc(t('actions.snapshot')) + '</button>';
-  html += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
-  html += watcherRunning
+  let inner = '<div class="cg-actions-wrap"><div class="actions">';
+  inner += '<button class="btn primary" data-cmd="cursorGuard.snapshotNow">' + esc(t('actions.snapshot')) + '</button>';
+  inner += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
+  inner += watcherRunning
     ? '<button class="btn" data-cmd="cursorGuard.stopWatcher">' + esc(t('actions.watcherOn')) + '</button>'
     : '<button class="btn" data-cmd="cursorGuard.startWatcher">' + esc(t('actions.watcherOff')) + '</button>';
-  html += '<button class="btn" data-cmd="cursorGuard.doctor">' + esc(t('actions.doctor')) + '</button>';
-  html += '<button class="btn primary full" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
-  html += '</div></div>';
-  return html;
+  inner += '<button class="btn" data-cmd="cursorGuard.doctor">' + esc(t('actions.doctor')) + '</button>';
+  inner += '<button class="btn primary full" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
+  inner += '</div></div>';
+  return wrapSection(pid, 'actions', t('section.actions'), inner, '');
 }
 
 function hero(tone, kicker, title, subtitle, opts) {

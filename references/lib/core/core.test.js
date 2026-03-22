@@ -175,6 +175,44 @@ test('skips when tree is unchanged', () => {
   }
 });
 
+test('allowEmptyTree creates bookmark commit when tree unchanged', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    createGitSnapshot(tmpDir, cfg);
+    const result2 = createGitSnapshot(tmpDir, cfg, { allowEmptyTree: true });
+    assert.strictEqual(result2.status, 'created');
+    assert.ok(result2.commitHash);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('fullWorkspaceSnapshot sees edits outside protect patterns', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({ protect: ['src/**'] }));
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    const ref = 'refs/guard/test-fullws';
+    const r1 = createGitSnapshot(tmpDir, cfg, { branchRef: ref });
+    assert.strictEqual(r1.status, 'created');
+    fs.writeFileSync(path.join(tmpDir, 'hello.txt'), 'changed outside src');
+    const r2 = createGitSnapshot(tmpDir, cfg, { branchRef: ref });
+    assert.strictEqual(r2.status, 'skipped');
+    const r3 = createGitSnapshot(tmpDir, cfg, {
+      branchRef: ref,
+      fullWorkspaceSnapshot: true,
+      allowEmptyTree: true,
+    });
+    assert.strictEqual(r3.status, 'created');
+    assert.ok((r3.changedCount || 0) >= 1);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 test('returns error for non-git directory', () => {
   const tmpDir = createTempDir();
   try {

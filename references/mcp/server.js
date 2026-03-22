@@ -189,6 +189,7 @@ server.tool(
         branchRef: 'refs/guard/snapshot',
         message: message || `guard: manual snapshot ${new Date().toISOString()}`,
         context,
+        allowEmptyTree: true,
       });
     }
 

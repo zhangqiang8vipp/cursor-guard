@@ -91,7 +91,14 @@ class DashboardManager {
       const { createGitSnapshot } = require(guardPath('lib', 'core', 'snapshot'));
       const { loadConfig } = require(guardPath('lib', 'utils'));
       const { cfg } = loadConfig(projectPath);
-      return createGitSnapshot(projectPath, cfg, { message: 'guard: manual snapshot via IDE extension' });
+      return createGitSnapshot(projectPath, cfg, {
+        branchRef: 'refs/guard/snapshot',
+        message: `guard: manual snapshot via IDE (${new Date().toISOString()})`,
+        context: { trigger: 'manual' },
+        allowEmptyTree: true,
+        // Match user expectation: "Snapshot now" captures the whole repo (except ignore/secrets), not only protect globs
+        fullWorkspaceSnapshot: true,
+      });
     } catch (e) {
       return { status: 'error', error: e.message };
     }

@@ -36079,6 +36079,7 @@ var require_snapshot = __commonJS({
       const cwd = projectDir;
       const gDir = getGitDir2(projectDir);
       if (!gDir) return { status: "error", error: "not a git repository" };
+      const narrowProtect = cfg.protect.length > 0 && !opts.fullWorkspaceSnapshot;
       const guardIndex = path2.join(gDir, "cursor-guard-index");
       const guardIndexLock = guardIndex + ".lock";
       const env = { ...process.env, GIT_INDEX_FILE: guardIndex };
@@ -36092,7 +36093,7 @@ var require_snapshot = __commonJS({
       }
       try {
         const parentHash = git(["rev-parse", "--verify", branchRef], { cwd, allowFail: true });
-        if (cfg.protect.length > 0) {
+        if (narrowProtect) {
           execFileSync("git", ["add", "-A"], { cwd, env, stdio: "pipe" });
           pruneIndexFiles(cwd, env, (f) => !matchesAny(cfg.protect, f, { strict: true }));
         } else {
@@ -36105,7 +36106,7 @@ var require_snapshot = __commonJS({
         const secretsExcluded = removeSecretsFromIndex(cfg.secrets_patterns, cwd, env);
         const newTree = execFileSync("git", ["write-tree"], { cwd, env, stdio: "pipe", encoding: "utf-8" }).trim();
         const parentTree = parentHash ? git(["rev-parse", `${branchRef}^{tree}`], { cwd, allowFail: true }) : null;
-        if (newTree === parentTree) {
+        if (newTree === parentTree && !opts.allowEmptyTree) {
           return { status: "skipped", reason: "tree unchanged" };
         }
         let changedCount;
@@ -36130,7 +36131,7 @@ var require_snapshot = __commonJS({
               const key = code.startsWith("R") ? "R" : code === "D" ? "D" : code === "A" ? "A" : "M";
               const fileName = filePart.split("	").pop();
               if (matchesAny(cfg.ignore, fileName) || matchesAny(cfg.ignore, path2.basename(fileName))) continue;
-              if (cfg.protect.length > 0 && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
+              if (narrowProtect && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
               groups[key].push(fileName);
             }
             changedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
@@ -36169,7 +36170,7 @@ var require_snapshot = __commonJS({
                 return s ? `${f} (+${s.added} -${s.deleted})` : f;
               }).join(", ");
             };
-            const files = lsInitial.split("\n").filter(Boolean).filter((f) => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path2.basename(f))).filter((f) => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
+            const files = lsInitial.split("\n").filter(Boolean).filter((f) => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path2.basename(f))).filter((f) => !narrowProtect || matchesAny(cfg.protect, f, { strict: true }));
             changedCount = files.length;
             const sample = files.slice(0, 5).join(", ");
             const numstatInit = git(["diff-tree", "--no-commit-id", "--numstat", "-r", EMPTY_TREE, newTree], { cwd, allowFail: true });
@@ -38199,7 +38200,8 @@ server.tool(
       results.git = createGitSnapshot(resolved, cfg, {
         branchRef: "refs/guard/snapshot",
         message: message || `guard: manual snapshot ${(/* @__PURE__ */ new Date()).toISOString()}`,
-        context
+        context,
+        allowEmptyTree: true
       });
     }
     if (effectiveStrategy === "shadow" || effectiveStrategy === "both") {

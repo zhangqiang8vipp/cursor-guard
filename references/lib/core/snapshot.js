@@ -91,6 +91,8 @@ function buildCommitMessage(ts, opts) {
  * @param {string} [opts.context.intent] - Why this snapshot was created (e.g. "refactoring auth middleware")
  * @param {string} [opts.context.agent] - AI model identifier (e.g. "claude-4-opus")
  * @param {string} [opts.context.session] - Conversation/session ID
+ * @param {boolean} [opts.allowEmptyTree] - If true, still create a commit when the snapshot tree equals the previous ref (empty / bookmark commit). Auto-backup should omit this; explicit manual snapshots should set it.
+ * @param {boolean} [opts.fullWorkspaceSnapshot] - If true, ignore `cfg.protect` when building the snapshot tree (still apply `ignore` / secrets). Use for IDE/MCP "snapshot everything" so edits outside protect patterns are not invisible to the snapshot.
  * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[] }}
  */
 function createGitSnapshot(projectDir, cfg, opts = {}) {
@@ -98,6 +100,8 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
   const cwd = projectDir;
   const gDir = getGitDir(projectDir);
   if (!gDir) return { status: 'error', error: 'not a git repository' };
+
+  const narrowProtect = cfg.protect.length > 0 && !opts.fullWorkspaceSnapshot;
 
   const guardIndex = path.join(gDir, 'cursor-guard-index');
   const guardIndexLock = guardIndex + '.lock';
@@ -109,7 +113,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
   try {
     const parentHash = git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
 
-    if (cfg.protect.length > 0) {
+    if (narrowProtect) {
       // protect uses strict matching (full path only, no basename fallback)
       // so *.js only matches root-level js files, not nested ones
       execFileSync('git', ['add', '-A'], { cwd, env, stdio: 'pipe' });
@@ -132,7 +136,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       ? git(['rev-parse', `${branchRef}^{tree}`], { cwd, allowFail: true })
       : null;
 
-    if (newTree === parentTree) {
+    if (newTree === parentTree && !opts.allowEmptyTree) {
       return { status: 'skipped', reason: 'tree unchanged' };
     }
 
@@ -156,7 +160,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
             : 'M';
           const fileName = filePart.split('\t').pop();
           if (matchesAny(cfg.ignore, fileName) || matchesAny(cfg.ignore, path.basename(fileName))) continue;
-          if (cfg.protect.length > 0 && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
+          if (narrowProtect && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
           groups[key].push(fileName);
         }
         changedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
@@ -202,7 +206,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       if (lsInitial) {
         const files = lsInitial.split('\n').filter(Boolean)
           .filter(f => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path.basename(f)))
-          .filter(f => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
+          .filter(f => !narrowProtect || matchesAny(cfg.protect, f, { strict: true }));
         changedCount = files.length;
         const sample = files.slice(0, 5).join(', ');
 

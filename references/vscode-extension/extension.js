@@ -414,9 +414,16 @@ async function activate(context) {
       const projectPath = folders[0].uri.fsPath;
       const result = await dashMgr.snapshotNow(projectPath);
       if (result?.status === 'created') {
-        vscode.window.showInformationMessage(`Cursor Guard: snapshot created (${result.changedCount || 0} changes)`);
+        const n = result.changedCount ?? 0;
+        const msg =
+          n > 0
+            ? `Cursor Guard: snapshot created (${n} file change(s))`
+            : 'Cursor Guard: snapshot created (restore point saved; no file changes since last snapshot)';
+        vscode.window.showInformationMessage(msg);
       } else if (result?.status === 'unchanged' || result?.status === 'skipped') {
-        vscode.window.showInformationMessage('Cursor Guard: no changes to snapshot');
+        vscode.window.showInformationMessage(
+          `Cursor Guard: no snapshot created (${result.reason || 'unchanged'})`
+        );
       } else if (result?.status === 'error') {
         vscode.window.showWarningMessage(`Cursor Guard: ${result.error}`);
       } else {
