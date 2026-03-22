@@ -51,6 +51,7 @@
     "references/mcp/",
     "references/dashboard/",
     "references/vscode-extension/",
+    "media/",
     "references/config-reference.md",
     "references/config-reference.zh-CN.md",
     "references/cursor-guard.example.json",

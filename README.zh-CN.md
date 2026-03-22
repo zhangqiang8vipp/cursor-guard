@@ -526,6 +526,16 @@ code --install-extension .
 
 ---
 
+## 支持 / 捐赠
+
+这是一个独立开发者维护的开源项目。如果 Cursor Guard 拯救过你的代码或节省了你的时间，欢迎请我喝杯咖啡 :)
+
+| 微信支付 | 支付宝 |
+|:---:|:---:|
+| <img src="media/wechat-pay.png" alt="微信支付" width="200"> | <img src="media/alipay.jpg" alt="支付宝" width="200"> |
+
+---
+
 ## 许可证
 
 [BSL 1.1（商业源代码许可证）](LICENSE) — 源代码自由查看、修改和非商业使用。商业使用需获得作者授权。2056-03-22 之后自动转为 Apache 2.0。

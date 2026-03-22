@@ -526,6 +526,16 @@ The skill activates on these signals:
 
 ---
 
+## Support / Donate
+
+This is an independent open-source project maintained by a solo developer. If Cursor Guard has saved your code or your time, consider buying me a coffee :)
+
+| WeChat Pay | Alipay |
+|:---:|:---:|
+| <img src="media/wechat-pay.png" alt="WeChat Pay" width="200"> | <img src="media/alipay.jpg" alt="Alipay" width="200"> |
+
+---
+
 ## License
 
 [BSL 1.1 (Business Source License)](LICENSE) — Source code is freely available for viewing, modification, and non-commercial use. Commercial use requires authorization from the author. Auto-converts to Apache 2.0 on 2056-03-22.
