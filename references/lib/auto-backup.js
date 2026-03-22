@@ -25,7 +25,7 @@ function isProcessAlive(pid) {
 
 // ── Main ────────────────────────────────────────────────────────
 
-async function runBackup(projectDir, intervalOverride) {
+async function runBackup(projectDir, intervalOverride, opts = {}) {
   const hasGit = gitAvailable();
   const repo = hasGit && isGitRepo(projectDir);
   const gDir = repo ? getGitDir(projectDir) : null;
@@ -177,6 +177,18 @@ async function runBackup(projectDir, intervalOverride) {
   console.log(color.cyan(`[guard] Watching '${projectDir}' every ${interval}s  (Ctrl+C to stop)`));
   console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Ref: ${branchRef}  |  Retention: ${cfg.retention.mode}`));
   console.log(color.cyan(`[guard] Log: ${logFilePath}`));
+
+  // Optional embedded dashboard
+  if (opts.dashboardPort) {
+    try {
+      const { startDashboardServer } = require('../dashboard/server');
+      const { port } = await startDashboardServer([projectDir], { port: opts.dashboardPort, silent: true });
+      console.log(color.cyan(`[guard] Dashboard: http://127.0.0.1:${port}`));
+    } catch (e) {
+      console.log(color.yellow(`[guard] Dashboard failed to start: ${e.message}`));
+    }
+  }
+
   console.log('');
 
   // Main loop

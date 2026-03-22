@@ -380,9 +380,11 @@ node references\dashboard\server.js --path "D:\MyProject"
 ### v4.4.0 — V4 收官版
 
 - **修复**：首次快照现在会生成 "Added N: file1, file2, ..." 摘要，而不是空白——之前第一次备份因为没有 parent tree 对比所以 summary 始终为空
+- **功能**：Watcher `--dashboard` 参数——`npx cursor-guard-backup --path <dir> --dashboard` 启动时同时启动 Web 仪表盘，单进程完成监控+查看。可选端口：`--dashboard 4000`，端口被占自动递增
 - **功能**：Doctor 新增 "Git retention" 检查——当 Git 备份 commit 数超过 500 且 `git_retention.enabled` 为 `false` 时发出 WARN，引导用户开启自动清理防止 ref 无限增长
 - **功能**：Doctor 新增 "Backup integrity" 检查——通过 `git cat-file -t` 验证最近一次 auto-backup commit 的 tree 对象是否可达，尽早发现静默损坏
 - **改进**：`cursor-guard-init` 现在检测已有 `.cursor-guard.json`，显示升级提示而非静默覆盖
+- **改进**：Dashboard server 重构，导出 `startDashboardServer()` 供嵌入其他进程使用
 
 ### v4.3.5
 

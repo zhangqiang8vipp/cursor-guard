@@ -154,53 +154,79 @@ function handleApi(pathname, query, registry, res) {
 
 /* ── Server ─────────────────────────────────────────────────── */
 
-function main() {
-  const args = parseCliArgs();
-  const registry = buildRegistry(args.paths);
-  let port = args.port;
-  let retries = 0;
+/**
+ * Start the dashboard HTTP server.
+ * Can be called standalone (CLI) or embedded (from watcher).
+ *
+ * @param {string[]} paths - Project directories to serve
+ * @param {object} [opts]
+ * @param {number} [opts.port=3120] - Starting port
+ * @param {boolean} [opts.silent=false] - Suppress banner output
+ * @returns {Promise<{server: http.Server, port: number, registry: Map}>}
+ */
+function startDashboardServer(paths, opts = {}) {
+  const port = opts.port || DEFAULT_PORT;
+  const silent = opts.silent || false;
+  const registry = buildRegistry(paths);
 
-  const server = http.createServer((req, res) => {
-    if (req.method !== 'GET') {
-      res.writeHead(405);
-      return res.end('Method Not Allowed');
-    }
-    let parsed;
-    try { parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`); }
-    catch { return notFound(res); }
+  return new Promise((resolve, reject) => {
+    let currentPort = port;
+    let retries = 0;
 
-    if (parsed.pathname.startsWith('/api/')) {
-      handleApi(parsed.pathname, parsed.searchParams, registry, res);
-    } else {
-      serveStatic(req.url, res);
-    }
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405);
+        return res.end('Method Not Allowed');
+      }
+      let parsed;
+      try { parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`); }
+      catch { return notFound(res); }
+
+      if (parsed.pathname.startsWith('/api/')) {
+        handleApi(parsed.pathname, parsed.searchParams, registry, res);
+      } else {
+        serveStatic(req.url, res);
+      }
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE' && retries < MAX_PORT_RETRIES) {
+        retries++;
+        currentPort++;
+        server.listen(currentPort, '127.0.0.1');
+      } else {
+        reject(err);
+      }
+    });
+
+    server.on('listening', () => {
+      const addr = server.address();
+      if (!silent) {
+        console.log('');
+        console.log('  Cursor Guard Dashboard');
+        console.log('  ─────────────────────────');
+        console.log(`  URL:      http://127.0.0.1:${addr.port}`);
+        console.log(`  Projects: ${registry.size}`);
+        for (const p of registry.values()) {
+          console.log(`    [${p.id}] ${p.name} → ${p._path}`);
+        }
+        console.log('');
+      }
+      resolve({ server, port: addr.port, registry });
+    });
+
+    server.listen(currentPort, '127.0.0.1');
   });
-
-  server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE' && retries < MAX_PORT_RETRIES) {
-      retries++;
-      port++;
-      server.listen(port, '127.0.0.1');
-    } else {
-      console.error('Failed to start:', err.message);
-      process.exit(1);
-    }
-  });
-
-  server.on('listening', () => {
-    const addr = server.address();
-    console.log('');
-    console.log('  Cursor Guard Dashboard');
-    console.log('  ─────────────────────────');
-    console.log(`  URL:      http://127.0.0.1:${addr.port}`);
-    console.log(`  Projects: ${registry.size}`);
-    for (const p of registry.values()) {
-      console.log(`    [${p.id}] ${p.name} → ${p._path}`);
-    }
-    console.log('');
-  });
-
-  server.listen(port, '127.0.0.1');
 }
 
-main();
+/* ── CLI entry ─────────────────────────────────────────────── */
+
+if (require.main === module) {
+  const args = parseCliArgs();
+  startDashboardServer(args.paths, { port: args.port }).catch(err => {
+    console.error('Failed to start:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { startDashboardServer };
