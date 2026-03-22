@@ -494,8 +494,9 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 问题 | 根因 | 修复 |
 |------|------|------|
 | 异常检测 `changedFileCount` 虚高 | `auto-backup.js` 用 `git status --porcelain`（对比 HEAD）计数，而非对比上一次备份的增量 | 改用 `createGitSnapshot` 返回的 `changedCount`（来自 `diff-tree`），异常检测和 Summary 共享同一数据源。移除了未使用的 `execFileSync` 和 `unquoteGitPath` 导入 |
+| 诊断锁文件状态判断不够智能 | `doctor.js` Lock file 检测只要存在就报 WARN，不区分 watcher 是否在运行 | 加入 PID 存活判断（`process.kill(pid, 0)`）：PID 在线 → PASS（`watcher running`）；PID 已死 → WARN（`stale lock file`）；无 PID → WARN（兜底）。前端 i18n 同步补全 `detail.lock_running` / `detail.lock_stale` / `detail.lock_exists` |
 
-**Dashboard 升级（8 项改进）**：
+**Dashboard 升级（10 项改进）**：
 
 | 优先级 | 改进 | 说明 |
 |--------|------|------|
@@ -505,6 +506,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 中 | 恢复命令复制 | 抽屉底部显示 `restore_project` 和 `restore_file` MCP 命令，一键复制 |
 | 低 | 筛选按钮计数 | "Git 自动备份 (12)" 而非仅 "Git 自动备份"；无数据的类型自动隐藏 |
 | 低 | Watcher 最后扫描 | 卡片增加 "最后扫描: 3s 前"，确认 watcher 实际在工作 |
+| 中 | 摘要展开/收起 | 变更摘要超过 2 行时自动折叠，显示 `+N more` 按钮点击展开；避免行过长截断，无需进抽屉即可看全 |
 | 修复 | `showLoading` 引用 | 项目切换时调用了不存在的 `showLoading()`，改为 `showSkeleton()` |
 | 优化 | i18n 补全 | 新增 14 个双语 key（告警详情、告警历史、文件搜索、恢复命令、扫描时间） |
 
