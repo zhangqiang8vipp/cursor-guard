@@ -40,6 +40,12 @@ const I18N = {
     'alert.title':      'Alerts',
     'alert.none':       'No active alerts',
     'alert.active':     'Active Alert',
+    'alert.triggered':  'Triggered',
+    'alert.expires':    'Expires in',
+    'alert.detail':     '{count} files in {window}s (threshold: {threshold})',
+    'alert.expired':    'Expired',
+    'alert.history':    'Recent Alert History',
+    'alert.noHistory':  'No alert history',
 
     'backups.gitCommits':       'Git Commits',
     'backups.shadowSnapshots':  'Shadow Snapshots',
@@ -95,6 +101,7 @@ const I18N = {
     'trigger.manual':       'Manual (agent)',
     'trigger.pre-restore':  'Pre-Restore',
     'backups.col.summary':  'Changes',
+    'backups.search':       'Search files…',
     'summary.modified':     'Modified',
     'summary.added':        'Added',
     'summary.deleted':      'Deleted',
@@ -106,6 +113,10 @@ const I18N = {
     'drawer.field.from':    'From (current)',
     'drawer.field.restoreTo':'Restore to',
     'drawer.field.restoreFile':'Restored file',
+    'drawer.restoreCmd':    'Copy Restore Command',
+    'drawer.restoreCmdFile':'Copy File Restore Command',
+
+    'watcher.lastScan':    'Last scan',
 
     'error.fetchFailed':    'Failed to fetch data',
     'error.sectionFailed':  'This section failed to load',
@@ -224,6 +235,12 @@ const I18N = {
     'alert.title':      '告警',
     'alert.none':       '无活跃告警',
     'alert.active':     '活跃告警',
+    'alert.triggered':  '触发时间',
+    'alert.expires':    '剩余有效',
+    'alert.detail':     '{count} 个文件在 {window} 秒内变更（阈值：{threshold}）',
+    'alert.expired':    '已过期',
+    'alert.history':    '近期告警历史',
+    'alert.noHistory':  '暂无告警记录',
 
     'backups.gitCommits':       'Git 提交数',
     'backups.shadowSnapshots':  '影子快照',
@@ -279,6 +296,7 @@ const I18N = {
     'trigger.manual':       '手动（Agent）',
     'trigger.pre-restore':  '恢复前快照',
     'backups.col.summary':  '变更',
+    'backups.search':       '搜索文件…',
     'summary.modified':     '修改',
     'summary.added':        '新增',
     'summary.deleted':      '删除',
@@ -290,6 +308,10 @@ const I18N = {
     'drawer.field.from':    '恢复前版本',
     'drawer.field.restoreTo':'恢复目标',
     'drawer.field.restoreFile':'恢复文件',
+    'drawer.restoreCmd':    '复制恢复命令',
+    'drawer.restoreCmdFile':'复制文件恢复命令',
+
+    'watcher.lastScan':    '最后扫描',
 
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
@@ -385,10 +407,12 @@ const state = {
   pageData: null,
   filteredBackups: [],
   backupFilter: 'all',
+  fileSearch: '',
   refreshTimer: null,
   tickTimer: null,
   lastRefreshAt: null,
   drawerOpen: null,
+  alertHistory: [],
 };
 
 const REFRESH_MS = 15000;
@@ -781,6 +805,7 @@ function renderWatcherCard(watcher) {
   let st = 'stopped';
   if (watcher?.running) st = 'running';
   else if (watcher?.stale) st = 'stale';
+  const lastScan = state.lastRefreshAt ? relativeTime(new Date(state.lastRefreshAt).toISOString()) : null;
   el.innerHTML = `
     <div class="card-label">${t('watcher.title')}</div>
     <div class="card-status">
@@ -789,23 +814,55 @@ function renderWatcherCard(watcher) {
     </div>
     ${watcher?.pid ? `<div class="card-detail text-muted text-sm">${t('watcher.pid')}: ${watcher.pid}</div>` : ''}
     ${watcher?.startedAt ? `<div class="card-detail text-muted text-sm">${t('watcher.since')}: ${esc(formatTime(watcher.startedAt))}</div>` : ''}
+    ${watcher?.running && lastScan ? `<div class="card-detail text-muted text-sm">${t('watcher.lastScan')}: ${esc(lastScan)}</div>` : ''}
   `;
 }
 
 function renderAlertCard(alerts) {
   const el = $('#card-alert');
   if (!alerts?.active) {
+    let historyHtml = '';
+    if (state.alertHistory.length > 0) {
+      const rows = state.alertHistory.slice(-5).reverse().map(h =>
+        `<div class="alert-history-row text-sm text-muted">
+          <span>${esc(formatTime(h.timestamp))}</span>
+          <span>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</span>
+          <span class="badge badge-expired">${t('alert.expired')}</span>
+        </div>`
+      ).join('');
+      historyHtml = `<div class="alert-history"><div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}</div>`;
+    }
     el.innerHTML = `
       <div class="card-label">${t('alert.title')}</div>
       <div class="card-status"><span class="status-dot status-healthy"></span><span>${t('alert.none')}</span></div>
+      ${historyHtml}
     `;
     return;
   }
   const a = alerts.latest || {};
+
+  // Track in history
+  if (a.timestamp && !state.alertHistory.some(h => h.timestamp === a.timestamp)) {
+    state.alertHistory.push({ timestamp: a.timestamp, fileCount: a.fileCount, windowSeconds: a.windowSeconds, threshold: a.threshold, expiresAt: a.expiresAt });
+    if (state.alertHistory.length > 20) state.alertHistory = state.alertHistory.slice(-20);
+  }
+
+  const triggeredAt = a.timestamp ? formatTime(a.timestamp) : '-';
+  const expiresAt = a.expiresAt ? new Date(a.expiresAt) : null;
+  const remainMs = expiresAt ? expiresAt.getTime() - Date.now() : 0;
+  const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
+  const remainMin = Math.floor(remainSec / 60);
+  const remainDisplay = remainMin > 0 ? `${remainMin}m ${remainSec % 60}s` : `${remainSec}s`;
+  const detailText = t('alert.detail', { count: a.fileCount || '?', window: a.windowSeconds || '?', threshold: a.threshold || '?' });
+
   el.innerHTML = `
     <div class="card-label">${t('alert.title')}</div>
     <div class="card-status"><span class="status-dot status-warning"></span><span class="status-text status-warning">${t('alert.active')}</span></div>
-    <div class="card-detail text-muted text-sm">${esc(translateIssue(a.recommendation || a.message || ''))}</div>
+    <div class="alert-details">
+      <div class="alert-detail-row"><span class="alert-detail-label">${t('alert.triggered')}</span><span>${esc(triggeredAt)}</span></div>
+      <div class="alert-detail-row"><span class="alert-detail-label">${t('alert.expires')}</span><span class="alert-countdown">${esc(remainDisplay)}</span></div>
+      <div class="alert-detail-row alert-numbers">${esc(detailText)}</div>
+    </div>
   `;
 }
 
@@ -813,8 +870,15 @@ function renderAlertCard(alerts) {
 
 function renderBackupsSection(dashboard, backups) {
   renderBackupStats(dashboard, backups);
-  renderFilterBar();
+  renderFilterBar(backups);
+  renderFileSearch();
   renderBackupTable(backups);
+}
+
+function renderFileSearch() {
+  const el = $('#file-search-wrap');
+  if (!el) return;
+  el.innerHTML = `<input id="file-search" type="text" class="file-search-input" placeholder="${t('backups.search')}" value="${esc(state.fileSearch)}" />`;
 }
 
 function renderBackupStats(d, backups) {
@@ -835,7 +899,11 @@ function renderBackupStats(d, backups) {
   `;
 }
 
-function renderFilterBar() {
+function renderFilterBar(backups) {
+  const allBackups = Array.isArray(backups) ? backups : (Array.isArray(state.pageData?.backups) ? state.pageData.backups : []);
+  const typeCounts = {};
+  for (const b of allBackups) { typeCounts[b.type] = (typeCounts[b.type] || 0) + 1; }
+
   const types = [
     { key: 'all',                label: 'backups.filterAll' },
     { key: 'git-auto-backup',   label: 'type.git-auto-backup' },
@@ -844,9 +912,12 @@ function renderFilterBar() {
     { key: 'shadow',            label: 'type.shadow' },
     { key: 'shadow-pre-restore',label: 'type.shadow-pre-restore' },
   ];
-  $('#backup-filters').innerHTML = types.map(t2 =>
-    `<button class="filter-btn ${state.backupFilter === t2.key ? 'active' : ''}" data-filter="${t2.key}">${t(t2.label)}</button>`
-  ).join('');
+  const total = allBackups.length;
+  $('#backup-filters').innerHTML = types.map(t2 => {
+    const count = t2.key === 'all' ? total : (typeCounts[t2.key] || 0);
+    if (t2.key !== 'all' && count === 0) return '';
+    return `<button class="filter-btn ${state.backupFilter === t2.key ? 'active' : ''}" data-filter="${t2.key}">${t(t2.label)} <span class="filter-count">(${count})</span></button>`;
+  }).join('');
 }
 
 function translateSummary(raw) {
@@ -891,9 +962,20 @@ function renderBackupTable(backups) {
     $('#backup-table-wrap').innerHTML = `<div class="error-panel">${t('error.sectionFailed')}</div>`;
     return;
   }
-  state.filteredBackups = state.backupFilter === 'all'
+  let filtered = state.backupFilter === 'all'
     ? backups
     : backups.filter(b => b.type === state.backupFilter);
+
+  if (state.fileSearch) {
+    const q = state.fileSearch.toLowerCase();
+    filtered = filtered.filter(b =>
+      (b.summary && b.summary.toLowerCase().includes(q)) ||
+      (b.message && b.message.toLowerCase().includes(q)) ||
+      (b.intent && b.intent.toLowerCase().includes(q)) ||
+      (b.restoreFile && b.restoreFile.toLowerCase().includes(q))
+    );
+  }
+  state.filteredBackups = filtered;
 
   if (state.filteredBackups.length === 0) {
     $('#backup-table-wrap').innerHTML = `<div class="empty-state">${t('backups.noBackups')}</div>`;
@@ -1025,6 +1107,11 @@ function openRestoreDrawer(backup) {
   const refText = backup.ref || backup.shortHash || backup.timestamp || '';
   const jsonText = JSON.stringify(backup, null, 2);
 
+  const isGit = backup.type?.startsWith('git');
+  const hash = backup.commitHash || backup.shortHash || '';
+  const restoreProjectCmd = isGit && hash ? `restore_project({ version: "${hash}", mode: "execute" })` : '';
+  const restoreFileCmd = isGit && hash ? `restore_file({ file: "<filename>", version: "${hash}" })` : '';
+
   body.innerHTML = `
     ${fields.map(f => `
       <div class="restore-field">
@@ -1040,12 +1127,29 @@ function openRestoreDrawer(backup) {
       <button class="btn btn-sm" data-copy-json>${t('drawer.copyJson')}</button>
       <button class="btn btn-sm" id="preview-toggle">${t('drawer.preview')}</button>
     </div>
+    ${restoreProjectCmd ? `
+    <div class="restore-cmd-section">
+      <div class="restore-cmd-label text-sm text-muted">MCP Restore Commands</div>
+      <div class="restore-cmd-row">
+        <code class="restore-cmd-code">${esc(restoreProjectCmd)}</code>
+        <button class="btn btn-sm btn-restore-cmd" data-copy-restore-project>${t('drawer.restoreCmd')}</button>
+      </div>
+      <div class="restore-cmd-row">
+        <code class="restore-cmd-code">${esc(restoreFileCmd)}</code>
+        <button class="btn btn-sm btn-restore-cmd" data-copy-restore-file>${t('drawer.restoreCmdFile')}</button>
+      </div>
+    </div>
+    ` : ''}
     <div id="json-preview-wrap" class="hidden">
       <pre class="json-preview">${esc(jsonText)}</pre>
     </div>
   `;
 
   body.querySelector('[data-copy-json]')?.addEventListener('click', () => copyText(jsonText));
+  if (restoreProjectCmd) {
+    body.querySelector('[data-copy-restore-project]')?.addEventListener('click', () => copyText(restoreProjectCmd));
+    body.querySelector('[data-copy-restore-file]')?.addEventListener('click', () => copyText(restoreFileCmd));
+  }
   body.querySelector('#preview-toggle')?.addEventListener('click', () => {
     const wrap = body.querySelector('#json-preview-wrap');
     wrap.classList.toggle('hidden');
@@ -1113,7 +1217,7 @@ function setupEvents() {
     state.currentProjectId = e.target.value;
     state.backupFilter = 'all';
     stopRefresh();
-    showLoading();
+    showSkeleton();
     try { await loadPageData(); renderAll(); }
     catch (err) { showGlobalError(err.message); }
     startRefresh();
@@ -1133,8 +1237,17 @@ function setupEvents() {
     state.backupFilter = btn.dataset.filter;
     const backups = state.pageData?.backups;
     if (Array.isArray(backups)) {
-      renderFilterBar();
+      renderFilterBar(backups);
       renderBackupTable(backups);
+    }
+  });
+
+  // File search (event delegation on parent)
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'file-search') {
+      state.fileSearch = e.target.value;
+      const backups = state.pageData?.backups;
+      if (Array.isArray(backups)) renderBackupTable(backups);
     }
   });
 

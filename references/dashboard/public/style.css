@@ -863,6 +863,143 @@ main {
 }
 .skeleton-table::after { width: 75%; opacity: .6; }
 
+/* ── Alert Card Details ───────────────────────────────────── */
+
+.alert-details {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.alert-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.alert-detail-label {
+  font-weight: 600;
+  color: var(--text-tertiary);
+  min-width: 72px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.alert-countdown {
+  color: var(--yellow);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.alert-numbers {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--yellow);
+  background: var(--yellow-bg);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--yellow);
+}
+
+.alert-history {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+}
+.alert-history-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.alert-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11px;
+}
+.badge-expired {
+  background: var(--gray-bg);
+  color: var(--gray);
+  border-color: rgba(100,116,139,.18);
+  font-size: 9px;
+  padding: 1px 6px;
+}
+
+/* ── File Search ─────────────────────────────────────────── */
+
+.file-search-wrap {
+  margin-bottom: 12px;
+}
+.file-search-input {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color var(--transition);
+}
+.file-search-input::placeholder { color: var(--text-tertiary); }
+.file-search-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-bg);
+}
+
+/* ── Filter Count ────────────────────────────────────────── */
+
+.filter-count {
+  font-size: 10px;
+  opacity: .65;
+  font-weight: 400;
+}
+
+/* ── Restore Command Section ─────────────────────────────── */
+
+.restore-cmd-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.restore-cmd-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+.restore-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.restore-cmd-code {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--green);
+  word-break: break-all;
+  line-height: 1.5;
+}
+.btn-restore-cmd {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ── Utility ──────────────────────────────────────────────── */
 
 .hidden { display: none !important; }

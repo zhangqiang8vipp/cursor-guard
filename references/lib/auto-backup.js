@@ -2,11 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const {
   color, loadConfig, gitAvailable, git, isGitRepo, gitDir: getGitDir,
   walkDir, filterFiles, buildManifest, loadManifest, saveManifest,
-  manifestChanged, createLogger, unquoteGitPath,
+  manifestChanged, createLogger,
 } = require('./utils');
 const { createGitSnapshot, createShadowCopy } = require('./core/snapshot');
 const { cleanShadowRetention, cleanGitRetention } = require('./core/backups');
@@ -235,33 +234,9 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     }
     if (!hasChanges) continue;
 
-    // V4: Record change event and check for anomalies
+    // Shadow: pre-compute changed file count from manifest diff (already accurate)
     let changedFileCount = 0;
-    let porcelain = '';
-    if (repo) {
-      // Use execFileSync directly — git() helper's trim() strips leading spaces
-      // from porcelain output, corrupting the first line when it starts with ' '.
-      try {
-        porcelain = execFileSync('git', ['status', '--porcelain'], {
-          cwd: projectDir, stdio: 'pipe', encoding: 'utf-8',
-        });
-      } catch { /* ignore */ }
-      if (porcelain) {
-        const lines = porcelain.split('\n').filter(Boolean);
-        if (cfg.protect.length === 0 && cfg.ignore.length === 0) {
-          changedFileCount = lines.length;
-        } else {
-          const changedPaths = lines.map(line => {
-            const filePart = line.substring(3);
-            const arrowIdx = filePart.indexOf(' -> ');
-            const raw = arrowIdx >= 0 ? filePart.substring(arrowIdx + 4) : filePart;
-            return unquoteGitPath(raw);
-          });
-          const fakeFiles = changedPaths.map(rel => ({ rel, full: path.join(projectDir, rel) }));
-          changedFileCount = filterFiles(fakeFiles, cfg).length;
-        }
-      }
-    } else if (pendingManifest) {
+    if (!repo && pendingManifest) {
       if (!lastManifest) {
         changedFileCount = Object.keys(pendingManifest).length;
       } else {
@@ -278,18 +253,12 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       }
     }
 
-    recordChange(tracker, changedFileCount);
-    const anomalyResult = checkAnomaly(tracker);
-    if (anomalyResult.anomaly && anomalyResult.alert && !anomalyResult.suppressed) {
-      saveAlert(projectDir, anomalyResult.alert);
-      logger.warn(`ALERT: ${anomalyResult.alert.fileCount} files changed in ${anomalyResult.alert.windowSeconds}s (threshold: ${anomalyResult.alert.threshold})`);
-    }
-
-    // Git snapshot via Core
+    // Git snapshot via Core — changedFileCount comes from diff-tree (accurate incremental)
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
-      const context = { trigger: 'auto', changedFileCount };
+      const context = { trigger: 'auto' };
       const snapResult = createGitSnapshot(projectDir, cfg, { branchRef, context });
       if (snapResult.status === 'created') {
+        changedFileCount = snapResult.changedCount != null ? snapResult.changedCount : 0;
         let msg = `Git snapshot ${snapResult.shortHash} (${snapResult.fileCount} files)`;
         if (snapResult.secretsExcluded) {
           msg += ` [secrets excluded: ${snapResult.secretsExcluded.join(', ')}]`;
@@ -300,6 +269,14 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       } else if (snapResult.status === 'error') {
         logger.error(`Git snapshot failed: ${snapResult.error}`);
       }
+    }
+
+    // V4: Record change event and check for anomalies (after snapshot, using accurate count)
+    recordChange(tracker, changedFileCount);
+    const anomalyResult = checkAnomaly(tracker);
+    if (anomalyResult.anomaly && anomalyResult.alert && !anomalyResult.suppressed) {
+      saveAlert(projectDir, anomalyResult.alert);
+      logger.warn(`ALERT: ${anomalyResult.alert.fileCount} files changed in ${anomalyResult.alert.windowSeconds}s (threshold: ${anomalyResult.alert.threshold})`);
     }
 
     // Shadow copy via Core
