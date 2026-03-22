@@ -274,7 +274,7 @@ npx cursor-guard-dashboard --path /my/project --port 8080
 node references\dashboard\server.js --path "D:\MyProject"
 ```
 
-然后在浏览器打开 `http://127.0.0.1:3120`。
+然后在浏览器打开 `http://127.0.0.1:3120`。也可以使用 **IDE 扩展**（见下方）将仪表盘直接嵌入编辑器。
 
 特性：
 
@@ -286,6 +286,29 @@ node references\dashboard\server.js --path "D:\MyProject"
 - **2 个详情抽屉**：恢复点抽屉（预览 JSON、复制引用/hash）、诊断抽屉（完整检查列表，WARN/FAIL 默认展开）
 - **安全性** — 仅绑定 `127.0.0.1`（不暴露到局域网）、API 使用项目 ID 而非原始路径、静态文件服务严格限制在 `public/` 目录
 - **零额外依赖** — 使用 Node.js 内置 `http` 模块 + cursor-guard 已有核心模块
+
+### IDE 扩展（VSCode / Cursor）
+
+将完整仪表盘直接嵌入 IDE 内部，无需打开浏览器。
+
+扩展位于 `references/vscode-extension/`。安装方式：
+
+```bash
+# 从 cursor-guard skill 目录
+cd references/vscode-extension
+# 作为开发扩展安装到 IDE
+code --install-extension .
+```
+
+功能：
+
+- **WebView 仪表盘** — 完整仪表盘作为编辑器标签页嵌入，与浏览器版本完全一致
+- **状态栏指示器** — 实时显示 `Guard: OK`（绿色）或 `Guard: 22 files!`（黄色告警）
+- **侧边栏 TreeView** — Activity Bar 图标，树形展示项目列表、Watcher 状态、备份统计、告警、健康评估
+- **命令面板** — `Cursor Guard: Open Dashboard`、`Snapshot Now`、`Start Watcher`、`Refresh`
+- **自动激活** — 检测到工作区有 `.cursor-guard.json` 时自动启动 Dashboard 服务
+- **多项目** — 热加载所有包含 `.cursor-guard.json` 的工作区文件夹
+- **兼容性** — 支持 VSCode ^1.74.0、Cursor、Windsurf 及所有基于 VSCode 的 IDE
 
 ---
 

@@ -1,0 +1,87 @@
+{
+  "name": "cursor-guard-ide",
+  "displayName": "Cursor Guard",
+  "description": "AI code protection dashboard embedded in your IDE — real-time alerts, backup history, one-click snapshots",
+  "version": "4.7.0",
+  "publisher": "zhangqiang8vipp",
+  "license": "BUSL-1.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["cursor", "ai-safety", "code-protection", "git-backup", "dashboard"],
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhangqiang8vipp/cursor-guard"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "workspaceContains:.cursor-guard.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "cursorGuard.openDashboard",
+        "title": "Open Dashboard",
+        "category": "Cursor Guard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "cursorGuard.snapshotNow",
+        "title": "Snapshot Now",
+        "category": "Cursor Guard",
+        "icon": "$(device-camera)"
+      },
+      {
+        "command": "cursorGuard.startWatcher",
+        "title": "Start Watcher",
+        "category": "Cursor Guard",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "cursorGuard.stopWatcher",
+        "title": "Stop Watcher",
+        "category": "Cursor Guard",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "cursorGuard.refreshTree",
+        "title": "Refresh",
+        "category": "Cursor Guard",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cursorGuard",
+          "title": "Cursor Guard",
+          "icon": "media/guard-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "cursorGuard": [
+        {
+          "id": "cursorGuardProjects",
+          "name": "Projects"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "cursorGuard.openDashboard",
+          "when": "view == cursorGuardProjects",
+          "group": "navigation"
+        },
+        {
+          "command": "cursorGuard.refreshTree",
+          "when": "view == cursorGuardProjects",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

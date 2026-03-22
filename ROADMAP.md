@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.6.1`  
-> **文档状态**：`V2` ~ `V4.6.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.0`  
+> **文档状态**：`V2` ~ `V4.7.0` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -734,14 +734,19 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 }
 ```
 
-### V4.7 规划：IDE 集成（VSCode/Cursor Extension）
+### V4.7.0：IDE 集成（VSCode/Cursor Extension） ✅
 
-| 项目 | 说明 |
+| 组件 | 说明 |
 |------|------|
-| 定位 | 将 Dashboard 从浏览器迁移到 IDE 内置 WebView，减少上下文切换 |
-| 实现方式 | VSCode Extension + WebView Panel，复用现有 `dashboard/public/` 前端代码 |
-| 核心能力 | IDE 侧边栏入口、状态栏告警指示器、WebView 内嵌 Dashboard、一键快照按钮 |
-| 状态 | 🔮 规划中 |
+| `extension.js` | 扩展入口。自动检测 `.cursor-guard.json` 激活，启动内嵌 Dashboard Server，注册所有命令和视图 |
+| `dashboard-manager.js` | 复用现有 `dashboard/server.js` 单例模式，在扩展宿主进程内直接 require，零额外开销。支持多 workspace folder 热加载 |
+| `webview-provider.js` | WebView Panel 管理。加载 `dashboard/public/` 前端，通过 `asWebviewUri()` 转换资源路径，注入 `__GUARD_TOKEN__` + `__GUARD_BASE_URL__` + `__IN_VSCODE__` |
+| `status-bar.js` | 状态栏告警指示器。正常时显示 `$(shield) Guard: OK`，告警时黄色背景 `$(warning) Guard: 22 files!`，点击打开 Dashboard |
+| `tree-view.js` | Activity Bar 侧边栏。树形展示项目列表，每个项目下显示 Watcher 状态、最近备份时间、备份统计、活跃告警、健康评估 |
+| `poller.js` | 后台每 5 秒轮询 `/api/page-data`，驱动状态栏和 TreeView 实时更新 |
+| `app.js` 适配 | `fetchJson` 支持 `window.__GUARD_BASE_URL__` 前缀（兼容浏览器和 WebView）；`copyText` 在 VSCode 中通过 `postMessage` 桥接到 `vscode.env.clipboard` |
+| 命令面板 | `Open Dashboard` / `Snapshot Now` / `Start/Stop Watcher` / `Refresh` |
+| 兼容性 | VSCode ^1.74.0，覆盖 Cursor、Windsurf 等所有 VSCode 衍生 IDE |
 
 ### V4 不做的事
 

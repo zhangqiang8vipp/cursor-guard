@@ -674,9 +674,10 @@ function relativeTime(ts) {
 /* ── Data fetching ────────────────────────────────────────── */
 
 async function fetchJson(url) {
+  const base = window.__GUARD_BASE_URL__ || '';
   const sep = url.includes('?') ? '&' : '?';
   const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${window.__GUARD_TOKEN__}` : '';
-  const r = await fetch(url + tokenParam);
+  const r = await fetch(base + url + tokenParam);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -1526,16 +1527,21 @@ function openDoctorDrawer() {
 /* ── Copy to clipboard ────────────────────────────────────── */
 
 async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;left:-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
+  if (window.__IN_VSCODE__ && window.acquireVsCodeApi) {
+    try { window.__vscodeApi = window.__vscodeApi || acquireVsCodeApi(); } catch { /* already acquired */ }
+    window.__vscodeApi?.postMessage({ type: 'copy', text });
+  } else {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
   }
   showToast(t('drawer.copied'));
 }
@@ -1704,9 +1710,10 @@ async function restartServer(banner) {
   banner.querySelector('.upgrade-banner-close').style.display = 'none';
 
   try {
+    const base = window.__GUARD_BASE_URL__ || '';
     const sep = '/api/restart'.includes('?') ? '&' : '?';
     const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${window.__GUARD_TOKEN__}` : '';
-    await fetch('/api/restart' + tokenParam, { method: 'POST' });
+    await fetch(base + '/api/restart' + tokenParam, { method: 'POST' });
   } catch { /* server may close connection */ }
 
   btn.textContent = t('upgrade.waiting');
@@ -1714,7 +1721,7 @@ async function restartServer(banner) {
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 500));
     try {
-      const r = await fetch('/api/version' + (window.__GUARD_TOKEN__ ? '?token=' + window.__GUARD_TOKEN__ : ''));
+      const r = await fetch((window.__GUARD_BASE_URL__ || '') + '/api/version' + (window.__GUARD_TOKEN__ ? '?token=' + window.__GUARD_TOKEN__ : ''));
       if (r.ok) { ready = true; break; }
     } catch { /* still restarting */ }
   }

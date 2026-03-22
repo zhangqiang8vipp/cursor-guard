@@ -274,7 +274,7 @@ npx cursor-guard-dashboard --path /my/project --port 8080
 node references\dashboard\server.js --path "D:\MyProject"
 ```
 
-Then open `http://127.0.0.1:3120` in your browser.
+Then open `http://127.0.0.1:3120` in your browser. Or use the **IDE Extension** (see below) to embed the dashboard directly in your editor.
 
 Features:
 
@@ -286,6 +286,29 @@ Features:
 - **2 detail drawers**: Restore Point drawer (preview JSON, copy ref/hash), Doctor drawer (full check list, WARN/FAIL expanded by default)
 - **Security** — binds to `127.0.0.1` only (not exposed to LAN), API uses project IDs instead of raw file paths, static file serving restricted to `public/` directory
 - **Zero extra dependencies** — uses Node.js built-in `http` module + existing cursor-guard core modules
+
+### IDE Extension (VSCode / Cursor)
+
+Embed the full dashboard directly inside your IDE — no browser needed.
+
+The extension is located at `references/vscode-extension/`. To install:
+
+```bash
+# From the cursor-guard skill directory
+cd references/vscode-extension
+# Install as a development extension in your IDE
+code --install-extension .
+```
+
+Features:
+
+- **WebView Dashboard** — full dashboard embedded as an editor tab, identical to the browser version
+- **Status Bar Indicator** — shows `Guard: OK` (green) or `Guard: 22 files!` (yellow) in real-time
+- **Sidebar TreeView** — activity bar icon with project list, watcher status, backup stats, alerts, health
+- **Command Palette** — `Cursor Guard: Open Dashboard`, `Snapshot Now`, `Start Watcher`, `Refresh`
+- **Auto-activation** — detects `.cursor-guard.json` in workspace, starts dashboard server automatically
+- **Multi-project** — hot-loads all workspace folders with `.cursor-guard.json`
+- **Compatible** — works with VSCode ^1.74.0, Cursor, Windsurf, and all VSCode-based IDEs
 
 ---
 
