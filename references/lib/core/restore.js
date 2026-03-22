@@ -31,7 +31,7 @@ const GUARD_CONFIGS = ['.cursor-guard.json', '.gitignore'];
 
 function isToolPath(filePath) {
   const normalized = filePath.replace(/\\/g, '/');
-  if (TOOL_DIRS.some(d => normalized.startsWith(d))) return true;
+  if (TOOL_DIRS.some(d => normalized.startsWith(d) || normalized === d.replace(/\/$/, ''))) return true;
   if (GUARD_CONFIGS.includes(normalized)) return true;
   return false;
 }
@@ -131,6 +131,10 @@ function restoreFile(projectDir, file, source, opts = {}) {
   // Restore from shadow copy
   if (isShadowSource) {
     try {
+      const stat = fs.statSync(shadowDir);
+      if (stat.isDirectory()) {
+        return { status: 'error', restoredFrom: source, error: `'${file}' is a directory, not a file — use restore_project for directory-level restores` };
+      }
       const dest = path.join(projectDir, file);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(shadowDir, dest);
@@ -144,24 +148,21 @@ function restoreFile(projectDir, file, source, opts = {}) {
 
   // Restore from git
   try {
-    // Verify the source ref/hash is valid
     const resolved = git(['rev-parse', '--verify', source], { cwd: projectDir, allowFail: true });
     if (!resolved) {
       return { status: 'error', restoredFrom: source, error: `cannot resolve git source: ${source}` };
     }
 
-    // Check that the file exists in the source
-    const fileExists = git(['cat-file', '-e', `${resolved}:${file}`], { cwd: projectDir, allowFail: true });
-    if (fileExists === null) {
-      // cat-file -e returns empty on success with allowFail, null on error
-      // Try ls-tree instead
-      const lsOut = git(['ls-tree', resolved, '--', file], { cwd: projectDir, allowFail: true });
-      if (!lsOut) {
-        return { status: 'error', restoredFrom: source, error: `file '${file}' not found in source ${source}` };
-      }
+    // Verify the target is a blob (file), not a tree (directory)
+    const objType = git(['cat-file', '-t', `${resolved}:${pathCheck.normalized}`], { cwd: projectDir, allowFail: true });
+    if (!objType) {
+      return { status: 'error', restoredFrom: source, error: `'${file}' not found in source ${source}` };
+    }
+    if (objType !== 'blob') {
+      return { status: 'error', restoredFrom: source, error: `'${file}' is a ${objType} (directory), not a file — use restore_project for directory-level restores` };
     }
 
-    execFileSync('git', ['restore', `--source=${resolved}`, '--', file], {
+    execFileSync('git', ['restore', `--source=${resolved}`, '--', pathCheck.normalized], {
       cwd: projectDir, stdio: 'pipe',
     });
 
