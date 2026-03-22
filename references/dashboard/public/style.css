@@ -118,6 +118,93 @@ body {
 
 #last-refresh { font-size: 12px; white-space: nowrap; opacity: .7; }
 
+/* ── Upgrade Banner ──────────────────────────────────────── */
+
+.upgrade-banner {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0; right: 0;
+  background: var(--yellow-bg);
+  border-bottom: 1px solid var(--yellow);
+  color: var(--yellow);
+  padding: 8px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 49;
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.upgrade-banner-text {
+  flex: 1;
+}
+.upgrade-banner-restart-btn {
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--yellow);
+  border-radius: var(--radius-sm);
+  background: var(--yellow);
+  color: var(--bg);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.upgrade-banner-restart-btn:hover {
+  filter: brightness(1.1);
+}
+.upgrade-banner-restart-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+.upgrade-banner-hint-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--yellow);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--yellow);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.upgrade-banner-hint-btn:hover {
+  background: var(--yellow);
+  color: var(--bg);
+}
+.upgrade-banner-close {
+  background: none;
+  border: none;
+  color: var(--yellow);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.upgrade-banner-close:hover { opacity: 1; }
+.upgrade-banner-hint {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.2);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.upgrade-banner-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.upgrade-banner + main {
+  margin-top: 38px;
+}
+
 /* ── Buttons ──────────────────────────────────────────────── */
 
 .btn {

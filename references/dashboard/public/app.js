@@ -140,6 +140,15 @@ const I18N = {
     'error.sectionFailed':  'This section failed to load',
     'empty.noData':         'No data available',
 
+    'upgrade.banner':       'New version {installed} available (current server: {server}). Please restart the Dashboard service to load the latest features.',
+    'upgrade.dismiss':      'Dismiss',
+    'upgrade.restartNow':   'Restart Now',
+    'upgrade.restart':      'Manual restart',
+    'upgrade.hint':         'Stop the current process (Ctrl+C), then run: cursor-guard-backup --path <dir> --dashboard',
+    'upgrade.restarting':   'Restarting...',
+    'upgrade.waiting':      'Waiting for server...',
+    'upgrade.failed':       'Restart failed, try manually',
+
     'strategy.git':    'Git',
     'strategy.shadow': 'Shadow',
     'strategy.both':   'Both',
@@ -354,6 +363,15 @@ const I18N = {
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
     'empty.noData':         '暂无数据',
+
+    'upgrade.banner':       '检测到新版本 {installed}（当前服务: {server}），请重启 Dashboard 服务以加载最新功能',
+    'upgrade.dismiss':      '关闭',
+    'upgrade.restartNow':   '一键重启',
+    'upgrade.restart':      '手动重启',
+    'upgrade.hint':         '停止当前进程 (Ctrl+C)，然后运行: cursor-guard-backup --path <目录> --dashboard',
+    'upgrade.restarting':   '正在重启...',
+    'upgrade.waiting':      '等待服务就绪...',
+    'upgrade.failed':       '重启失败，请手动重启',
 
     'strategy.git':    'Git',
     'strategy.shadow': '影子',
@@ -1580,6 +1598,75 @@ function setupEvents() {
   });
 }
 
+/* ── Version Check ────────────────────────────────────────── */
+
+async function checkServerVersion() {
+  try {
+    const data = await fetchJson('/api/version');
+    if (data.updateAvailable) showUpgradeBanner(data);
+  } catch { /* non-critical */ }
+}
+
+function showUpgradeBanner(data) {
+  if ($('#upgrade-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'upgrade-banner';
+  banner.className = 'upgrade-banner';
+  banner.innerHTML = `
+    <span class="upgrade-banner-text">${t('upgrade.banner', { installed: esc(data.installedVersion), server: esc(data.serverVersion) })}</span>
+    <button class="upgrade-banner-restart-btn">${t('upgrade.restartNow')}</button>
+    <button class="upgrade-banner-hint-btn">${t('upgrade.restart')}</button>
+    <button class="upgrade-banner-close" aria-label="${t('upgrade.dismiss')}">&times;</button>
+  `;
+  const topbar = $('#topbar');
+  topbar.parentNode.insertBefore(banner, topbar.nextSibling);
+  banner.querySelector('.upgrade-banner-close').addEventListener('click', () => banner.remove());
+  banner.querySelector('.upgrade-banner-hint-btn').addEventListener('click', () => {
+    const hint = banner.querySelector('.upgrade-banner-hint');
+    if (hint) { hint.remove(); return; }
+    const el = document.createElement('div');
+    el.className = 'upgrade-banner-hint';
+    el.innerHTML = `<code>${t('upgrade.hint')}</code>`;
+    banner.appendChild(el);
+  });
+  banner.querySelector('.upgrade-banner-restart-btn').addEventListener('click', () => {
+    restartServer(banner);
+  });
+}
+
+async function restartServer(banner) {
+  const btn = banner.querySelector('.upgrade-banner-restart-btn');
+  btn.disabled = true;
+  btn.textContent = t('upgrade.restarting');
+  banner.querySelector('.upgrade-banner-hint-btn').style.display = 'none';
+  banner.querySelector('.upgrade-banner-close').style.display = 'none';
+
+  try {
+    const sep = '/api/restart'.includes('?') ? '&' : '?';
+    const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${window.__GUARD_TOKEN__}` : '';
+    await fetch('/api/restart' + tokenParam, { method: 'POST' });
+  } catch { /* server may close connection */ }
+
+  btn.textContent = t('upgrade.waiting');
+  let ready = false;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      const r = await fetch('/api/version' + (window.__GUARD_TOKEN__ ? '?token=' + window.__GUARD_TOKEN__ : ''));
+      if (r.ok) { ready = true; break; }
+    } catch { /* still restarting */ }
+  }
+
+  if (ready) {
+    location.reload();
+  } else {
+    btn.textContent = t('upgrade.failed');
+    btn.disabled = false;
+    banner.querySelector('.upgrade-banner-hint-btn').style.display = '';
+    banner.querySelector('.upgrade-banner-close').style.display = '';
+  }
+}
+
 /* ── Init ─────────────────────────────────────────────────── */
 
 async function init() {
@@ -1595,6 +1682,7 @@ async function init() {
     await loadPageData({ progressive: true });
     renderAll();
     startRefresh();
+    checkServerVersion();
   } catch (e) {
     showGlobalError(e.message);
   }

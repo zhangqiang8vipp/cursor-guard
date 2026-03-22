@@ -6,11 +6,26 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const { getDashboard } = require('../lib/core/dashboard');
-const { runDiagnostics } = require('../lib/core/doctor');
-const { listBackups, getBackupFiles } = require('../lib/core/backups');
+const GUARD_ROOT = path.resolve(__dirname, '..');
+
+function coreDeps() {
+  return {
+    getDashboard: require('../lib/core/dashboard').getDashboard,
+    runDiagnostics: require('../lib/core/doctor').runDiagnostics,
+    listBackups: require('../lib/core/backups').listBackups,
+    getBackupFiles: require('../lib/core/backups').getBackupFiles,
+  };
+}
+
+function clearGuardCache() {
+  Object.keys(require.cache).forEach(key => {
+    if (key.startsWith(GUARD_ROOT)) delete require.cache[key];
+  });
+}
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const PKG_PATH = path.resolve(__dirname, '..', '..', 'package.json');
+let SERVER_VERSION = require('../../package.json').version;
 const DEFAULT_PORT = 3120;
 const MAX_PORT_RETRIES = 10;
 const ALLOWED_HOSTS = /^(127\.0\.0\.1|localhost)(:\d+)?$/;
@@ -124,7 +139,31 @@ function serveStatic(reqUrl, res, serverToken) {
 
 /* ── API routes ─────────────────────────────────────────────── */
 
-function handleApi(pathname, query, registry, res) {
+function handleApi(pathname, query, registry, res, req) {
+  if (pathname === '/api/version') {
+    let installedVersion = SERVER_VERSION;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8'));
+      installedVersion = pkg.version;
+    } catch { /* fallback to server version */ }
+    return json(res, {
+      serverVersion: SERVER_VERSION,
+      installedVersion,
+      updateAvailable: SERVER_VERSION !== installedVersion,
+    });
+  }
+
+  if (pathname === '/api/restart') {
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      return res.end('Method Not Allowed');
+    }
+    if (!_instance) return json(res, { error: 'No running instance' }, 500);
+    json(res, { restarting: true });
+    setTimeout(() => restartDashboard(), 300);
+    return;
+  }
+
   if (pathname === '/api/projects') {
     const list = [...registry.values()].map(({ id, name, pathLabel }) => ({ id, name, pathLabel }));
     return json(res, list);
@@ -138,6 +177,8 @@ function handleApi(pathname, query, registry, res) {
   if (!fs.existsSync(pp)) {
     return json(res, { error: `Project directory not accessible: ${project.pathLabel}` }, 500);
   }
+
+  const { getDashboard, runDiagnostics, listBackups, getBackupFiles } = coreDeps();
 
   if (pathname === '/api/page-data') {
     const scope = query.get('scope');
@@ -243,7 +284,7 @@ function startDashboardServer(paths, opts = {}) {
         return res.end('Forbidden: invalid host');
       }
 
-      if (req.method !== 'GET') {
+      if (req.method !== 'GET' && req.method !== 'POST') {
         res.writeHead(405);
         return res.end('Method Not Allowed');
       }
@@ -257,8 +298,9 @@ function startDashboardServer(paths, opts = {}) {
           res.writeHead(403);
           return res.end('Forbidden: invalid token');
         }
-        handleApi(parsed.pathname, parsed.searchParams, registry, res);
+        handleApi(parsed.pathname, parsed.searchParams, registry, res, req);
       } else {
+        if (req.method !== 'GET') { res.writeHead(405); return res.end('Method Not Allowed'); }
         serveStatic(req.url, res, token);
       }
     });
@@ -292,6 +334,26 @@ function startDashboardServer(paths, opts = {}) {
 
     server.listen(currentPort, '127.0.0.1');
   });
+}
+
+/* ── Hot Restart ───────────────────────────────────────────── */
+
+async function restartDashboard() {
+  if (!_instance) return;
+  const paths = [..._instance.registry.values()].map(p => p._path);
+  const port = _instance.port;
+
+  _instance.server.close();
+  _instance = null;
+
+  clearGuardCache();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8'));
+    SERVER_VERSION = pkg.version;
+  } catch { /* keep old version */ }
+
+  console.log(`  [dashboard] Restarting on port ${port}...`);
+  await startDashboardServer(paths, { port, silent: false });
 }
 
 /* ── CLI entry ─────────────────────────────────────────────── */

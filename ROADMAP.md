@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.7`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.7` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.5.8`（V4 最终版）  
+> **文档状态**：`V2` ~ `V4.5.8` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -464,6 +464,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.5.4 | **Shadow 硬链接增量优化 + always_watch 强保护模式**：见下方详细说明 | ✅ |
 | V4.5.6 | **Bug 修复 + 告警 UX + init 优化**：见下方详细说明 | ✅ |
 | V4.5.7 | **文件详情 Modal 修复 + Dashboard 端口复用**：见下方详细说明 | ✅ |
+| V4.5.8 | **Dashboard 版本更新检测 + 一键重启**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -670,6 +671,19 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 去重机制 | `_mergeProjects` 按 `_path.toLowerCase()` 去重，相同项目不重复注册 |
 | 透明生效 | registry 是引用传递，已运行的 HTTP handler 闭包自动读取最新 registry，无需重启服务 |
 | 导出 `getInstance()` | 外部可通过 `getInstance()` 获取当前运行实例的 server/port/registry 信息 |
+
+#### V4.5.8 详细内容
+
+**Dashboard 版本更新检测 + 一键重启**：
+
+| 组件 | 说明 |
+|------|------|
+| `/api/version` 端点 | 返回 `serverVersion`（启动时 require cache）和 `installedVersion`（实时从磁盘读取），以及 `updateAvailable` 布尔值 |
+| `/api/restart` 端点 (POST) | 触发服务热重启：关闭旧 HTTP server → `clearGuardCache()` 清除所有 cursor-guard 模块的 require cache → 更新 `SERVER_VERSION` → 在同端口重启新 server |
+| 懒加载 core deps | `handleApi` 中 `getDashboard`/`runDiagnostics`/`listBackups`/`getBackupFiles` 改为通过 `coreDeps()` 懒加载，重启后自动加载新代码 |
+| 升级横幅 | `updateAvailable === true` 时显示黄色横幅。包含"一键重启"按钮（发送 POST → 轮询等待 → 自动 reload）、"手动重启"按钮（展开命令示例）、关闭按钮 |
+| 重启流程 | 前端发 POST `/api/restart` → 显示"正在重启..." → 每 500ms 轮询 `/api/version`（最多 10s）→ 服务就绪后 `location.reload()` 自动刷新页面 |
+| 双语支持 | 新增 `upgrade.*` 共 8 组 i18n key（banner/dismiss/restartNow/restart/hint/restarting/waiting/failed） |
 
 #### V4.5.x 新增配置参考
 
