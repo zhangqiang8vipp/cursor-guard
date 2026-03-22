@@ -61,10 +61,13 @@ if (fs.existsSync(sdkSrc)) {
   copyDir(sdkSrc, sdkDst);
   console.log('  COPY: vendor/@modelcontextprotocol/');
 }
-const zodSrc = path.join(ROOT, 'node_modules', 'zod');
-if (fs.existsSync(zodSrc)) {
-  copyDir(zodSrc, path.join(DIST, 'vendor', 'zod'));
-  console.log('  COPY: vendor/zod/');
+const vendorDeps = ['zod', 'zod-to-json-schema'];
+for (const dep of vendorDeps) {
+  const depSrc = path.join(ROOT, 'node_modules', dep);
+  if (fs.existsSync(depSrc)) {
+    copyDir(depSrc, path.join(DIST, 'vendor', dep));
+    console.log(`  COPY: vendor/${dep}/`);
+  }
 }
 
 // Generate merged package.json

@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.9`  
-> **文档状态**：`V2` ~ `V4.7.8` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.8.0`  
+> **文档状态**：`V2` ~ `V4.8.0` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,12 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.8.0：VSIX MCP 依赖补全 ✅
+
+| 修复 | 说明 |
+|------|------|
+| **`zod-to-json-schema` 缺失修复** | MCP server 启动时报 `Cannot find module 'zod-to-json-schema'`。`@modelcontextprotocol/sdk` 内部依赖 `zod-to-json-schema`，但 `build-vsix.js` 只打包了 `zod`，遗漏了此包。修复后 vendor 打包列表改为循环写法，包含 `zod` 和 `zod-to-json-schema` 两个依赖 |
 
 ### V4.7.8：告警倒计时实时更新 + Open Dashboard CORS/Fallback 修复 ✅
 
