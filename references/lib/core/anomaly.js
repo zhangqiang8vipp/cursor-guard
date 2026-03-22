@@ -84,6 +84,27 @@ function checkAnomaly(tracker) {
     return { anomaly: true, alert: lastAlert, suppressed: true };
   }
 
+  // Aggregate per-file details from recent events, deduplicated by path (latest wins)
+  const fileMap = new Map();
+  for (const e of recentEvents) {
+    if (Array.isArray(e.files)) {
+      for (const f of e.files) {
+        if (f && f.path) {
+          const existing = fileMap.get(f.path);
+          if (existing) {
+            existing.added = (existing.added || 0) + (f.added || 0);
+            existing.deleted = (existing.deleted || 0) + (f.deleted || 0);
+          } else {
+            fileMap.set(f.path, { path: f.path, action: f.action || 'modified', added: f.added || 0, deleted: f.deleted || 0 });
+          }
+        }
+      }
+    }
+  }
+  const alertFiles = [...fileMap.values()]
+    .sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted))
+    .slice(0, 50);
+
   const alert = {
     type: 'high_change_velocity',
     detectedAt: now,
@@ -93,6 +114,7 @@ function checkAnomaly(tracker) {
     threshold: tracker.config.filesPerWindow,
     expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
     recommendation: 'High volume of file changes detected. Consider reviewing recent modifications and creating a manual snapshot.',
+    files: alertFiles.length > 0 ? alertFiles : undefined,
   };
 
   tracker.alerts.push(alert);

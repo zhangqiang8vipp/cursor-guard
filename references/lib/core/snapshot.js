@@ -141,6 +141,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     // Build incremental summary from actual tree diff (not working-dir status)
     let changedCount;
     let incrementalSummary;
+    let changedFiles;
     if (parentTree) {
       const diffOut = git(['diff-tree', '--no-commit-id', '--name-status', '-r', parentTree, newTree], { cwd, allowFail: true });
       if (diffOut) {
@@ -166,14 +167,25 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
           for (const line of numstatOut.split('\n').filter(Boolean)) {
             const [add, del, ...nameParts] = line.split('\t');
             const fname = nameParts.join('\t');
-            if (add !== '-') stats[fname] = `+${add} -${del}`;
+            stats[fname] = { added: add === '-' ? 0 : parseInt(add, 10), deleted: del === '-' ? 0 : parseInt(del, 10) };
           }
         }
+
+        // Build structured changedFiles array
+        changedFiles = [];
+        const ACTION_MAP = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed' };
+        for (const [key, arr] of Object.entries(groups)) {
+          for (const f of arr) {
+            const s = stats[f] || { added: 0, deleted: 0 };
+            changedFiles.push({ path: f, action: ACTION_MAP[key], added: s.added, deleted: s.deleted });
+          }
+        }
+        changedFiles.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
 
         function fmtFiles(arr) {
           return arr.slice(0, 5).map(f => {
             const s = stats[f];
-            return s ? `${f} (${s})` : f;
+            return s ? `${f} (+${s.added} -${s.deleted})` : f;
           }).join(', ');
         }
 
@@ -191,6 +203,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
         changedCount = files.length;
         const sample = files.slice(0, 5).join(', ');
         incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ', ...' : ''}`;
+        changedFiles = files.map(f => ({ path: f, action: 'added', added: 0, deleted: 0 }));
       }
     }
 
@@ -226,6 +239,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       shortHash: commitHash.substring(0, 7),
       fileCount,
       changedCount,
+      changedFiles,
       incrementalSummary,
       secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : undefined,
     };

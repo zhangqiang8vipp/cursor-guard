@@ -254,11 +254,13 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     }
 
     // Git snapshot via Core — changedFileCount comes from diff-tree (accurate incremental)
+    let changedFiles;
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
       const context = { trigger: 'auto' };
       const snapResult = createGitSnapshot(projectDir, cfg, { branchRef, context });
       if (snapResult.status === 'created') {
         changedFileCount = snapResult.changedCount != null ? snapResult.changedCount : 0;
+        changedFiles = snapResult.changedFiles;
         let msg = `Git snapshot ${snapResult.shortHash} (${snapResult.fileCount} files)`;
         if (snapResult.secretsExcluded) {
           msg += ` [secrets excluded: ${snapResult.secretsExcluded.join(', ')}]`;
@@ -272,7 +274,7 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     }
 
     // V4: Record change event and check for anomalies (after snapshot, using accurate count)
-    recordChange(tracker, changedFileCount);
+    recordChange(tracker, changedFileCount, changedFiles);
     const anomalyResult = checkAnomaly(tracker);
     if (anomalyResult.anomaly && anomalyResult.alert && !anomalyResult.suppressed) {
       saveAlert(projectDir, anomalyResult.alert);

@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.1`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.5.2`（V4 最终版）  
+> **文档状态**：`V2` ~ `V4.5.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -459,6 +459,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.4.0 | **V4 收官版**：首次快照 summary（无 parent 时生成 Added N: ...）；doctor 新增 Git retention 警告（>500 commits + disabled）和 Backup integrity 校验（`cat-file -t` tree 可达性）；`cursor-guard-init` 升级检测（已有配置提示） | ✅ |
 | V4.4.1 | **安全硬化版（5 项审计修复 + UX 优化）**：见下方详细说明 | ✅ |
 | V4.5.0 | **V4 最终版（异常检测修复 + Dashboard 全面升级）**：见下方详细说明 | ✅ 收官 |
+| V4.5.2 | **告警结构化文件列表**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -511,6 +512,20 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 优化 | i18n 补全 | 新增 14 个双语 key（告警详情、告警历史、文件搜索、恢复命令、扫描时间） |
 
 > **注**：V4.2 的 Web 仪表盘最初在 V4.0 规划中标记为"不做"，但用户需求明确后实施。事实证明只读仪表盘投入产出比合理，且不违反安全原则。
+
+#### V4.5.2 详细内容
+
+**告警结构化文件列表**：
+
+| 层 | 改动 | 说明 |
+|----|------|------|
+| Core | `snapshot.js` 返回 `changedFiles` 数组 | 每项包含 `{ path, action, added, deleted }`，数据来源 `diff-tree --numstat`，按变化量降序排列 |
+| Core | `auto-backup.js` 透传 `changedFiles` | `createGitSnapshot` → `recordChange(tracker, count, changedFiles)` |
+| Core | `anomaly.js` alert 携带 `files` 字段 | 窗口内多次事件的文件按路径去重合并，最多保留 50 条，`saveAlert` 持久化到磁盘 |
+| Dashboard | 告警卡片可展开文件详情表格 | 点击"展开文件详情"显示排序表格（文件路径 / 操作类型 / 变化量），操作类型用彩色 badge 区分（修改=蓝 / 新增=绿 / 删除=红 / 重命名=紫） |
+| Dashboard | i18n 补全 | 新增 8 个双语 key（showFiles / hideFiles / col.file / col.action / col.changes / action.*） |
+
+> 22 个文件被删除和 22 个文件被新增的风险完全不同——结构化文件列表让用户一眼判断严重程度。
 
 ### V4 不做的事
 

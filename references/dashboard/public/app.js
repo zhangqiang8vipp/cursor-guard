@@ -46,6 +46,15 @@ const I18N = {
     'alert.expired':    'Expired',
     'alert.history':    'Recent Alert History',
     'alert.noHistory':  'No alert history',
+    'alert.showFiles':  'Show file details',
+    'alert.hideFiles':  'Hide file details',
+    'alert.col.file':   'File',
+    'alert.col.action': 'Action',
+    'alert.col.changes':'Changes',
+    'alert.action.modified': 'Modified',
+    'alert.action.added':    'Added',
+    'alert.action.deleted':  'Deleted',
+    'alert.action.renamed':  'Renamed',
 
     'backups.gitCommits':       'Git Commits',
     'backups.shadowSnapshots':  'Shadow Snapshots',
@@ -243,6 +252,15 @@ const I18N = {
     'alert.expired':    '已过期',
     'alert.history':    '近期告警历史',
     'alert.noHistory':  '暂无告警记录',
+    'alert.showFiles':  '展开文件详情',
+    'alert.hideFiles':  '收起文件详情',
+    'alert.col.file':   '文件',
+    'alert.col.action': '操作',
+    'alert.col.changes':'变化量',
+    'alert.action.modified': '修改',
+    'alert.action.added':    '新增',
+    'alert.action.deleted':  '删除',
+    'alert.action.renamed':  '重命名',
 
     'backups.gitCommits':       'Git 提交数',
     'backups.shadowSnapshots':  '影子快照',
@@ -849,7 +867,7 @@ function renderAlertCard(alerts) {
 
   // Track in history
   if (a.timestamp && !state.alertHistory.some(h => h.timestamp === a.timestamp)) {
-    state.alertHistory.push({ timestamp: a.timestamp, fileCount: a.fileCount, windowSeconds: a.windowSeconds, threshold: a.threshold, expiresAt: a.expiresAt });
+    state.alertHistory.push({ timestamp: a.timestamp, fileCount: a.fileCount, windowSeconds: a.windowSeconds, threshold: a.threshold, expiresAt: a.expiresAt, files: a.files });
     if (state.alertHistory.length > 20) state.alertHistory = state.alertHistory.slice(-20);
   }
 
@@ -861,6 +879,32 @@ function renderAlertCard(alerts) {
   const remainDisplay = remainMin > 0 ? `${remainMin}m ${remainSec % 60}s` : `${remainSec}s`;
   const detailText = t('alert.detail', { count: a.fileCount || '?', window: a.windowSeconds || '?', threshold: a.threshold || '?' });
 
+  const files = Array.isArray(a.files) ? a.files : [];
+  let filesHtml = '';
+  if (files.length > 0) {
+    const actionBadge = (action) => {
+      const cls = action === 'deleted' ? 'alert-action-deleted'
+        : action === 'added' ? 'alert-action-added'
+        : action === 'renamed' ? 'alert-action-renamed'
+        : 'alert-action-modified';
+      return `<span class="alert-action-badge ${cls}">${t('alert.action.' + action)}</span>`;
+    };
+    const rows = files.map(f =>
+      `<tr><td class="text-mono alert-file-path">${esc(f.path)}</td><td>${actionBadge(f.action)}</td><td class="text-mono alert-file-changes">+${f.added || 0} -${f.deleted || 0}</td></tr>`
+    ).join('');
+    filesHtml = `
+      <div class="alert-files-section">
+        <button class="alert-files-toggle" data-alert-files-toggle>${t('alert.showFiles')}</button>
+        <div class="alert-files-table-wrap alert-files-hidden">
+          <table class="alert-files-table">
+            <thead><tr><th>${t('alert.col.file')}</th><th>${t('alert.col.action')}</th><th>${t('alert.col.changes')}</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
   el.innerHTML = `
     <div class="card-label">${t('alert.title')}</div>
     <div class="card-status"><span class="status-dot status-warning"></span><span class="status-text status-warning">${t('alert.active')}</span></div>
@@ -869,6 +913,7 @@ function renderAlertCard(alerts) {
       <div class="alert-detail-row"><span class="alert-detail-label">${t('alert.expires')}</span><span class="alert-countdown">${esc(remainDisplay)}</span></div>
       <div class="alert-detail-row alert-numbers">${esc(detailText)}</div>
     </div>
+    ${filesHtml}
   `;
 }
 
@@ -1279,6 +1324,18 @@ function setupEvents() {
     const idx = parseInt(row.dataset.bi, 10);
     const backup = state.filteredBackups[idx];
     if (backup) openRestoreDrawer(backup);
+  });
+
+  // Alert files toggle (event delegation)
+  $('#card-alert').addEventListener('click', (e) => {
+    const toggleBtn = e.target.closest('[data-alert-files-toggle]');
+    if (!toggleBtn) return;
+    const section = toggleBtn.closest('.alert-files-section');
+    if (!section) return;
+    const wrap = section.querySelector('.alert-files-table-wrap');
+    if (!wrap) return;
+    const hidden = wrap.classList.toggle('alert-files-hidden');
+    toggleBtn.textContent = hidden ? t('alert.showFiles') : t('alert.hideFiles');
   });
 
   // Diagnostics summary click
