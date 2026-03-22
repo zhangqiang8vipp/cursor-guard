@@ -65,6 +65,9 @@ function buildCommitMessage(ts, opts) {
   if (ctx.changedFileCount != null) trailers.push(`Files-Changed: ${ctx.changedFileCount}`);
   if (ctx.summary) trailers.push(`Summary: ${ctx.summary}`);
   if (ctx.trigger) trailers.push(`Trigger: ${ctx.trigger}`);
+  if (ctx.intent) trailers.push(`Intent: ${ctx.intent}`);
+  if (ctx.agent) trailers.push(`Agent: ${ctx.agent}`);
+  if (ctx.session) trailers.push(`Session: ${ctx.session}`);
 
   if (trailers.length === 0) return subject;
   return subject + '\n\n' + trailers.join('\n');
@@ -84,7 +87,10 @@ function buildCommitMessage(ts, opts) {
  * @param {object} [opts.context] - Backup context metadata
  * @param {string} [opts.context.trigger] - 'auto' | 'manual' | 'pre-restore'
  * @param {number} [opts.context.changedFileCount] - Number of changed files
- * @param {string} [opts.context.summary] - Short change summary (e.g. "M src/app.js, A new.ts")
+ * @param {string} [opts.context.summary] - Short change summary (e.g. "Modified 3: a.js, b.js; Added 1: c.js")
+ * @param {string} [opts.context.intent] - Why this snapshot was created (e.g. "refactoring auth middleware")
+ * @param {string} [opts.context.agent] - AI model identifier (e.g. "claude-4-opus")
+ * @param {string} [opts.context.session] - Conversation/session ID
  * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[] }}
  */
 function createGitSnapshot(projectDir, cfg, opts = {}) {

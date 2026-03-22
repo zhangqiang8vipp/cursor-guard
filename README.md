@@ -377,6 +377,13 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.3.3
+
+- **Feature**: Intent context for snapshots — `snapshot_now` now accepts `intent`, `agent`, and `session` parameters, stored as Git commit trailers to form an audit trail per operation
+- **Feature**: Dashboard displays intent badge in backup table and full intent/agent/session fields in restore-point drawer
+- **Improve**: `parseCommitTrailers` refactored to a data-driven map, supporting all 6 trailer fields (Files-Changed, Summary, Trigger, Intent, Agent, Session)
+- **Improve**: SKILL.md updated to guide AI agents to pass `intent` describing the operation about to happen
+
 ### v4.3.2
 
 - **Fix**: `cursor-guard-init` now adds `node_modules/` (root-level) to `.gitignore` — prevents `git add -A` from scanning thousands of npm dependency files after `npm install cursor-guard --save-dev`

@@ -41,15 +41,24 @@ function entryToMs(entry) {
   return d ? d.getTime() : 0;
 }
 
+const TRAILER_MAP = {
+  'Files-Changed': { key: 'filesChanged', parse: v => parseInt(v, 10) },
+  'Summary':       { key: 'summary' },
+  'Trigger':       { key: 'trigger' },
+  'Intent':        { key: 'intent' },
+  'Agent':         { key: 'agent' },
+  'Session':       { key: 'session' },
+};
+
 function parseCommitTrailers(body) {
   if (!body) return {};
   const result = {};
+  const pattern = new RegExp(`^(${Object.keys(TRAILER_MAP).join('|')}):\\s*(.+)$`);
   for (const line of body.split('\n')) {
-    const m = line.match(/^(Files-Changed|Summary|Trigger):\s*(.+)$/);
+    const m = line.match(pattern);
     if (m) {
-      const key = m[1] === 'Files-Changed' ? 'filesChanged'
-        : m[1] === 'Summary' ? 'summary' : 'trigger';
-      result[key] = key === 'filesChanged' ? parseInt(m[2], 10) : m[2];
+      const def = TRAILER_MAP[m[1]];
+      result[def.key] = def.parse ? def.parse(m[2]) : m[2];
     }
   }
   return result;

@@ -377,6 +377,13 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ## 更新日志
 
+### v4.3.3
+
+- **功能**：快照意图上下文——`snapshot_now` 新增 `intent`（操作意图）、`agent`（AI 模型）、`session`（会话 ID）参数，作为 Git commit trailer 存储，形成按操作事件的审计链
+- **功能**：仪表盘备份表格显示意图徽章，恢复点抽屉完整展示 intent/agent/session 字段
+- **改进**：`parseCommitTrailers` 重构为数据驱动映射表，支持全部 6 个 trailer 字段
+- **改进**：SKILL.md 更新指引，要求 AI agent 在调用 `snapshot_now` 时传入 `intent` 描述即将执行的操作
+
 ### v4.3.2
 
 - **修复**：`cursor-guard-init` 现在会将根目录 `node_modules/` 加入 `.gitignore`——防止 `npm install cursor-guard --save-dev` 后 `git add -A` 扫描数千个依赖文件导致极度缓慢

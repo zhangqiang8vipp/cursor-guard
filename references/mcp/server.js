@@ -92,8 +92,11 @@ server.tool(
     strategy: z.enum(['git', 'shadow', 'both']).optional().describe('Backup strategy (default: from config, or "git")'),
     message: z.string().optional().describe('Custom commit message for git snapshot'),
     scope: z.enum(['protected', 'all']).optional().describe('Snapshot scope: "protected" = only files matching protect patterns (default when protect is configured); "all" = all files regardless of protect config'),
+    intent: z.string().optional().describe('Why this snapshot is being created — describe the operation about to happen (e.g. "refactoring auth middleware to use JWT")'),
+    agent: z.string().optional().describe('AI model identifier (e.g. "claude-4-opus")'),
+    session: z.string().optional().describe('Conversation or session ID for audit trail'),
   },
-  async ({ path: projectPath, strategy, message, scope }) => {
+  async ({ path: projectPath, strategy, message, scope, intent, agent, session }) => {
     const resolved = path.resolve(projectPath);
     const { loadConfig } = require('../lib/utils');
     const { cfg } = loadConfig(resolved);
@@ -109,10 +112,14 @@ server.tool(
     const results = {};
 
     if (effectiveStrategy === 'git' || effectiveStrategy === 'both') {
+      const context = { trigger: 'manual' };
+      if (intent) context.intent = intent;
+      if (agent) context.agent = agent;
+      if (session) context.session = session;
       results.git = createGitSnapshot(resolved, cfg, {
         branchRef: 'refs/guard/snapshot',
         message: message || `guard: manual snapshot ${new Date().toISOString()}`,
-        context: { trigger: 'manual' },
+        context,
       });
     }
 

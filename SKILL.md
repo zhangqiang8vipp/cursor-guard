@@ -147,14 +147,18 @@ When the target file of an edit **falls outside the protected scope**, the agent
 
 > **MCP shortcut**: if `snapshot_now` tool is available, call it with `{ "path": "<project>", "strategy": "git" }` instead of the shell commands below. The tool handles temp index, secrets exclusion, and ref creation internally, and returns `{ "git": { "status": "created", "commitHash": "...", "shortHash": "..." } }`. Report the `shortHash` to the user and proceed.
 >
-> **Best practice — descriptive messages**: Always provide a meaningful `message` parameter that describes *why* this snapshot is being created and *what* changes are at risk. This message appears in the dashboard restore-point list, helping users identify which snapshot to restore from. Example:
+> **Best practice — intent context**: Always provide `intent` to describe *what operation you are about to perform and why*. This creates an audit trail so the user can later understand "what was the AI doing when this backup was made". Also pass `message` for the commit subject. Example:
 > ```json
 > {
 >   "path": "/project",
 >   "strategy": "git",
->   "message": "guard: before refactoring auth middleware — moving session logic from app.js to middleware/auth.js"
+>   "message": "guard: before refactoring auth middleware",
+>   "intent": "用户要求将 app.js 中的 session 逻辑拆分到 middleware/auth.js，涉及 3 个函数重写",
+>   "agent": "claude-4-opus",
+>   "session": "6290c87f"
 > }
 > ```
+> The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer, forming a complete audit trail per operation.
 
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 

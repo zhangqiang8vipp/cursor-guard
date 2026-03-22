@@ -100,6 +100,9 @@ const I18N = {
     'summary.deleted':      'Deleted',
     'summary.renamed':      'Renamed',
     'summary.files':        'files',
+    'drawer.field.intent':  'Intent',
+    'drawer.field.agent':   'Agent',
+    'drawer.field.session': 'Session',
 
     'error.fetchFailed':    'Failed to fetch data',
     'error.sectionFailed':  'This section failed to load',
@@ -278,6 +281,9 @@ const I18N = {
     'summary.deleted':      '删除',
     'summary.renamed':      '重命名',
     'summary.files':        '个文件',
+    'drawer.field.intent':  '操作意图',
+    'drawer.field.agent':   'AI 模型',
+    'drawer.field.session': '会话 ID',
 
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
@@ -821,7 +827,10 @@ function formatSummaryCell(b) {
     const short = translated.length > 80 ? translated.substring(0, 77) + '...' : translated;
     parts.push(`<span class="text-muted text-sm">${esc(short)}</span>`);
   }
-  if (b.message && !b.message.startsWith('guard:')) {
+  if (b.intent) {
+    const intentShort = b.intent.length > 60 ? b.intent.substring(0, 57) + '...' : b.intent;
+    parts.push(`<span class="badge badge-intent">${esc(intentShort)}</span>`);
+  } else if (b.message && !b.message.startsWith('guard:')) {
     const msgShort = b.message.length > 50 ? b.message.substring(0, 47) + '...' : b.message;
     parts.push(`<span class="text-muted text-sm">${esc(msgShort)}</span>`);
   }
@@ -952,6 +961,9 @@ function openRestoreDrawer(backup) {
   if (backup.ref) fields.push({ key: 'drawer.field.ref', val: backup.ref });
   if (backup.commitHash) fields.push({ key: 'drawer.field.hash', val: backup.commitHash });
   if (backup.path) fields.push({ key: 'drawer.field.path', val: backup.path });
+  if (backup.intent) fields.push({ key: 'drawer.field.intent', val: backup.intent });
+  if (backup.agent) fields.push({ key: 'drawer.field.agent', val: backup.agent });
+  if (backup.session) fields.push({ key: 'drawer.field.session', val: backup.session });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
   if (backup.summary) fields.push({ key: 'drawer.field.summary', val: translateSummary(backup.summary) });
 
