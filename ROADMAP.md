@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.4.0`（V4 收官版）  
-> **文档状态**：`V2` ~ `V4.4.0` 已实施（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.4.1`（V4 安全硬化版）  
+> **文档状态**：`V2` ~ `V4.4.1` 已实施（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -20,7 +20,7 @@
 |---|---|---|---|
 | `V2` | 能用 | Skill + Script | "AI 弄丢代码能恢复" |
 | `V3` | 更稳 | + Core 抽取 + 可选 MCP | "恢复操作更标准、更省 token" |
-| `V4` | 更聪明 | + 主动检测 + 可观测 + Web 仪表盘 + Intent + 增量摘要 | "cursor-guard 会主动提醒你，能看到为什么备份、改了什么" ✅ |
+| `V4` | 更聪明 | + 主动检测 + 可观测 + Web 仪表盘 + Intent + 增量摘要 + 安全硬化 | "cursor-guard 会主动提醒你，能看到为什么备份、改了什么" ✅ |
 | `V5` | 成闭环 | + 变更控制层 | "AI 代码变更可预防、可追溯、可按事件恢复"（intent 基础已在 V4.3 落地） |
 | `V6` | 成标准 | + 开放协议 + 团队工作流 | "把 AI 代码变更安全做成跨工具标准" |
 | `V7` | 可证明 | + 可验证信任 + 治理层 | "能证明安全流程被执行了" |
@@ -457,6 +457,34 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.3.4 | **运维加固**：`backup.log` 日志轮转（1MB / 3 文件）；watcher 单实例保护加固（锁文件时间戳 + 24h 超时）；`previewProjectRestore` 保护路径分组摘要（降低 token 消耗）；SKILL.md 硬规则 #15（升级后提交 skill 文件） | ✅ |
 | V4.3.5 | **Summary 准确性修复 + UI 优化**：备份摘要改用 `diff-tree` 增量对比（修复 porcelain 假摘要 bug）；仪表盘变更列三行堆叠布局；配色全面优化（背景层级 / 状态色 / 文字层级） | ✅ |
 | V4.4.0 | **V4 收官版**：首次快照 summary（无 parent 时生成 Added N: ...）；doctor 新增 Git retention 警告（>500 commits + disabled）和 Backup integrity 校验（`cat-file -t` tree 可达性）；`cursor-guard-init` 升级检测（已有配置提示） | ✅ |
+| V4.4.1 | **安全硬化版（5 项审计修复 + UX 优化）**：见下方详细说明 | ✅ |
+
+#### V4.4.1 详细内容
+
+**安全修复（2×P1 + 3×P2）**：
+
+| 级别 | 问题 | 修复 |
+|------|------|------|
+| P1 | `restoreFile` 接受目录 pathspec（`src`、`.cursor`）和项目根（`.`），单文件 API 能恢复整个目录或回滚受保护资产 | `validateRelativePath` 拦截 `.` 和空路径；`isToolPath` 匹配裸 `.cursor`；git 路径用 `cat-file -t` 验证必须是 blob（文件），tree（目录）直接拒绝；shadow 路径用 `statSync` 拦截目录 |
+| P1 | `restore_project` 对 HEAD 已删除的受保护文件不处理，旧快照会把它们复活 | 恢复前用 `ls-tree HEAD -- <path>` 检查存在性，HEAD 中不存在的路径用 `rmSync/unlinkSync` 清除 |
+| P2 | Git retention 重建链只保留 subject（`%s`），丢失 V4.3 审计 trailers | 改用 `%B`（完整 body + trailers），重建用 `fullBody` 传入 `commit-tree -m` |
+| P2 | Dashboard 仅绑定 127.0.0.1 但无 Host/token 防护，可被 DNS rebinding 读取 | 加 Host header 校验（`127.0.0.1`/`localhost`）+ per-process 随机 token 注入 index.html，API 请求必须携带 |
+| P2 | `doctor_fix` 初始化 Git 时 `git add -A` 会提交 `node_modules/` | 在 `git add -A` 前写入 `node_modules/` 和 `.cursor/skills/**/node_modules/` 到 `.gitignore` |
+
+**回归测试**：新增 3 条负例锁定 restore 防线（目录 pathspec / 受保护 .cursor / 项目根 `.`），总测试 143/143 全绿。
+
+**Dashboard UX**：
+- 骨架屏加载（shimmer 占位，消除白屏→弹出的突兀感）
+- 渐进渲染（`page-data?scope=` 按需返回，overview 先渲染，backups+doctor 并行加载）
+- 备份 summary 行级统计（`git diff-tree --numstat`，每文件 `(+N -M)`），分行显示
+- Summary 可见性提升（12px + secondary 颜色 + monospace 字体）
+- 去除变更列冗余 trigger badge（类型列已有）
+- Pre-restore 快照记录恢复方向（`From: <HEAD短hash>`、`Restore-To: <目标短hash>`、`File: <文件路径>`），表格琥珀色显示 `ab1b45d → f4029e9`
+
+**架构级防护缺口修复**：
+- MCP 工具注入 watcher 未运行警告（`_warning` 字段），AI 第一次调任何工具就能看到保护缺口
+- SKILL.md Hard Rule #1 升级："任何文件写入/删除前必须 snapshot"（之前仅要求"高风险操作前"）
+- SKILL.md 新增 Hard Rule #3a："必须检查 watcher 状态"——看到 `_warning` 必须告知用户
 
 > **注**：V4.2 的 Web 仪表盘最初在 V4.0 规划中标记为"不做"，但用户需求明确后实施。事实证明只读仪表盘投入产出比合理，且不违反安全原则。
 
@@ -465,6 +493,16 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 - 不做自动恢复（恢复永远需要人确认，这是产品底线）
 - ~~不做 Web 仪表盘~~ → V4.2 已实施（只读、本地、零依赖）
 - 不做云端同步
+
+### V4 遗留的架构缺口（V5 接手）
+
+通过 V4.4.1 的安全审计和真实场景测试，发现以下架构层面的保护缺口。这些不是代码 bug，而是设计边界：
+
+| 缺口 | 现状 | 影响 | V5 改进方向 |
+|------|------|------|------------|
+| **Watcher 停止 = 裸奔** | Watcher 不运行期间的文件变更无任何自动备份 | 如果 AI agent 也没手动 snapshot，变更永久丢失 | **`always_watch` 配置项**：在 `.cursor-guard.json` 中设置 `"always_watch": true`，MCP server 启动时自动 fork watcher 进程。用户可选两种模式：轻量模式（默认，AI 手动 snapshot）和强保护模式（watcher 始终在后台） |
+| **保护依赖 AI 自觉** | SKILL.md 要求 AI 在写入前 snapshot，但没有强制机制 | AI 不遵守协议就直接写，保护形同虚设 | **embedded watcher**：MCP server 内嵌 watcher，检测到文件变更时自动创建 snapshot，不依赖 AI 调用。相当于 "write hook" 的等效实现 |
+| **无跨进程写拦截** | 当前 MCP 架构下无法拦截 Cursor 编辑器的文件写入 | 只能在写后检测，不能写前阻止 | 等待 MCP 协议支持 `notification` / `resource subscription`，或探索 fs watch + pre-commit 组合 |
 
 ### 进入 V5 的衡量标准
 
@@ -522,6 +560,8 @@ V5 不是"三个方向选一个"，而是把下面这条链路做完整：
 | `impact set` | 为高风险编辑记录受影响文件 / 符号 / 测试集合 | `impact_set` 字段 | 查询事件时能看到"这次改动可能波及哪里" |
 | `MCP / CLI surface` | 暴露最小可用接口给 Agent 和终端 | `register_intent` / `list_active_intents` / `audit_query` / `get_event` / `restore_from_event` | AI 不需要拼复杂 shell，就能完成查询与恢复 |
 | `dashboard / doctor` | 把活跃会话、冲突告警、最近 AI 事件纳入诊断和看板 | `dashboard` / `doctor` 扩展字段 | 用户能看见"现在谁在改、最近改了什么、哪里有冲突" |
+| `always_watch` | 配置项 `"always_watch": true`，MCP server 启动时自动 fork watcher 进程；用户选择保护力度：轻量模式（手动 snapshot）vs 强保护模式（始终后台备份） | `.cursor-guard.json` 配置 + MCP server 启动逻辑 | MCP server 启动后，`always_watch: true` 的项目自动有 watcher 保护，无需额外命令 |
+| `embedded watcher` | MCP server 进程内嵌 watcher 循环，检测到文件变更时自动创建 snapshot，不依赖 AI 手动调用 | MCP server 内部模块 | watcher 停止 = 裸奔的保护缺口彻底消除；AI 忘记 snapshot 也有兜底 |
 | `tests / docs` | 为事件链路补齐单测、集成测试和文档 | tests + schema docs | V5.0 的所有核心事件和恢复路径都有测试覆盖 |
 
 ### V5 主线 A：并发编辑安全（预防层）
