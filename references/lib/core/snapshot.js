@@ -138,6 +138,46 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       return { status: 'skipped', reason: 'tree unchanged' };
     }
 
+    // Build incremental summary from actual tree diff (not working-dir status)
+    let changedCount;
+    let incrementalSummary;
+    if (parentTree) {
+      const diffOut = git(['diff-tree', '--no-commit-id', '--name-status', '-r', parentTree, newTree], { cwd, allowFail: true });
+      if (diffOut) {
+        const diffLines = diffOut.split('\n').filter(Boolean);
+        changedCount = diffLines.length;
+        const groups = { M: [], A: [], D: [], R: [] };
+        for (const line of diffLines) {
+          const tab = line.indexOf('\t');
+          if (tab < 0) continue;
+          const code = line.substring(0, tab).trim();
+          const filePart = line.substring(tab + 1);
+          const key = code.startsWith('R') ? 'R'
+            : code === 'D' ? 'D'
+            : code === 'A' ? 'A'
+            : 'M';
+          const fileName = filePart.split('\t').pop();
+          groups[key].push(fileName);
+        }
+        const parts = [];
+        if (groups.M.length) parts.push(`Modified ${groups.M.length}: ${groups.M.slice(0, 5).join(', ')}`);
+        if (groups.A.length) parts.push(`Added ${groups.A.length}: ${groups.A.slice(0, 5).join(', ')}`);
+        if (groups.D.length) parts.push(`Deleted ${groups.D.length}: ${groups.D.slice(0, 5).join(', ')}`);
+        if (groups.R.length) parts.push(`Renamed ${groups.R.length}: ${groups.R.slice(0, 5).join(', ')}`);
+        if (parts.length) incrementalSummary = parts.join('; ');
+      }
+    }
+
+    // Override context summary with the accurate incremental one
+    if (incrementalSummary && opts.context) {
+      opts.context.summary = incrementalSummary;
+    } else if (incrementalSummary && !opts.context) {
+      opts.context = { summary: incrementalSummary };
+    }
+    if (changedCount != null && opts.context) {
+      opts.context.changedFileCount = changedCount;
+    }
+
     const ts = formatTimestamp(new Date());
     const msg = buildCommitMessage(ts, opts);
     const commitArgs = parentHash
@@ -154,18 +194,13 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     const lsOut = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
     const fileCount = lsOut ? lsOut.split('\n').filter(Boolean).length : 0;
 
-    let changedCount;
-    if (parentTree) {
-      const diff = git(['diff-tree', '--no-commit-id', '--name-only', '-r', parentTree, newTree], { cwd, allowFail: true });
-      changedCount = diff ? diff.split('\n').filter(Boolean).length : 0;
-    }
-
     return {
       status: 'created',
       commitHash,
       shortHash: commitHash.substring(0, 7),
       fileCount,
       changedCount,
+      incrementalSummary,
       secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : undefined,
     };
   } catch (e) {
