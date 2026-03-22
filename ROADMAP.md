@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.5`  
-> **文档状态**：`V2` ~ `V4.7.5` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.6`  
+> **文档状态**：`V2` ~ `V4.7.6` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,16 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.6：侧边栏 UX 重构 + Health 修复 + Open Dashboard 修复 ✅
+
+| 修复/增强 | 说明 |
+|----------|------|
+| **Health 阈值逻辑修复** | 移除"Last backup too old"健康警告。Watcher 在跑但无文件变更时不备份是正常行为，不应报警。Health 判定改为：watcher 在跑 + 无磁盘问题 = healthy；watcher 停 = warning；磁盘不足/非 Git = critical |
+| **侧边栏 Dashboard 重构** | 从"报表"改为"仪表盘"：顶部单个大状态指示器（🟢 Protected / 🔴 Alert / 🟡 Watcher Stopped）替代四个小卡片。移除 Recent Backups 列表、Protection Scope 标签、Health Issues 重复区。只保留 Quick Stats（last backup / git backups / disk free）。浮点数取整（49.4 GB 而非 49.356...） |
+| **操作按钮重构** | 2×2 网格布局：📸 Snapshot + ⏪ Restore（一存一取配对），🟢 Watcher Toggle + 🔍 Doctor，📊 Open Dashboard 居中。新增 Quick Restore 命令（QuickPick 选最近 8 条备份）和 Doctor 命令（显示诊断摘要） |
+| **Open Dashboard 修复** | `PUBLIC_DIR` 从模块加载时求值改为懒加载（避免路径解析失败导致整个模块崩溃）；找不到前端文件时 fallback 到浏览器打开；CSP `connect-src` 空值修复 |
+| **新命令** | `cursorGuard.quickRestore`（Quick Restore）、`cursorGuard.doctor`（Run Diagnostics） |
 
 ### V4.7.5：VSIX 独立打包 + 自动配置 Skill/MCP ✅
 

@@ -8,6 +8,7 @@ const { GuardTreeView } = require('./lib/tree-view');
 const { Poller } = require('./lib/poller');
 const { SidebarDashboardProvider } = require('./lib/sidebar-webview');
 const { autoSetup } = require('./lib/auto-setup');
+const { guardPath } = require('./lib/paths');
 
 let dashMgr, poller, statusBar, treeView, webviewProvider, sidebarProvider;
 
@@ -86,6 +87,69 @@ async function activate(context) {
     vscode.commands.registerCommand('cursorGuard.refreshTree', () => {
       poller.forceRefresh();
       treeView.refresh();
+    }),
+
+    vscode.commands.registerCommand('cursorGuard.quickRestore', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return;
+      if (!dashMgr.running) {
+        vscode.window.showWarningMessage('Cursor Guard: dashboard not running. Cannot list backups.');
+        return;
+      }
+      const projects = await dashMgr.fetchApi('/api/projects');
+      if (!projects || projects.length === 0) return;
+      const pid = projects[0].id;
+      const pageData = await dashMgr.getFullPageData(pid);
+      const backups = (pageData?.backups || []).slice(0, 8);
+      if (backups.length === 0) {
+        vscode.window.showInformationMessage('Cursor Guard: no backups available to restore from.');
+        return;
+      }
+      const items = backups.map(b => {
+        const time = b.timestamp ? new Date(b.timestamp).toLocaleString() : '?';
+        const files = b.filesChanged ? `${b.filesChanged} files` : '';
+        const summary = b.summary ? b.summary.slice(0, 60) : '';
+        return {
+          label: `$(git-commit) ${time}`,
+          description: `${b.type || 'auto'} · ${files}`,
+          detail: summary,
+          hash: b.commitHash,
+        };
+      });
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select a backup to restore from',
+        title: 'Cursor Guard: Quick Restore',
+      });
+      if (selected && selected.hash) {
+        const url = `${dashMgr.baseUrl}?token=${dashMgr.token}`;
+        vscode.env.openExternal(vscode.Uri.parse(url));
+        vscode.window.showInformationMessage(
+          `Cursor Guard: opening dashboard for restore. Selected backup: ${selected.hash.slice(0, 7)}`
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand('cursorGuard.doctor', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return;
+      const projectPath = folders[0].uri.fsPath;
+      try {
+        const { runDiagnostics } = require(guardPath('lib', 'core', 'doctor'));
+        const result = runDiagnostics(projectPath);
+        const passed = result.checks.filter(c => c.status === 'PASS').length;
+        const warned = result.checks.filter(c => c.status === 'WARN').length;
+        const failed = result.checks.filter(c => c.status === 'FAIL').length;
+        const msg = `Doctor: ${passed} passed, ${warned} warnings, ${failed} failed`;
+        if (failed > 0) {
+          vscode.window.showErrorMessage(`Cursor Guard: ${msg}`);
+        } else if (warned > 0) {
+          vscode.window.showWarningMessage(`Cursor Guard: ${msg}`);
+        } else {
+          vscode.window.showInformationMessage(`Cursor Guard: ${msg} ✓`);
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(`Cursor Guard Doctor: ${e.message}`);
+      }
     }),
 
     statusBar,

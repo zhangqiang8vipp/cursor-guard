@@ -3,9 +3,19 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const { getPublicDir } = require('./paths');
 
-const PUBLIC_DIR = getPublicDir();
+let _publicDir = null;
+
+function getPublicDirLazy() {
+  if (_publicDir) return _publicDir;
+  try {
+    const { getPublicDir } = require('./paths');
+    _publicDir = getPublicDir();
+  } catch {
+    _publicDir = path.resolve(__dirname, '..', 'dashboard', 'public');
+  }
+  return _publicDir;
+}
 
 class WebViewProvider {
   constructor(context, dashMgr) {
@@ -20,6 +30,21 @@ class WebViewProvider {
       return;
     }
 
+    const publicDir = getPublicDirLazy();
+    const htmlPath = path.join(publicDir, 'index.html');
+
+    if (!fs.existsSync(htmlPath)) {
+      const baseUrl = this._dashMgr.baseUrl;
+      if (baseUrl) {
+        vscode.env.openExternal(vscode.Uri.parse(baseUrl + '?token=' + (this._dashMgr.token || '')));
+        return;
+      }
+      vscode.window.showErrorMessage(
+        `Cursor Guard: dashboard files not found at ${publicDir}. Try reinstalling the extension.`
+      );
+      return;
+    }
+
     this._panel = vscode.window.createWebviewPanel(
       'cursorGuardDashboard',
       'Cursor Guard Dashboard',
@@ -27,11 +52,11 @@ class WebViewProvider {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.file(PUBLIC_DIR)],
+        localResourceRoots: [vscode.Uri.file(publicDir)],
       }
     );
 
-    this._panel.webview.html = this._buildHtml(this._panel.webview);
+    this._panel.webview.html = this._buildHtml(this._panel.webview, publicDir);
     this._panel.iconPath = new vscode.ThemeIcon('shield');
 
     this._panel.onDidDispose(() => { this._panel = null; });
@@ -44,12 +69,12 @@ class WebViewProvider {
     });
   }
 
-  _buildHtml(webview) {
-    const htmlPath = path.join(PUBLIC_DIR, 'index.html');
+  _buildHtml(webview, publicDir) {
+    const htmlPath = path.join(publicDir, 'index.html');
     let html = fs.readFileSync(htmlPath, 'utf-8');
 
-    const styleUri = webview.asWebviewUri(vscode.Uri.file(path.join(PUBLIC_DIR, 'style.css')));
-    const scriptUri = webview.asWebviewUri(vscode.Uri.file(path.join(PUBLIC_DIR, 'app.js')));
+    const styleUri = webview.asWebviewUri(vscode.Uri.file(path.join(publicDir, 'style.css')));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.file(path.join(publicDir, 'app.js')));
 
     html = html.replace(/href="style\.css"/g, `href="${styleUri}"`);
     html = html.replace(/src="app\.js"/g, `src="${scriptUri}"`);
@@ -64,7 +89,7 @@ class WebViewProvider {
       `script-src 'nonce-${nonce}' ${webview.cspSource}`,
       `font-src ${webview.cspSource}`,
       `img-src ${webview.cspSource} data:`,
-      `connect-src ${baseUrl}`,
+      `connect-src ${baseUrl || 'http://127.0.0.1:*'}`,
     ].join('; ');
 
     html = html.replace(

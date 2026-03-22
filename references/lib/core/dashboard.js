@@ -168,14 +168,8 @@ function getDashboard(projectDir) {
     issues.push(`Disk space low (${status.disk.freeGB} GB free)`);
   }
 
-  if (status.lastBackup.git && status.watcher.running) {
-    const lastTs = new Date(status.lastBackup.git.timestamp).getTime();
-    const staleSec = (Date.now() - lastTs) / 1000;
-    const staleThreshold = Math.max(cfg.auto_backup_interval_seconds * 10, 300);
-    if (staleSec > staleThreshold) {
-      issues.push(`Last git backup: ${relativeTime(status.lastBackup.git.timestamp)}`);
-    }
-  }
+  // Last backup time is purely informational — no changes = no backup is normal behavior.
+  // Health warnings should only reflect actionable problems (watcher down, disk full, no repo).
 
   let healthStatus = 'healthy';
   if (issues.length > 0) healthStatus = 'warning';

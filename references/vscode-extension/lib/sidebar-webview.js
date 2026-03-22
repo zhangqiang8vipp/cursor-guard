@@ -31,7 +31,7 @@ class SidebarDashboardProvider {
       payload[id] = {
         name: p.name || id,
         dashboard: p.dashboard,
-        backups: (p.backups || []).slice(0, 6),
+        backups: (p.backups || []).slice(0, 5),
       };
     }
     this._view.webview.postMessage({ type: 'update', data: payload });
@@ -61,166 +61,118 @@ function _getHtml() {
   --purple: #cba6f7;
   --orange: #fab387;
   --teal: #94e2d5;
-  --radius: 6px;
+  --radius: 8px;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font: 11px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font: 12px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--text);
   background: transparent;
-  padding: 8px;
+  padding: 10px;
 }
-.card {
+
+/* ── Big status indicator ── */
+.status-hero {
+  text-align: center;
+  padding: 14px 10px;
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+}
+.status-hero.protected {
+  background: rgba(166,227,161,0.1);
+  border: 1px solid rgba(166,227,161,0.3);
+}
+.status-hero.alert {
+  background: rgba(243,139,168,0.12);
+  border: 1px solid rgba(243,139,168,0.4);
+}
+.status-hero.stopped {
+  background: rgba(249,226,175,0.1);
+  border: 1px solid rgba(249,226,175,0.3);
+}
+.status-hero.critical {
+  background: rgba(243,139,168,0.15);
+  border: 1px solid var(--red);
+}
+.status-icon { font-size: 28px; display: block; margin-bottom: 4px; }
+.status-text { font-size: 15px; font-weight: 700; }
+.status-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+/* ── Alert card ── */
+.alert-card {
+  background: rgba(243,139,168,0.1);
+  border: 1px solid rgba(243,139,168,0.35);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.alert-card .title { color: var(--red); font-weight: 700; font-size: 12px; }
+.alert-card .detail { color: var(--dim); font-size: 11px; margin-top: 3px; }
+.alert-card .actions { margin-top: 6px; display: flex; gap: 6px; }
+.alert-card .btn-sm {
+  font-size: 10px; padding: 3px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); cursor: pointer;
+}
+.alert-card .btn-sm:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ── Quick stats ── */
+.stats-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px 10px;
-  margin-bottom: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
-.card-title {
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--dim);
-  margin-bottom: 6px;
+.stats-card .label-sm {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--dim); margin-bottom: 6px;
 }
-.status-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.status-badge {
-  flex: 1;
-  text-align: center;
-  padding: 6px 4px;
-  border-radius: var(--radius);
-  background: var(--bg);
-  border: 1px solid var(--border);
-}
-.status-badge .icon { font-size: 16px; display: block; }
-.status-badge .label { font-size: 9px; color: var(--dim); margin-top: 2px; }
-.status-badge .value { font-size: 11px; font-weight: 700; }
-.status-badge.ok { border-color: var(--green); }
-.status-badge.ok .value { color: var(--green); }
-.status-badge.warn { border-color: var(--yellow); }
-.status-badge.warn .value { color: var(--yellow); }
-.status-badge.danger { border-color: var(--red); }
-.status-badge.danger .value { color: var(--red); }
-.status-badge.info { border-color: var(--blue); }
-.status-badge.info .value { color: var(--blue); }
-
-.alert-bar {
-  background: rgba(243,139,168,0.15);
-  border: 1px solid var(--red);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  margin-bottom: 6px;
-  text-align: center;
-}
-.alert-bar .alert-title { color: var(--red); font-weight: 700; font-size: 12px; }
-.alert-bar .alert-detail { color: var(--dim); font-size: 10px; margin-top: 2px; }
-.alert-bar.hidden { display: none; }
-
-.bar-group { margin-bottom: 4px; }
-.bar-label {
+.stat-row {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  margin-bottom: 2px;
-}
-.bar-label .name { color: var(--text); }
-.bar-label .val { color: var(--dim); font-weight: 600; }
-.bar-track {
-  height: 6px;
-  background: var(--bg);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.4s ease;
-}
-.bar-fill.blue { background: var(--blue); }
-.bar-fill.purple { background: var(--purple); }
-.bar-fill.green { background: var(--green); }
-.bar-fill.orange { background: var(--orange); }
-.bar-fill.teal { background: var(--teal); }
-
-.backup-list { list-style: none; }
-.backup-item {
-  display: flex;
   align-items: center;
-  gap: 6px;
   padding: 3px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 11px;
 }
-.backup-item:last-child { border: none; }
-.backup-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.stat-row .name { color: var(--dim); }
+.stat-row .val { font-weight: 600; color: var(--text); }
+.stat-row .val.green { color: var(--green); }
+.stat-row .val.blue { color: var(--blue); }
+.stat-row .val.yellow { color: var(--yellow); }
+
+/* ── Action buttons ── */
+.actions-section {
+  margin-top: 8px;
 }
-.backup-dot.auto { background: var(--blue); }
-.backup-dot.snapshot { background: var(--purple); }
-.backup-dot.restore { background: var(--orange); }
-.backup-time { color: var(--dim); white-space: nowrap; }
-.backup-type { font-weight: 600; min-width: 36px; }
-.backup-summary { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-
-.scope-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-.scope-tag {
-  font-size: 9px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: var(--bg);
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
-.scope-tag.protect { color: var(--green); border: 1px solid var(--green); }
-.scope-tag.ignore { color: var(--red); border: 1px solid var(--red); }
-
-.health-row { display: flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 0; }
-.health-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
-
-.actions-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .action-btn {
-  flex: 1;
-  min-width: 70px;
-  padding: 5px 4px;
-  font-size: 9px;
+  padding: 8px 6px;
+  font-size: 11px;
   font-weight: 600;
   text-align: center;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   transition: all 0.15s;
 }
-.action-btn:hover { border-color: var(--blue); color: var(--blue); }
+.action-btn:hover { border-color: var(--blue); color: var(--blue); background: rgba(137,180,250,0.08); }
+.action-btn.primary {
+  border-color: rgba(137,180,250,0.3);
+  background: rgba(137,180,250,0.08);
+}
+.action-btn.full { grid-column: 1 / -1; }
+.action-btn .icon { margin-right: 3px; }
 
 .empty-state {
-  text-align: center;
-  padding: 20px;
-  color: var(--dim);
-  font-size: 11px;
-}
-
-.ring-chart {
-  position: relative;
-  width: 56px; height: 56px;
-  margin: 0 auto 4px;
-}
-.ring-chart svg { transform: rotate(-90deg); }
-.ring-chart .ring-bg { stroke: var(--bg); }
-.ring-chart .ring-fill { transition: stroke-dashoffset 0.6s ease; }
-.ring-label {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 12px;
-  font-weight: 700;
+  text-align: center; padding: 24px 10px;
+  color: var(--dim); font-size: 12px;
 }
 </style>
 </head>
@@ -238,143 +190,117 @@ vscode.postMessage({ cmd: 'ready' });
 function render(projects) {
   const ids = Object.keys(projects);
   if (ids.length === 0) {
-    document.getElementById('root').innerHTML = '<div class="empty-state">No projects detected</div>';
+    root.innerHTML = '<div class="empty-state">No projects detected.<br>Add .cursor-guard.json to get started.</div>';
     return;
   }
   let html = '';
   for (const id of ids) {
     const p = projects[id];
     const d = p.dashboard;
-    if (!d) { html += '<div class="empty-state">Loading ' + esc(p.name) + '...</div>'; continue; }
-    html += renderProject(p.name, d, p.backups || []);
+    if (!d) { html += '<div class="empty-state">Loading...</div>'; continue; }
+    html += renderProject(d);
   }
-  html += renderActions();
-  document.getElementById('root').innerHTML = html;
-  document.querySelectorAll('.action-btn').forEach(btn => {
+  html += renderActions(projects);
+  root.innerHTML = html;
+  root.querySelectorAll('[data-cmd]').forEach(btn => {
     btn.addEventListener('click', () => vscode.postMessage({ cmd: 'exec', command: btn.dataset.cmd }));
   });
 }
 
-function renderProject(name, d, backups) {
-  let h = '';
-
-  // Status badges row
+function renderProject(d) {
   const wOk = d.watcher?.running;
   const hasAlert = d.alerts?.active;
   const health = d.health?.status || 'unknown';
+  const isCritical = health === 'critical';
+  let h = '';
 
-  h += '<div class="status-row">';
-  h += badge(wOk ? '👁' : '🚫', 'Watcher', wOk ? 'Running' : 'Stopped', wOk ? 'ok' : 'danger');
-  h += badge(hasAlert ? '🔔' : '✅', 'Alerts', hasAlert ? (d.alerts.latest?.fileCount || '!') : 'None', hasAlert ? 'danger' : 'ok');
-  h += badge('💚', 'Health', health, health === 'healthy' ? 'ok' : health === 'critical' ? 'danger' : 'warn');
-  h += badge('📁', 'Files', d.protectionScope?.fileCount || 0, 'info');
-  h += '</div>';
+  // ── Big status hero ──
+  if (hasAlert) {
+    const fc = d.alerts.latest?.fileCount || '?';
+    h += '<div class="status-hero alert">';
+    h += '<span class="status-icon">🔴</span>';
+    h += '<span class="status-text">' + fc + ' files alert</span>';
+    h += '<span class="status-sub">Abnormal change velocity detected</span>';
+    h += '</div>';
+  } else if (!wOk) {
+    h += '<div class="status-hero stopped">';
+    h += '<span class="status-icon">🟡</span>';
+    h += '<span class="status-text">Watcher Stopped</span>';
+    h += '<span class="status-sub">Start watcher to enable protection</span>';
+    h += '</div>';
+  } else if (isCritical) {
+    h += '<div class="status-hero critical">';
+    h += '<span class="status-icon">🔴</span>';
+    h += '<span class="status-text">Critical Issue</span>';
+    h += '<span class="status-sub">' + esc(d.health.issues?.[0] || 'Check diagnostics') + '</span>';
+    h += '</div>';
+  } else {
+    h += '<div class="status-hero protected">';
+    h += '<span class="status-icon">🟢</span>';
+    h += '<span class="status-text">Protected</span>';
+    h += '<span class="status-sub">Watcher running · All systems OK</span>';
+    h += '</div>';
+  }
 
-  // Alert bar
+  // ── Alert detail card (only when active) ──
   if (hasAlert) {
     const a = d.alerts.latest;
     const remain = a.expiresAt ? Math.max(0, Math.ceil((new Date(a.expiresAt).getTime() - Date.now()) / 1000)) : 0;
     const display = remain > 60 ? Math.floor(remain/60) + 'm ' + (remain%60) + 's' : remain + 's';
-    h += '<div class="alert-bar">';
-    h += '<div class="alert-title">⚠ ' + (a.fileCount||'?') + ' files changed in ' + (a.windowSeconds||'?') + 's</div>';
-    h += '<div class="alert-detail">Threshold: ' + (a.threshold||'?') + ' · Expires: ' + display + '</div>';
+    h += '<div class="alert-card">';
+    h += '<div class="title">⚠ ' + (a.fileCount||'?') + ' files in ' + (a.windowSeconds||'?') + 's</div>';
+    h += '<div class="detail">Threshold: ' + (a.threshold||'?') + ' · Expires: ' + display + '</div>';
+    h += '<div class="actions">';
+    h += '<button class="btn-sm" data-cmd="cursorGuard.openDashboard">View Details</button>';
+    h += '</div>';
     h += '</div>';
   }
 
-  // Backup stats bars
+  // ── Quick stats ──
   const gitC = d.counts?.git?.commits || 0;
   const shadowC = d.counts?.shadow?.snapshots || 0;
-  const maxC = Math.max(gitC, shadowC, 1);
-  const gitDisk = d.diskUsage?.git?.display || '0B';
-  const shadowDisk = d.diskUsage?.shadow?.display || '0B';
-  const gitBytes = d.diskUsage?.git?.bytes || 0;
-  const shadowBytes = d.diskUsage?.shadow?.bytes || 0;
-  const maxBytes = Math.max(gitBytes, shadowBytes, 1);
+  const lastGit = d.lastBackup?.git?.relativeTime || 'never';
+  const freeGB = d.disk?.freeGB;
+  const freeDisplay = typeof freeGB === 'number' ? freeGB.toFixed(1) + ' GB' : 'N/A';
+  const diskWarn = d.disk?.warning;
 
-  h += '<div class="card">';
-  h += '<div class="card-title">Backup Statistics</div>';
-  h += bar('Git backups', gitC, gitC / maxC * 100, 'blue');
-  h += bar('Shadow snapshots', shadowC, shadowC / maxC * 100, 'purple');
-  h += bar('Git disk', gitDisk, gitBytes / maxBytes * 100, 'teal');
-  h += bar('Shadow disk', shadowDisk, shadowBytes / maxBytes * 100, 'orange');
-  if (d.disk) {
-    h += '<div class="bar-label" style="margin-top:4px"><span class="name">System free</span><span class="val">' + d.disk.freeGB + ' GB</span></div>';
-  }
+  h += '<div class="stats-card">';
+  h += '<div class="label-sm">Quick Stats</div>';
+  h += statRow('Last backup', lastGit, 'green');
+  h += statRow('Git backups', gitC, 'blue');
+  if (shadowC > 0) h += statRow('Shadow copies', shadowC, 'blue');
+  h += statRow('Disk free', freeDisplay, diskWarn ? 'yellow' : 'green');
+  h += statRow('Protected files', d.protectionScope?.fileCount || 0, '');
   h += '</div>';
-
-  // Recent backups timeline
-  h += '<div class="card">';
-  h += '<div class="card-title">Recent Backups</div>';
-  if (backups.length === 0) {
-    h += '<div style="color:var(--dim);font-size:10px">No backups yet</div>';
-  } else {
-    h += '<ul class="backup-list">';
-    for (const b of backups) {
-      const time = b.timestamp ? new Date(b.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '?';
-      const type = b.type || 'auto';
-      const dotClass = type === 'git-snapshot' ? 'snapshot' : type === 'pre-restore' ? 'restore' : 'auto';
-      const typeLabel = type === 'git-snapshot' ? 'snap' : type === 'pre-restore' ? 'pre-rst' : 'auto';
-      const summary = b.summary ? truncate(b.summary, 30) : '';
-      const files = b.filesChanged ? b.filesChanged + ' files' : '';
-      h += '<li class="backup-item">';
-      h += '<span class="backup-dot ' + dotClass + '"></span>';
-      h += '<span class="backup-time">' + time + '</span>';
-      h += '<span class="backup-type">' + typeLabel + '</span>';
-      h += '<span class="backup-summary">' + esc(files + (files && summary ? ' · ' : '') + summary) + '</span>';
-      h += '</li>';
-    }
-    h += '</ul>';
-  }
-  h += '</div>';
-
-  // Health issues
-  if (d.health?.issues?.length > 0) {
-    h += '<div class="card">';
-    h += '<div class="card-title">Health Issues</div>';
-    for (const issue of d.health.issues) {
-      const critical = issue.includes('critically') || issue.includes('requires Git');
-      h += '<div class="health-row"><span class="health-dot" style="background:' + (critical ? 'var(--red)' : 'var(--yellow)') + '"></span>' + esc(issue) + '</div>';
-    }
-    h += '</div>';
-  }
-
-  // Protection scope
-  h += '<div class="card">';
-  h += '<div class="card-title">Protection Scope</div>';
-  const protect = d.protectionScope?.protect || ['**'];
-  const ignore = d.protectionScope?.ignore || [];
-  h += '<div style="font-size:10px;margin-bottom:4px">' + (d.protectionScope?.fileCount || 0) + ' files monitored</div>';
-  h += '<div class="scope-tags">';
-  for (const p of protect) h += '<span class="scope-tag protect">✓ ' + esc(p) + '</span>';
-  for (const i of ignore.slice(0, 6)) h += '<span class="scope-tag ignore">✗ ' + esc(i) + '</span>';
-  if (ignore.length > 6) h += '<span class="scope-tag ignore">+' + (ignore.length - 6) + ' more</span>';
-  h += '</div></div>';
 
   return h;
 }
 
-function renderActions() {
-  return '<div class="card"><div class="card-title">Quick Actions</div><div class="actions-row">'
-    + '<button class="action-btn" data-cmd="cursorGuard.openDashboard">🖥 Dashboard</button>'
-    + '<button class="action-btn" data-cmd="cursorGuard.snapshotNow">📸 Snapshot</button>'
-    + '<button class="action-btn" data-cmd="cursorGuard.startWatcher">▶ Start</button>'
-    + '<button class="action-btn" data-cmd="cursorGuard.stopWatcher">⏹ Stop</button>'
-    + '</div></div>';
+function renderActions(projects) {
+  const ids = Object.keys(projects);
+  const d = ids.length > 0 ? projects[ids[0]]?.dashboard : null;
+  const wOk = d?.watcher?.running;
+
+  let h = '<div class="actions-section"><div class="actions-grid">';
+  h += '<button class="action-btn primary" data-cmd="cursorGuard.snapshotNow"><span class="icon">📸</span>Snapshot</button>';
+  h += '<button class="action-btn" data-cmd="cursorGuard.quickRestore"><span class="icon">⏪</span>Restore</button>';
+
+  if (wOk) {
+    h += '<button class="action-btn" data-cmd="cursorGuard.stopWatcher"><span class="icon">🟢</span>Watcher ON</button>';
+  } else {
+    h += '<button class="action-btn" data-cmd="cursorGuard.startWatcher"><span class="icon">⚪</span>Watcher OFF</button>';
+  }
+  h += '<button class="action-btn" data-cmd="cursorGuard.doctor"><span class="icon">🔍</span>Doctor</button>';
+
+  h += '<button class="action-btn full primary" data-cmd="cursorGuard.openDashboard"><span class="icon">📊</span>Open Dashboard</button>';
+  h += '</div></div>';
+  return h;
 }
 
-function badge(icon, label, value, cls) {
-  return '<div class="status-badge ' + cls + '">'
-    + '<span class="icon">' + icon + '</span>'
-    + '<span class="value">' + esc(String(value)) + '</span>'
-    + '<span class="label">' + label + '</span>'
-    + '</div>';
-}
-function bar(name, val, pct, color) {
-  return '<div class="bar-group"><div class="bar-label"><span class="name">' + name + '</span><span class="val">' + val + '</span></div>'
-    + '<div class="bar-track"><div class="bar-fill ' + color + '" style="width:' + Math.max(pct, 2) + '%"></div></div></div>';
+function statRow(name, val, cls) {
+  return '<div class="stat-row"><span class="name">' + name + '</span><span class="val ' + cls + '">' + esc(String(val)) + '</span></div>';
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function truncate(s, n) { return s.length > n ? s.slice(0, n) + '...' : s; }
 </script>
 </body>
 </html>`;
