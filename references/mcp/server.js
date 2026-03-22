@@ -15,6 +15,8 @@ const { getBackupStatus } = require('../lib/core/status');
 const { getDashboard } = require('../lib/core/dashboard');
 const { loadActiveAlert } = require('../lib/core/anomaly');
 
+const { gitDir: getGitDir } = require('../lib/utils');
+
 const pkg = require('../../package.json');
 
 // ── Alert injection helper ──────────────────────────────────────
@@ -28,6 +30,33 @@ function injectAlert(projectPath, result) {
       timestamp: alert.timestamp,
       expiresAt: alert.expiresAt,
     };
+  }
+  return result;
+}
+
+// ── Watcher status check ────────────────────────────────────────
+
+function isWatcherRunning(projectDir) {
+  const fs = require('fs');
+  const gDir = getGitDir(projectDir);
+  const lockFile = gDir
+    ? path.join(gDir, 'cursor-guard.lock')
+    : path.join(projectDir, '.cursor-guard-backup', 'cursor-guard.lock');
+  if (!fs.existsSync(lockFile)) return false;
+  try {
+    const content = fs.readFileSync(lockFile, 'utf-8');
+    const pidMatch = content.match(/pid=(\d+)/);
+    if (pidMatch) {
+      process.kill(parseInt(pidMatch[1], 10), 0);
+      return true;
+    }
+  } catch { /* pid gone or lock unreadable */ }
+  return false;
+}
+
+function injectWatcherWarning(projectPath, result) {
+  if (!isWatcherRunning(projectPath)) {
+    result._warning = 'Watcher is NOT running — auto-backup protection is inactive. Any file changes made without a manual snapshot_now call will NOT be captured. Consider starting the watcher or calling snapshot_now before making changes.';
   }
   return result;
 }
@@ -50,6 +79,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     const result = injectAlert(resolved, runDiagnostics(resolved));
+    injectWatcherWarning(resolved, result);
     return {
       content: [{
         type: 'text',
@@ -128,6 +158,7 @@ server.tool(
     }
 
     injectAlert(resolved, results);
+    injectWatcherWarning(resolved, results);
 
     return {
       content: [{
@@ -154,6 +185,7 @@ server.tool(
     const result = injectAlert(resolved, restoreFile(resolved, file, source, {
       preserveCurrent: preserve_current,
     }));
+    injectWatcherWarning(resolved, result);
     return {
       content: [{
         type: 'text',
@@ -187,6 +219,7 @@ server.tool(
       preserveCurrent: preserve_current,
       cleanUntracked: clean_untracked,
     }));
+    injectWatcherWarning(resolved, result);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );

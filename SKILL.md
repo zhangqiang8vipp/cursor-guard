@@ -571,9 +571,10 @@ Skip the block for unrelated turns.
 
 ## Hard Rules (Non-Negotiable)
 
-1. **MUST snapshot before high-risk ops** — git commit or shadow copy. No exceptions unless user explicitly declines.
+1. **MUST snapshot before ANY file write or delete** — call `snapshot_now` (with `intent`) before creating, editing, or deleting files. This is NOT optional and NOT just for "high-risk" operations. Every write is potentially destructive. No exceptions unless user explicitly says "不用备份" / "skip backup". If the MCP response includes `_warning` about the watcher being stopped, tell the user immediately.
 2. **MUST Read before Write** — never overwrite a file the agent hasn't read in the current turn.
 3. **MUST preserve current version before restore** — every restore operation must first snapshot the current state (§5a Step 4). Skip ONLY when: (a) user explicitly opts out, (b) current state is identical to target, or (c) no changes exist. If preservation fails, abort restore by default.
+3a. **MUST check watcher status** — if any MCP tool returns `_warning` about the watcher not running, immediately warn the user: "自动备份守护进程未运行，当前处于无保护状态。建议先启动 watcher 或在每次修改前手动调用 snapshot_now。" Do NOT silently continue editing files without protection.
 4. **Do not** treat Timeline/Checkpoints as the only or primary recovery path.
 5. **Do not** recommend Checkpoints as long-term or sole backup.
 6. **No automatic push** to remotes; local commits only unless user requests push.
