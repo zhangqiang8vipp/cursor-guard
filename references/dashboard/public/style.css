@@ -1443,6 +1443,15 @@ main {
   color: #fff;
   border-color: var(--green);
 }
+.modal-restore-btn.btn-deleted {
+  border-color: var(--orange, #f0ad4e);
+  color: var(--orange, #f0ad4e);
+}
+.modal-restore-btn.btn-deleted:hover {
+  background: var(--orange, #f0ad4e);
+  color: #fff;
+  border-color: var(--orange, #f0ad4e);
+}
 
 /* ── Responsive ───────────────────────────────────────────── */
 

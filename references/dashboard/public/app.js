@@ -65,6 +65,7 @@ const I18N = {
     'modal.alertFiles':      'Alert File Details',
     'modal.col.restore':     'Restore',
     'modal.copyRestore':     'Copy cmd',
+    'modal.restorePreDelete':'Restore pre-delete',
     'modal.copied':          'Copied!',
 
     'backups.gitCommits':       'Git Commits',
@@ -292,6 +293,7 @@ const I18N = {
     'modal.alertFiles':      '告警文件详情',
     'modal.col.restore':     '恢复',
     'modal.copyRestore':     '复制命令',
+    'modal.restorePreDelete':'恢复删除前',
     'modal.copied':          '已复制！',
 
     'backups.gitCommits':       'Git 提交数',
@@ -1306,14 +1308,17 @@ function openFileModal(title, files, projectPath, commitHash) {
     else sorted.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
 
     const rows = sorted.map(f => {
-      const restoreCmd = commitHash
-        ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${commitHash}" })`
+      const isDeleted = f.action === 'D';
+      const source = isDeleted && commitHash ? `${commitHash}~1` : commitHash;
+      const restoreCmd = source
+        ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${source}" })`
         : '';
+      const btnLabel = isDeleted ? t('modal.restorePreDelete') : t('modal.copyRestore');
       return `<tr>
         <td class="text-mono modal-file-path" title="${esc(f.path)}">${esc(f.path)}</td>
         <td>${formatFileActionBadge(f.action)}</td>
         <td class="text-mono modal-file-changes">+${f.added || 0} -${f.deleted || 0}</td>
-        ${commitHash ? `<td><button class="modal-restore-btn" data-restore-cmd="${esc(restoreCmd)}">${t('modal.copyRestore')}</button></td>` : ''}
+        ${commitHash ? `<td><button class="modal-restore-btn${isDeleted ? ' btn-deleted' : ''}" data-restore-cmd="${esc(restoreCmd)}">${btnLabel}</button></td>` : ''}
       </tr>`;
     }).join('');
 
@@ -1339,9 +1344,10 @@ function openFileModal(title, files, projectPath, commitHash) {
     const btn = e.target.closest('[data-restore-cmd]');
     if (btn) {
       copyText(btn.dataset.restoreCmd);
+      const origLabel = btn.classList.contains('btn-deleted') ? t('modal.restorePreDelete') : t('modal.copyRestore');
       btn.textContent = t('modal.copied');
       btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = t('modal.copyRestore'); btn.classList.remove('copied'); }, 1500);
+      setTimeout(() => { btn.textContent = origLabel; btn.classList.remove('copied'); }, 1500);
     }
   });
 
@@ -1378,12 +1384,15 @@ function renderDrawerFilesTable(files, sortKey, commitHash, projectPath) {
   else sorted.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
   const hasRestore = !!commitHash;
   const rows = sorted.map(f => {
-    const cmd = hasRestore ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${commitHash}" })` : '';
+    const isDeleted = f.action === 'D';
+    const source = isDeleted && commitHash ? `${commitHash}~1` : commitHash;
+    const cmd = hasRestore ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${source}" })` : '';
+    const btnLabel = isDeleted ? t('modal.restorePreDelete') : t('modal.copyRestore');
     return `<tr>
       <td class="text-mono drawer-file-path">${esc(f.path)}</td>
       <td>${formatFileActionBadge(f.action)}</td>
       <td class="text-mono drawer-file-changes">+${f.added} -${f.deleted}</td>
-      ${hasRestore ? `<td><button class="modal-restore-btn" data-restore-cmd="${esc(cmd)}">${t('modal.copyRestore')}</button></td>` : ''}
+      ${hasRestore ? `<td><button class="modal-restore-btn${isDeleted ? ' btn-deleted' : ''}" data-restore-cmd="${esc(cmd)}">${btnLabel}</button></td>` : ''}
     </tr>`;
   }).join('');
   return `<table class="drawer-files-table">
@@ -1490,9 +1499,10 @@ function openRestoreDrawer(backup) {
         const restoreBtn = e.target.closest('[data-restore-cmd]');
         if (restoreBtn) {
           copyText(restoreBtn.dataset.restoreCmd);
+          const origLabel = restoreBtn.classList.contains('btn-deleted') ? t('modal.restorePreDelete') : t('modal.copyRestore');
           restoreBtn.textContent = t('modal.copied');
           restoreBtn.classList.add('copied');
-          setTimeout(() => { restoreBtn.textContent = t('modal.copyRestore'); restoreBtn.classList.remove('copied'); }, 1500);
+          setTimeout(() => { restoreBtn.textContent = origLabel; restoreBtn.classList.remove('copied'); }, 1500);
         }
       });
     };
