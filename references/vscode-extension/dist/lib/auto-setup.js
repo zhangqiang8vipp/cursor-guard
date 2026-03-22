@@ -84,19 +84,39 @@ function autoInstallSkill(extRoot, homePath, dirName) {
     fs.copyFileSync(roadmapSrc, path.join(skillTarget, 'ROADMAP.md'));
   }
 
+  // Link references/ → extension directory so SKILL.md paths resolve correctly
+  // (mcp/server.js, lib/core/*, dashboard/, bin/ etc.)
   const refsTarget = path.join(skillTarget, 'references');
-  fs.mkdirSync(refsTarget, { recursive: true });
+  if (!fs.existsSync(refsTarget)) {
+    try {
+      fs.symlinkSync(extRoot, refsTarget, 'junction');
+      actions.push('references/ linked');
+    } catch {
+      // junction failed (rare) — fall back to copying essential docs only
+      fs.mkdirSync(refsTarget, { recursive: true });
+      _copyDocFiles(skillSrc, refsTarget);
+    }
+  }
 
-  const configRef = path.join(skillSrc, 'config-reference.md');
-  if (fs.existsSync(configRef)) fs.copyFileSync(configRef, path.join(refsTarget, 'config-reference.md'));
-  const configRefCn = path.join(skillSrc, 'config-reference.zh-CN.md');
-  if (fs.existsSync(configRefCn)) fs.copyFileSync(configRefCn, path.join(refsTarget, 'config-reference.zh-CN.md'));
-  const recoveryMd = path.join(skillSrc, 'recovery.md');
-  if (fs.existsSync(recoveryMd)) fs.copyFileSync(recoveryMd, path.join(refsTarget, 'recovery.md'));
-  const schemaSrc = path.join(skillSrc, 'cursor-guard.schema.json');
-  if (fs.existsSync(schemaSrc)) fs.copyFileSync(schemaSrc, path.join(refsTarget, 'cursor-guard.schema.json'));
+  // Copy package.json so `require('../../package.json')` in source mode works
+  const pkgSrc = path.join(extRoot, '..', '..', 'package.json');
+  const pkgDst = path.join(skillTarget, 'package.json');
+  if (fs.existsSync(pkgSrc) && !fs.existsSync(pkgDst)) {
+    fs.copyFileSync(pkgSrc, pkgDst);
+  }
 
   return actions;
+}
+
+function _copyDocFiles(skillSrc, refsTarget) {
+  const docs = [
+    'config-reference.md', 'config-reference.zh-CN.md',
+    'recovery.md', 'cursor-guard.schema.json', 'cursor-guard.example.json',
+  ];
+  for (const f of docs) {
+    const src = path.join(skillSrc, f);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(refsTarget, f));
+  }
 }
 
 function autoRegisterMcp(extRoot, homePath, wsRoot) {

@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.8.1`  
-> **文档状态**：`V2` ~ `V4.8.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.8.2`  
+> **文档状态**：`V2` ~ `V4.8.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,14 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.8.2：Skill 目录运行时完整安装 ✅
+
+| 修复 | 说明 |
+|------|------|
+| **autoInstallSkill 创建 references/ junction** | 之前只复制文档文件（SKILL.md、config-reference.md 等），导致 SKILL.md 中引用的 `references/mcp/server.js`、`references/lib/core/`、`references/dashboard/` 等全部 404。改为创建 `references/` → 扩展目录的 junction link（Windows 不需管理员权限），所有运行时文件通过链接自动可用 |
+| **package.json 安装** | 复制 `package.json` 到 skill 目录，解决源码模式下 `require('../../package.json')` 失败 |
+| **junction 失败降级** | 极少数环境无法创建 junction 时，fallback 到只复制文档文件（与之前行为一致） |
 
 ### V4.8.1：MCP Server esbuild 单文件打包 ✅
 
