@@ -24,8 +24,13 @@
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
 - **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
-- **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、每 15 秒自动刷新、支持多项目监控
+- **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、自动刷新、支持多项目监控
 - **IDE 扩展（V4.7）** — 完整仪表盘嵌入 VSCode/Cursor/Windsurf，WebView 标签页 + 状态栏告警指示器 + 侧边栏项目树。无需打开浏览器
+- **事件驱动监听（V4.9）** — `fs.watch` + 防抖替代盲轮询。备份延迟 < 500ms，空闲时零 CPU。不支持的平台自动降级为轮询
+- **右键上下文菜单（V4.7.7）** — 在资源管理器/编辑器右键菜单中将文件或文件夹添加到 `protect` 或 `ignore` 列表
+- **实时侧边栏（V4.9.1）** — "上次备份 Xs 前"和告警倒计时每秒跳动更新
+- **删除文件智能恢复（V4.8.4）** — 恢复命令自动指向父提交（`hash~1`），避免"文件不存在"错误
+- **自包含 VSIX（V4.8.1）** — MCP server 通过 esbuild 打包为单文件，IDE 扩展零 npm 依赖
 - **一键热重启（V4.5.8）** — 仪表盘检测到新版本时可原地重启服务，不丢失状态
 - **Shadow 增量硬链接（V4.5.4）** — 未变更文件硬链接到上次快照，节省磁盘空间和 I/O
 - **强保护模式（V4.5.4）** — `always_watch: true` 让 watcher 随 MCP server 自动启动，确保零保护缺口
@@ -309,8 +314,8 @@ node build-vsix.js
 cd dist
 npx vsce package
 
-# 安装生成的 .vsix 文件
-code --install-extension cursor-guard-ide-4.7.5.vsix
+# 安装生成的 .vsix 文件（或从 GitHub Releases 下载）
+code --install-extension cursor-guard-ide-4.9.1.vsix
 ```
 
 首次激活时，扩展自动：
@@ -330,9 +335,12 @@ code --install-extension .
 - **WebView 仪表盘** — 完整仪表盘作为编辑器标签页嵌入，与浏览器版本完全一致
 - **状态栏指示器** — 实时显示 `Guard: OK`（绿色）或 `Guard: 22 files!`（黄色告警）
 - **侧边栏 TreeView** — Activity Bar 图标，树形展示项目列表、Watcher 状态、备份统计、告警、健康评估
-- **可视化图表侧边栏** — 进度条、状态徽章、备份时间线等图形化展示
-- **命令面板** — `Cursor Guard: Open Dashboard`、`Snapshot Now`、`Start Watcher`、`Refresh`
+- **可视化图表侧边栏** — 备份时间实时跳动、告警倒计时、保护范围、Quick Stats
+- **命令面板** — `Open Dashboard`、`Snapshot Now`、`Start/Stop Watcher`、`Quick Restore`、`Doctor`、`Refresh`
+- **右键菜单** — 在资源管理器/编辑器右键菜单中将文件或文件夹添加到 `protect` 或 `ignore`
+- **事件驱动刷新** — `FileSystemWatcher` 监听文件变化推送 UI 更新（< 1.5s 延迟），30s 心跳兜底
 - **自动配置（V4.7.5）** — 首次运行自动检测 IDE 类型、安装 Skill、注册 MCP、创建配置
+- **自包含（V4.8.1）** — MCP server 通过 esbuild 打包，零 npm 依赖
 - **多项目** — 热加载所有包含 `.cursor-guard.json` 的工作区文件夹
 - **兼容性** — 支持 VSCode ^1.74.0、Cursor、Windsurf、Trae 及所有基于 VSCode 的 IDE
 
@@ -426,6 +434,33 @@ code --install-extension .
 ---
 
 ## 更新日志
+
+### v4.9.0–v4.9.1 — 事件驱动架构
+
+- **架构重构**：Watcher（`auto-backup.js`）从 `while+sleep` 轮询重写为 `fs.watch` 事件驱动 + 500ms 防抖。空闲时零 CPU，备份延迟 < 500ms
+- **自动降级**：`fs.watch` 不可用时自动回退到轮询模式
+- **配置即时响应**：`.cursor-guard.json` 变化通过 `fs.watch` 事件直接触发热加载（不再等待 10 个轮询周期）
+- **IDE FileSystemWatcher**：扩展使用 VSCode 内置 `createFileSystemWatcher` 推送文件变化事件（1.5s 防抖）
+- **Poller 心跳**：从 5s 固定轮询改为 30s 心跳；UI 更新由事件驱动
+- **实时侧边栏计时**："上次备份 Xs 前"每秒跳动更新（v4.9.1）
+
+### v4.8.0–v4.8.5 — 打包修复、Doctor 优化、恢复 UX
+
+- **修复**：MCP server 通过 esbuild 打包为单个自包含文件——彻底解决传递依赖缺失问题（`zod-to-json-schema`、`ajv` 等）（v4.8.1）
+- **修复**：`doctor` MCP 检查不再在 `.cursor/mcp.json` 已配置 cursor-guard 时误报 WARN（v4.8.2）
+- **修复**：Skill 目录 `references/` 每次激活时自动创建 junction 链接到扩展运行时文件（v4.8.2）
+- **修复**：删除文件的恢复命令自动指向父提交（`hash~1`），避免"文件不存在"错误。按钮显示"恢复删除前"橙色样式（v4.8.4）
+- **修复**：`protect` 范围外的文件不再在变更摘要中被误标为"删除"（v4.8.5）
+- **优化**：VSIX 包从 3.18 MB 缩减至 1.27 MB
+
+### v4.7.6–v4.7.9 — 侧边栏重设计、右键菜单、保护范围
+
+- **新功能**：右键上下文菜单——在资源管理器/编辑器右键添加文件到 `protect` 或 `ignore`，含模式选择器（v4.7.7）
+- **新功能**：侧边栏保护范围卡片——显示受保护/排除文件数、protect/ignore 模式列表（v4.7.8）
+- **新功能**：告警倒计时每秒实时跳动（v4.7.8）
+- **修复**：Open Dashboard CORS/CSP 问题——添加 CORS 头、放宽 CSP、WebView 失败时回退到浏览器（v4.7.8）
+- **修复**：`protect` 模式改为严格匹配（仅完整路径，不回退到 basename）（v4.7.8）
+- **重设计**：侧边栏仪表盘简化——单一状态指示器、2×2 操作按钮网格、精简 Quick Stats（v4.7.6）
 
 ### v4.7.5 — VSIX 独立打包 + 自动配置
 

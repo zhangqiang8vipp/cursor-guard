@@ -24,8 +24,13 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
 - **Backup health dashboard (V4)** — One-call comprehensive view: strategy, counts, disk usage, protection scope, health status
-- **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh every 15s, multi-project support
+- **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh, multi-project support
 - **IDE extension (V4.7)** — Full dashboard embedded in VSCode/Cursor/Windsurf as a WebView tab + status bar alert indicator + sidebar project tree. No browser needed
+- **Event-driven watching (V4.9)** — `fs.watch` + debounce replaces blind polling. Backup latency < 500ms, zero CPU when idle. Automatic fallback to polling on unsupported platforms
+- **Right-click context menus (V4.7.7)** — Add files/folders to `protect` or `ignore` lists via Explorer/Editor right-click menu with pattern picker
+- **Real-time sidebar (V4.9.1)** — "Last backup Xs ago" and alert countdown tick every second in the sidebar dashboard
+- **Smart restore for deleted files (V4.8.4)** — Restore commands auto-point to parent commit (`hash~1`) when file was deleted in the snapshot, preventing "file not found" errors
+- **Self-contained VSIX (V4.8.1)** — MCP server bundled as a single file via esbuild, zero npm dependencies needed for IDE extension
 - **One-click hot restart (V4.5.8)** — Dashboard detects new versions and offers in-place server restart without losing state
 - **Shadow incremental hard links (V4.5.4)** — Unchanged files are hard-linked to save disk space and I/O
 - **Strong protection mode (V4.5.4)** — `always_watch: true` auto-starts watcher with MCP server, ensuring zero protection gaps
@@ -309,8 +314,8 @@ node build-vsix.js
 cd dist
 npx vsce package
 
-# Install the generated .vsix file
-code --install-extension cursor-guard-ide-4.7.5.vsix
+# Install the generated .vsix file (or download from GitHub Releases)
+code --install-extension cursor-guard-ide-4.9.1.vsix
 ```
 
 On first activation, the extension automatically:
@@ -330,9 +335,12 @@ Features:
 - **WebView Dashboard** — full dashboard embedded as an editor tab, identical to the browser version
 - **Status Bar Indicator** — shows `Guard: OK` (green) or `Guard: 22 files!` (yellow) in real-time
 - **Sidebar TreeView** — activity bar icon with project list, watcher status, backup stats, alerts, health
-- **Visual Sidebar** — graphical dashboard with progress bars, status badges, backup timeline in sidebar
-- **Command Palette** — `Cursor Guard: Open Dashboard`, `Snapshot Now`, `Start Watcher`, `Refresh`
+- **Visual Sidebar** — graphical dashboard with live-ticking backup age, alert countdown, protection scope, quick stats
+- **Command Palette** — `Open Dashboard`, `Snapshot Now`, `Start/Stop Watcher`, `Quick Restore`, `Doctor`, `Refresh`
+- **Right-click menus** — add files/folders to `protect` or `ignore` via Explorer/Editor context menu
+- **Event-driven refresh** — `FileSystemWatcher` pushes UI updates on file changes (< 1.5s latency), 30s heartbeat fallback
 - **Auto-setup (V4.7.5)** — auto-detects IDE type, installs Skill, registers MCP, creates config on first run
+- **Self-contained (V4.8.1)** — MCP server bundled via esbuild, zero npm dependencies
 - **Multi-project** — hot-loads all workspace folders with `.cursor-guard.json`
 - **Compatible** — works with VSCode ^1.74.0, Cursor, Windsurf, Trae, and all VSCode-based IDEs
 
@@ -426,6 +434,33 @@ The skill activates on these signals:
 ---
 
 ## Changelog
+
+### v4.9.0–v4.9.1 — Event-Driven Architecture
+
+- **Architecture**: Watcher (`auto-backup.js`) rewritten from `while+sleep` polling to `fs.watch` event-driven with 500ms debounce. Zero CPU when idle, backup latency < 500ms
+- **Fallback**: Automatic degradation to polling mode if `fs.watch` is unavailable (e.g. older Linux kernels)
+- **Config hot-reload**: `.cursor-guard.json` changes trigger instant config reload via `fs.watch` event (no more waiting 10 polling cycles)
+- **IDE FileSystemWatcher**: Extension uses VSCode built-in `createFileSystemWatcher` to push UI updates on file changes (1.5s debounce)
+- **Poller heartbeat**: Reduced from 5s fixed interval to 30s heartbeat; UI updates are now event-driven
+- **Live sidebar counters**: "Last backup Xs ago" ticks every second in real-time (v4.9.1)
+
+### v4.8.0–v4.8.5 — Bundling, Doctor Fixes, Restore UX
+
+- **Fix**: MCP server bundled as single self-contained file via esbuild — eliminates all transitive dependency issues (`zod-to-json-schema`, `ajv`, etc.) (v4.8.1)
+- **Fix**: `doctor` MCP check no longer false-warns when cursor-guard is configured in `.cursor/mcp.json` (v4.8.2)
+- **Fix**: Skill directory `references/` now auto-creates junction link to extension runtime files on every activation (v4.8.2)
+- **Fix**: Deleted file restore commands auto-point to parent commit (`hash~1`), preventing "file not found" errors. Button shows "Restore pre-delete" with orange styling (v4.8.4)
+- **Fix**: Files outside `protect` scope no longer appear as phantom "deleted" in change summaries (v4.8.5)
+- **Improve**: VSIX package reduced from 3.18 MB to 1.27 MB thanks to esbuild bundling
+
+### v4.7.6–v4.7.9 — Sidebar Redesign, Context Menus, Protection Scope
+
+- **Feature**: Right-click context menus — add files/folders to `protect` or `ignore` via Explorer/Editor menus with pattern picker (v4.7.7)
+- **Feature**: Protection scope card in sidebar — shows protected/excluded file counts, actual protect/ignore patterns (v4.7.8)
+- **Feature**: Alert countdown ticks live every second in sidebar (v4.7.8)
+- **Fix**: Open Dashboard CORS/CSP issues — added `Access-Control-Allow-Origin`, relaxed CSP, fallback to browser on WebView failure (v4.7.8)
+- **Fix**: `protect` patterns now use strict matching (full path only, no basename fallback) for consistency (v4.7.8)
+- **Redesign**: Sidebar dashboard simplified — single status indicator, 2x2 action button grid, streamlined Quick Stats, removed clutter (v4.7.6)
 
 ### v4.7.5 — VSIX Self-Contained Build + Auto-Setup
 
