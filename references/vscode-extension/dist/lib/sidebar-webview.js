@@ -257,16 +257,25 @@ window.addEventListener('message', e => {
 vscode.postMessage({ cmd: 'ready' });
 
 setInterval(() => {
-  if (!_alertExpiresAt) return;
-  const el = document.querySelector('.alert-countdown');
-  if (!el) return;
-  const remain = Math.max(0, Math.ceil((_alertExpiresAt - Date.now()) / 1000));
-  if (remain <= 0) {
-    el.textContent = '0s';
-    _alertExpiresAt = 0;
-    return;
+  if (_alertExpiresAt) {
+    const el = document.querySelector('.alert-countdown');
+    if (el) {
+      const remain = Math.max(0, Math.ceil((_alertExpiresAt - Date.now()) / 1000));
+      if (remain <= 0) { el.textContent = '0s'; _alertExpiresAt = 0; }
+      else { el.textContent = remain > 60 ? Math.floor(remain / 60) + 'm ' + (remain % 60) + 's' : remain + 's'; }
+    }
   }
-  el.textContent = remain > 60 ? Math.floor(remain / 60) + 'm ' + (remain % 60) + 's' : remain + 's';
+  const ageEl = document.querySelector('.backup-age[data-backup-ts]');
+  if (ageEl) {
+    const ts = parseInt(ageEl.dataset.backupTs, 10);
+    if (ts) {
+      const sec = Math.floor((Date.now() - ts) / 1000);
+      if (sec < 60) ageEl.textContent = sec + 's ago';
+      else if (sec < 3600) ageEl.textContent = Math.floor(sec / 60) + 'm ' + (sec % 60) + 's ago';
+      else if (sec < 86400) ageEl.textContent = Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm ago';
+      else ageEl.textContent = Math.floor(sec / 86400) + 'd ago';
+    }
+  }
 }, 1000);
 
 function render(projects) {
@@ -346,6 +355,7 @@ function renderProject(d) {
   // ── Quick stats ──
   const gitC = d.counts?.git?.commits || 0;
   const shadowC = d.counts?.shadow?.snapshots || 0;
+  const lastGitTs = d.lastBackup?.git?.timestamp || '';
   const lastGit = d.lastBackup?.git?.relativeTime || 'never';
   const freeGB = d.disk?.freeGB;
   const freeDisplay = typeof freeGB === 'number' ? freeGB.toFixed(1) + ' GB' : 'N/A';
@@ -353,7 +363,11 @@ function renderProject(d) {
 
   h += '<div class="stats-card">';
   h += '<div class="label-sm">Quick Stats</div>';
-  h += statRow('Last backup', lastGit, 'green');
+  if (lastGitTs) {
+    h += '<div class="stat-row"><span class="name">Last backup</span><span class="val green backup-age" data-backup-ts="' + new Date(lastGitTs).getTime() + '">' + esc(lastGit) + '</span></div>';
+  } else {
+    h += statRow('Last backup', lastGit, 'green');
+  }
   h += statRow('Git backups', gitC, 'blue');
   if (shadowC > 0) h += statRow('Shadow copies', shadowC, 'blue');
   h += statRow('Disk free', freeDisplay, diskWarn ? 'yellow' : 'green');
