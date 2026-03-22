@@ -92,6 +92,11 @@ function runFixes(projectDir, opts = {}) {
         if (!existingIgnore.includes('.cursor-guard-backup')) {
           missingPatterns.push('# cursor-guard shadow copies', '.cursor-guard-backup/', '');
         }
+        const nmEntries = ['node_modules/', '.cursor/skills/**/node_modules/'];
+        const missingNm = nmEntries.filter(e => !existingIgnore.includes(e));
+        if (missingNm.length > 0) {
+          missingPatterns.push('# Dependencies', ...missingNm, '');
+        }
         const missingSecrets = initCfg.secrets_patterns.filter(p => !existingIgnore.includes(p));
         if (missingSecrets.length > 0) {
           missingPatterns.push('# Secrets (cursor-guard defaults)', ...missingSecrets, '');

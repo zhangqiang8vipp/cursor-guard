@@ -313,25 +313,25 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
     return { kept: 0, pruned: 0, mode, rebuilt: false, skipped: true, reason: 'retention disabled' };
   }
 
-  const out = git(['log', branchRef, '--format=%H %aI %cI %s'], { cwd, allowFail: true });
+  const RS = '\x1e', US = '\x1f';
+  const out = git(['log', branchRef, `--format=%H${US}%aI${US}%cI${US}%s${US}%B${RS}`], { cwd, allowFail: true });
   if (!out) {
     return { kept: 0, pruned: 0, mode, rebuilt: false, skipped: true, reason: 'no commits on ref' };
   }
 
-  const lines = out.split('\n').filter(Boolean);
+  const records = out.split(RS).filter(r => r.trim());
   const guardCommits = [];
-  for (const line of lines) {
-    const firstSpace = line.indexOf(' ');
-    const secondSpace = line.indexOf(' ', firstSpace + 1);
-    const thirdSpace = line.indexOf(' ', secondSpace + 1);
-    const hash = line.substring(0, firstSpace);
-    const authorDate = line.substring(firstSpace + 1, secondSpace);
-    const committerDate = line.substring(secondSpace + 1, thirdSpace);
-    const subject = line.substring(thirdSpace + 1);
+  for (const record of records) {
+    const fields = record.split(US);
+    if (fields.length < 5) continue;
+    const hash = fields[0].trim();
+    const authorDate = fields[1].trim();
+    const committerDate = fields[2].trim();
+    const subject = fields[3].trim();
+    const fullBody = fields[4].trim();
     if (subject.startsWith('guard: auto-backup') || subject.startsWith('guard: snapshot')) {
-      guardCommits.push({ hash, authorDate, committerDate, subject });
+      guardCommits.push({ hash, authorDate, committerDate, subject, fullBody });
     }
-    // Non-guard commits are silently skipped; continue scanning older history
   }
 
   const total = guardCommits.length;
@@ -373,7 +373,8 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
   if (!rootTree) {
     return { kept: total, pruned: 0, mode, rebuilt: false, reason: 'could not resolve root tree' };
   }
-  let prevHash = commitTreeWithDate(['commit-tree', rootTree, '-m', toKeep[0].subject], toKeep[0]);
+  const msgOf = (c) => c.fullBody || c.subject;
+  let prevHash = commitTreeWithDate(['commit-tree', rootTree, '-m', msgOf(toKeep[0])], toKeep[0]);
   if (!prevHash) {
     return { kept: total, pruned: 0, mode, rebuilt: false, reason: 'commit-tree failed for root' };
   }
@@ -383,7 +384,7 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
     if (!tree) {
       return { kept: total, pruned: 0, mode, rebuilt: false, reason: `could not resolve tree for commit ${i}` };
     }
-    prevHash = commitTreeWithDate(['commit-tree', tree, '-p', prevHash, '-m', toKeep[i].subject], toKeep[i]);
+    prevHash = commitTreeWithDate(['commit-tree', tree, '-p', prevHash, '-m', msgOf(toKeep[i])], toKeep[i]);
     if (!prevHash) {
       return { kept: total, pruned: 0, mode, rebuilt: false, reason: `commit-tree failed at index ${i}` };
     }

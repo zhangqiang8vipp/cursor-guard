@@ -2,6 +2,7 @@
 'use strict';
 
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -12,6 +13,7 @@ const { listBackups } = require('../lib/core/backups');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEFAULT_PORT = 3120;
 const MAX_PORT_RETRIES = 10;
+const ALLOWED_HOSTS = /^(127\.0\.0\.1|localhost)(:\d+)?$/;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -78,7 +80,7 @@ function forbidden(res) { res.writeHead(403); res.end('Forbidden'); }
 
 /* ── Static file server (strict) ────────────────────────────── */
 
-function serveStatic(reqUrl, res) {
+function serveStatic(reqUrl, res, serverToken) {
   let pathname;
   try { pathname = decodeURIComponent(new URL(reqUrl, 'http://x').pathname); }
   catch { return notFound(res); }
@@ -94,6 +96,23 @@ function serveStatic(reqUrl, res) {
   fs.readFile(resolved, (err, data) => {
     if (err) return notFound(res);
     const ext = path.extname(resolved).toLowerCase();
+
+    // Inject per-process token into index.html so the frontend can authenticate API calls
+    if (pathname === '/index.html' && serverToken) {
+      const html = data.toString('utf-8').replace(
+        '</head>',
+        `<script>window.__GUARD_TOKEN__="${serverToken}";</script></head>`
+      );
+      const buf = Buffer.from(html, 'utf-8');
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] || 'text/html; charset=utf-8',
+        'Content-Length': buf.length,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store',
+      });
+      return res.end(buf);
+    }
+
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Content-Length': data.length,
@@ -176,24 +195,38 @@ function startDashboardServer(paths, opts = {}) {
   const port = opts.port || DEFAULT_PORT;
   const silent = opts.silent || false;
   const registry = buildRegistry(paths);
+  const token = crypto.randomBytes(16).toString('hex');
 
   return new Promise((resolve, reject) => {
     let currentPort = port;
     let retries = 0;
 
     const server = http.createServer((req, res) => {
+      // DNS rebinding protection: reject unexpected Host headers
+      const host = req.headers.host || '';
+      if (!ALLOWED_HOSTS.test(host)) {
+        res.writeHead(403);
+        return res.end('Forbidden: invalid host');
+      }
+
       if (req.method !== 'GET') {
         res.writeHead(405);
         return res.end('Method Not Allowed');
       }
       let parsed;
-      try { parsed = new URL(req.url, `http://${req.headers.host || 'localhost'}`); }
+      try { parsed = new URL(req.url, `http://${host}`); }
       catch { return notFound(res); }
 
+      // API endpoints require per-process token
       if (parsed.pathname.startsWith('/api/')) {
+        const reqToken = parsed.searchParams.get('token');
+        if (reqToken !== token) {
+          res.writeHead(403);
+          return res.end('Forbidden: invalid token');
+        }
         handleApi(parsed.pathname, parsed.searchParams, registry, res);
       } else {
-        serveStatic(req.url, res);
+        serveStatic(req.url, res, token);
       }
     });
 

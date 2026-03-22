@@ -565,7 +565,9 @@ function relativeTime(ts) {
 /* ── Data fetching ────────────────────────────────────────── */
 
 async function fetchJson(url) {
-  const r = await fetch(url);
+  const sep = url.includes('?') ? '&' : '?';
+  const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${window.__GUARD_TOKEN__}` : '';
+  const r = await fetch(url + tokenParam);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }

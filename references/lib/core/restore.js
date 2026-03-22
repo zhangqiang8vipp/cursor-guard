@@ -11,9 +11,15 @@ const { createGitSnapshot, formatTimestamp, removeSecretsFromIndex } = require('
 // ── Path safety ─────────────────────────────────────────────────
 
 function validateRelativePath(file) {
+  if (!file || typeof file !== 'string') {
+    return { valid: false, error: 'file path is required' };
+  }
   const normalized = path.normalize(file).replace(/\\/g, '/');
   if (path.isAbsolute(normalized) || normalized.startsWith('..')) {
     return { valid: false, error: 'file path must be relative and within project directory' };
+  }
+  if (normalized === '.' || normalized === '') {
+    return { valid: false, error: 'file path must target a specific file, not the project root' };
   }
   return { valid: true, normalized };
 }
@@ -64,6 +70,10 @@ function restoreFile(projectDir, file, source, opts = {}) {
   const pathCheck = validateRelativePath(file);
   if (!pathCheck.valid) {
     return { status: 'error', restoredFrom: source, error: pathCheck.error };
+  }
+
+  if (isToolPath(pathCheck.normalized)) {
+    return { status: 'error', restoredFrom: source, error: `refusing to restore protected path '${pathCheck.normalized}' — use restore_project instead` };
   }
 
   const preserveCurrent = resolvePreserve(projectDir, opts);
@@ -299,15 +309,29 @@ function executeProjectRestore(projectDir, source, opts = {}) {
       cwd: projectDir, stdio: 'pipe',
     });
 
-    // Restore protected paths from HEAD to prevent tool/skill/config downgrade
+    // Restore protected paths: keep HEAD state, don't let old snapshots resurrect deleted files
     const head = git(['rev-parse', 'HEAD'], { cwd: projectDir, allowFail: true });
     if (head) {
-      for (const p of ['.cursor/', ...GUARD_CONFIGS]) {
-        try {
-          execFileSync('git', ['restore', `--source=HEAD`, '--', p], {
-            cwd: projectDir, stdio: 'pipe',
-          });
-        } catch { /* may not exist in HEAD, that's fine */ }
+      const protectedPatterns = ['.cursor/', ...GUARD_CONFIGS];
+      for (const p of protectedPatterns) {
+        const existsInHead = git(['ls-tree', '--name-only', head, '--', p], { cwd: projectDir, allowFail: true });
+        if (existsInHead) {
+          try {
+            execFileSync('git', ['restore', `--source=HEAD`, '--', p], {
+              cwd: projectDir, stdio: 'pipe',
+            });
+          } catch { /* restore failed, keep whatever is there */ }
+        } else {
+          // HEAD intentionally doesn't have this path — remove if old snapshot resurrected it
+          const fullPath = path.join(projectDir, p);
+          try {
+            if (p.endsWith('/')) {
+              fs.rmSync(fullPath, { recursive: true, force: true });
+            } else {
+              fs.unlinkSync(fullPath);
+            }
+          } catch { /* already gone */ }
+        }
       }
     }
 
