@@ -197,6 +197,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
         if (parts.length) incrementalSummary = parts.join('; ');
       }
     } else {
+      const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf899d15f3b60ea6a';
       const lsInitial = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
       if (lsInitial) {
         const files = lsInitial.split('\n').filter(Boolean)
@@ -204,8 +205,29 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
           .filter(f => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
         changedCount = files.length;
         const sample = files.slice(0, 5).join(', ');
-        incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ', ...' : ''}`;
-        changedFiles = files.map(f => ({ path: f, action: 'added', added: 0, deleted: 0 }));
+
+        const numstatInit = git(['diff-tree', '--no-commit-id', '--numstat', '-r', EMPTY_TREE, newTree], { cwd, allowFail: true });
+        const stats = {};
+        if (numstatInit) {
+          for (const line of numstatInit.split('\n').filter(Boolean)) {
+            const [add, del, ...nameParts] = line.split('\t');
+            const fname = nameParts.join('\t');
+            stats[fname] = { added: add === '-' ? 0 : parseInt(add, 10), deleted: del === '-' ? 0 : parseInt(del, 10) };
+          }
+        }
+
+        changedFiles = files.map(f => {
+          const s = stats[f] || { added: 0, deleted: 0 };
+          return { path: f, action: 'added', added: s.added, deleted: s.deleted };
+        });
+
+        function fmtFilesInit(arr) {
+          return arr.slice(0, 5).map(f => {
+            const s = stats[f];
+            return s ? `${f} (+${s.added} -${s.deleted})` : f;
+          }).join(', ');
+        }
+        incrementalSummary = `Added ${files.length}: ${fmtFilesInit(files)}${files.length > 5 ? ', ...' : ''}`;
       }
     }
 

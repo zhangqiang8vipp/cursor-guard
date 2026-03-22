@@ -35568,7 +35568,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.9.1",
+      version: "4.9.2",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -36126,13 +36126,32 @@ var require_snapshot = __commonJS({
             if (parts.length) incrementalSummary = parts.join("; ");
           }
         } else {
+          const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf899d15f3b60ea6a";
           const lsInitial = git(["ls-tree", "--name-only", "-r", newTree], { cwd, allowFail: true });
           if (lsInitial) {
+            let fmtFilesInit = function(arr) {
+              return arr.slice(0, 5).map((f) => {
+                const s = stats[f];
+                return s ? `${f} (+${s.added} -${s.deleted})` : f;
+              }).join(", ");
+            };
             const files = lsInitial.split("\n").filter(Boolean).filter((f) => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path2.basename(f))).filter((f) => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
             changedCount = files.length;
             const sample = files.slice(0, 5).join(", ");
-            incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ", ..." : ""}`;
-            changedFiles = files.map((f) => ({ path: f, action: "added", added: 0, deleted: 0 }));
+            const numstatInit = git(["diff-tree", "--no-commit-id", "--numstat", "-r", EMPTY_TREE, newTree], { cwd, allowFail: true });
+            const stats = {};
+            if (numstatInit) {
+              for (const line of numstatInit.split("\n").filter(Boolean)) {
+                const [add, del, ...nameParts] = line.split("	");
+                const fname = nameParts.join("	");
+                stats[fname] = { added: add === "-" ? 0 : parseInt(add, 10), deleted: del === "-" ? 0 : parseInt(del, 10) };
+              }
+            }
+            changedFiles = files.map((f) => {
+              const s = stats[f] || { added: 0, deleted: 0 };
+              return { path: f, action: "added", added: s.added, deleted: s.deleted };
+            });
+            incrementalSummary = `Added ${files.length}: ${fmtFilesInit(files)}${files.length > 5 ? ", ..." : ""}`;
           }
         }
         if (incrementalSummary && opts.context) {
