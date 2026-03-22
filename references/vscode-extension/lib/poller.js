@@ -41,8 +41,14 @@ class Poller {
       const projects = await this._dashMgr.getProjects();
       if (!Array.isArray(projects)) return;
       for (const p of projects) {
-        const pageData = await this._dashMgr.getPageData(p.id, 'dashboard');
-        this._data.set(p.id, { ...p, dashboard: pageData?.dashboard || null });
+        const fullData = await this._dashMgr.getFullPageData(p.id);
+        this._data.set(p.id, {
+          ...p,
+          dashboard: fullData?.dashboard || null,
+          backups: fullData?.backups || [],
+          scope: fullData?.scope || null,
+          doctor: fullData?.doctor || null,
+        });
       }
       this._emit();
     } catch { /* non-critical */ }

@@ -67,6 +67,14 @@ class DashboardManager {
     return this.fetchApi(`/api/page-data?id=${projectId}${scopeParam}`);
   }
 
+  async getFullPageData(projectId) {
+    return this.fetchApi(`/api/page-data?id=${projectId}`);
+  }
+
+  async getBackupFiles(projectId, hash) {
+    return this.fetchApi(`/api/backup-files?id=${projectId}&hash=${hash}`);
+  }
+
   async snapshotNow(projectPath) {
     if (!projectPath) return;
     try {
@@ -81,11 +89,14 @@ class DashboardManager {
 
   startWatcher(projectPath) {
     if (!projectPath) return null;
-    const backupScript = path.resolve(__dirname, '..', '..', 'lib', 'auto-backup.js');
-    const child = spawn(process.execPath, [backupScript, '--path', projectPath], {
+    const existingPid = this.getWatcherPid(projectPath);
+    if (existingPid) return existingPid;
+    const cliScript = path.resolve(__dirname, '..', '..', 'bin', 'cursor-guard-backup.js');
+    const child = spawn(process.execPath, [cliScript, '--path', projectPath], {
       cwd: projectPath,
       stdio: 'ignore',
       detached: true,
+      env: { ...process.env, GUARD_SPAWNED_BY_EXT: '1' },
     });
     child.unref();
     return child.pid;

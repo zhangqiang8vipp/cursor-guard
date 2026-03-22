@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.1`  
-> **文档状态**：`V2` ~ `V4.7.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.2`  
+> **文档状态**：`V2` ~ `V4.7.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,15 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.2：Sidebar Mini Dashboard + Watcher 修复 ✅
+
+| 修复/增强 | 说明 |
+|----------|------|
+| **Watcher 无限重启修复** | `startWatcher` 误用 `lib/auto-backup.js`（库模块），改为正确的 CLI 入口 `bin/cursor-guard-backup.js`；新增防重复检查（已有进程则跳过） |
+| **TreeView Mini Dashboard** | 侧边栏从简单列表重构为 7 个信息密集的折叠区：Watcher 详情（PID/启动时间/策略）、告警详情（倒计时/文件列表 top 10）、近期备份（最近 8 条 + 摘要/时间/类型）、统计（git/shadow 数量 + 磁盘占用 + 系统剩余空间）、健康检查（逐条 issue）、保护范围（protect/ignore 规则 + 文件数）、快捷操作 |
+| **Poller 完整数据** | 后台轮询从只拉 `dashboard` scope 改为拉取完整 page data（含 backups/scope/doctor），驱动 TreeView 展示更多信息 |
+| **彩色区分** | 7 个 section 使用不同 ThemeColor（绿=正常/红=告警/蓝=备份/紫=统计/橙=配置/黄=警告），项目节点根据状态显示 Protected/Unprotected/ALERT |
 
 ### V4.7.1：IDE 插件 Bug 修复 + UX 增强 ✅
 
