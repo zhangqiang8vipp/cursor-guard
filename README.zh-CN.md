@@ -5,7 +5,8 @@
 
 保护你的代码免受 [Cursor](https://cursor.com) AI 代理意外覆写或删除。
 
-**[English](README.md)**
+**[English](README.md)**  
+**发版流程（维护者 / 其他开发者 / AI）：** [docs/RELEASE.md](docs/RELEASE.md)
 
 ---
 
@@ -467,6 +468,12 @@ code --install-extension .
 
 ## 更新日志
 
+### v4.9.9 — 独立发版指南 docs/RELEASE.md
+
+- **文档**：新增中英双语 **[docs/RELEASE.md](docs/RELEASE.md)**，面向维护者、其他开发者及 **AI 助手**（完整步骤、Windows 下 `gh` 与 UTF-8 `--notes-file`、npm OTP 等）
+- **文档**：README / README.zh-CN 顶部与发版小节增加指向该指南的链接；`npm run release:checklist` 输出末尾提示同一文件
+- **打包**：`docs/RELEASE.md` 已加入 npm `files`，随包分发
+
 ### v4.9.8 — 发版文档、清单脚本、侧边栏品牌资源
 
 - **文档**：在 README / README.zh-CN 增加双语**发版检查清单**，步骤与根目录 `package.json` 的 `version` 绑定，避免 VSIX 名、Git 标签、npm 版本各写各的
@@ -626,6 +633,8 @@ code --install-extension .
 ## 发版检查清单
 
 **唯一版本源**：仓库**根目录** `package.json` 里的 **`version`**。执行 `references/vscode-extension/build-vsix.js` 时，会把同一版本写入扩展内的 `package.json` 与 `guard-version.json`，因此 VSIX 与 npm 包版本一致。
+
+**完整发版指南（中英双语，给人看也给 AI 执行）：** [docs/RELEASE.md](docs/RELEASE.md) — 内含 **Windows 下 GitHub CLI**：Release 正文请用 UTF-8 文件 + `gh … --notes-file`，避免中文乱码。
 
 ### 生成已填好版本号的表格（推荐）
 

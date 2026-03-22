@@ -37,4 +37,6 @@ console.log(`
 
 当前 npm 包名：**${pkg.name}@${v}**  ·  扩展 displayName 见 references/vscode-extension/package.json
 
+完整步骤、Windows 下 gh 避免乱码、npm OTP 等说明见：**docs/RELEASE.md**（中英双语，维护者与其他 AI 助手共用）。
+
 `);

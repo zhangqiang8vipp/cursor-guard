@@ -5,7 +5,8 @@
 
 Protects your code from accidental AI overwrite or deletion in [Cursor](https://cursor.com).
 
-**[中文文档](README.zh-CN.md)**
+**[中文文档](README.zh-CN.md)**  
+**Release / 发版（maintainers & AI）:** [docs/RELEASE.md](docs/RELEASE.md)
 
 ---
 
@@ -467,6 +468,12 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.9.9 — Dedicated release guide (`docs/RELEASE.md`)
+
+- **Docs**: New bilingual **[docs/RELEASE.md](docs/RELEASE.md)** for maintainers, developers, and AI agents (full procedure, Windows `gh` + UTF-8 `--notes-file`, npm OTP)
+- **Docs**: README / README.zh-CN link to the guide from the header and the release-checklist section; `npm run release:checklist` footer points to the same file
+- **Packaging**: `docs/RELEASE.md` added to npm `files` so it ships with the package
+
 ### v4.9.8 — Release docs, checklist script, sidebar brand asset
 
 - **Docs**: Bilingual **Release checklist** sections in README / README.zh-CN; steps tied to root `package.json` `version` so VSIX file name, Git tag, and npm stay consistent
@@ -627,6 +634,8 @@ The skill activates on these signals:
 ## Release checklist
 
 **Single source of truth**: the `version` field in the **repository root** `package.json`. Running `references/vscode-extension/build-vsix.js` copies that value into the extension `package.json` and `guard-version.json`, so the VSIX and npm tarball stay aligned.
+
+**Full guide (bilingual, for humans and AI agents):** [docs/RELEASE.md](docs/RELEASE.md) — includes **Windows `gh` + UTF-8**: use `--notes-file` for GitHub Release bodies so Chinese text does not become mojibake.
 
 ### Generate a filled-in table (recommended)
 

@@ -1,3 +1,6 @@
+# Local UTF-8 release notes for `gh release edit --notes-file` (avoid CLI encoding issues)
+.release-notes-*.md
+
 node_modules/
 .cursor-guard-backup/
 *.log
