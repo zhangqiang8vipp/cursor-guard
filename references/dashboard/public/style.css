@@ -362,15 +362,28 @@ main {
   max-width: 400px;
   line-height: 1.4;
 }
-.summary-detail {
+.summary-detail-line {
   font-size: 12px;
   color: var(--text-secondary);
   font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  line-height: 1.5;
+  padding: 1px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 400px;
-  line-height: 1.3;
+}
+.summary-detail-line:first-child { padding-top: 2px; }
+
+.summary-pre {
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border-left: 3px solid var(--blue);
 }
 
 /* ── Stats Row ────────────────────────────────────────────── */

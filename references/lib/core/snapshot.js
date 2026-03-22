@@ -159,11 +159,29 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
           const fileName = filePart.split('\t').pop();
           groups[key].push(fileName);
         }
+
+        const numstatOut = git(['diff-tree', '--no-commit-id', '--numstat', '-r', parentTree, newTree], { cwd, allowFail: true });
+        const stats = {};
+        if (numstatOut) {
+          for (const line of numstatOut.split('\n').filter(Boolean)) {
+            const [add, del, ...nameParts] = line.split('\t');
+            const fname = nameParts.join('\t');
+            if (add !== '-') stats[fname] = `+${add} -${del}`;
+          }
+        }
+
+        function fmtFiles(arr) {
+          return arr.slice(0, 5).map(f => {
+            const s = stats[f];
+            return s ? `${f} (${s})` : f;
+          }).join(', ');
+        }
+
         const parts = [];
-        if (groups.M.length) parts.push(`Modified ${groups.M.length}: ${groups.M.slice(0, 5).join(', ')}`);
-        if (groups.A.length) parts.push(`Added ${groups.A.length}: ${groups.A.slice(0, 5).join(', ')}`);
-        if (groups.D.length) parts.push(`Deleted ${groups.D.length}: ${groups.D.slice(0, 5).join(', ')}`);
-        if (groups.R.length) parts.push(`Renamed ${groups.R.length}: ${groups.R.slice(0, 5).join(', ')}`);
+        if (groups.M.length) parts.push(`Modified ${groups.M.length}: ${fmtFiles(groups.M)}${groups.M.length > 5 ? ', ...' : ''}`);
+        if (groups.A.length) parts.push(`Added ${groups.A.length}: ${fmtFiles(groups.A)}${groups.A.length > 5 ? ', ...' : ''}`);
+        if (groups.D.length) parts.push(`Deleted ${groups.D.length}: ${fmtFiles(groups.D)}${groups.D.length > 5 ? ', ...' : ''}`);
+        if (groups.R.length) parts.push(`Renamed ${groups.R.length}: ${fmtFiles(groups.R)}${groups.R.length > 5 ? ', ...' : ''}`);
         if (parts.length) incrementalSummary = parts.join('; ');
       }
     } else {

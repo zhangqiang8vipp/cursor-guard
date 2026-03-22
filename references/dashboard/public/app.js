@@ -869,9 +869,8 @@ function formatSummaryCell(b) {
 
   let line3 = '';
   if (b.summary) {
-    const translated = translateSummary(b.summary);
-    const short = translated.length > 90 ? translated.substring(0, 87) + '...' : translated;
-    line3 = `<div class="summary-detail">${esc(short)}</div>`;
+    const categories = b.summary.split('; ').map(s => translateSummary(s));
+    line3 = categories.map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
   }
 
   if (!line1.length && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
@@ -1006,7 +1005,10 @@ function openRestoreDrawer(backup) {
   if (backup.agent) fields.push({ key: 'drawer.field.agent', val: backup.agent });
   if (backup.session) fields.push({ key: 'drawer.field.session', val: backup.session });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
-  if (backup.summary) fields.push({ key: 'drawer.field.summary', val: translateSummary(backup.summary) });
+  if (backup.summary) {
+    const translated = backup.summary.split('; ').map(s => translateSummary(s)).join('\n');
+    fields.push({ key: 'drawer.field.summary', val: translated, pre: true });
+  }
 
   const refText = backup.ref || backup.shortHash || backup.timestamp || '';
   const jsonText = JSON.stringify(backup, null, 2);
@@ -1015,7 +1017,10 @@ function openRestoreDrawer(backup) {
     ${fields.map(f => `
       <div class="restore-field">
         <div class="restore-field-label">${t(f.key)}</div>
-        <div class="restore-field-value text-mono">${esc(f.val)}</div>
+        ${f.pre
+          ? `<pre class="restore-field-value text-mono summary-pre">${esc(f.val)}</pre>`
+          : `<div class="restore-field-value text-mono">${esc(f.val)}</div>`
+        }
       </div>
     `).join('')}
     <div class="restore-actions">
