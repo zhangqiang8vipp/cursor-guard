@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.8.2`  
-> **文档状态**：`V2` ~ `V4.8.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.8.3`  
+> **文档状态**：`V2` ~ `V4.8.3` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,14 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.8.3：Doctor MCP 检测修复 + Skill 目录 Junction 补全 ✅
+
+| 修复 | 说明 |
+|------|------|
+| **Doctor MCP 检查误报修复** | 之前只检查 `server.js` 文件存在性和 SDK `require.resolve`（esbuild bundle 后必然失败）。新增 `.cursor/mcp.json` 和 `.windsurf/mcp.json` 配置扫描（项目级 + 全局级），如果 `cursor-guard` 已注册则直接 PASS，显示 `registered in .cursor/mcp.json (bundled mode)` |
+| **Skill 目录 junction 补全** | v4.8.2 的 `autoInstallSkill` 有 `if (SKILL.md exists) return` 早退逻辑，导致已安装的旧目录永远不会创建 junction。重构为独立检查：即使 SKILL.md 已存在，仍检测 `references/` 是否为 junction、是否缺少 `mcp/` 运行时目录，不满足则删除旧纯文档目录并重建 junction |
+| **package.json 安装增强** | 优先从根 `package.json` 复制，fallback 到 `guard-version.json` |
 
 ### V4.8.2：Skill 目录运行时完整安装 ✅
 

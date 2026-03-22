@@ -67,45 +67,62 @@ function autoInstallSkill(extRoot, homePath, dirName) {
   if (!skillSrc) return actions;
 
   const skillTarget = path.join(homePath, 'skills', 'cursor-guard');
-  const skillMdTarget = path.join(skillTarget, 'SKILL.md');
-
-  if (fs.existsSync(skillMdTarget)) return actions;
-
   fs.mkdirSync(skillTarget, { recursive: true });
 
+  // ── Install/update SKILL.md and ROADMAP.md ──
   const skillMdSrc = path.join(skillSrc, 'SKILL.md');
-  if (fs.existsSync(skillMdSrc)) {
+  const skillMdTarget = path.join(skillTarget, 'SKILL.md');
+  if (fs.existsSync(skillMdSrc) && !fs.existsSync(skillMdTarget)) {
     fs.copyFileSync(skillMdSrc, skillMdTarget);
     actions.push('SKILL.md installed');
   }
 
   const roadmapSrc = path.join(skillSrc, 'ROADMAP.md');
-  if (fs.existsSync(roadmapSrc)) {
-    fs.copyFileSync(roadmapSrc, path.join(skillTarget, 'ROADMAP.md'));
+  const roadmapDst = path.join(skillTarget, 'ROADMAP.md');
+  if (fs.existsSync(roadmapSrc) && !fs.existsSync(roadmapDst)) {
+    fs.copyFileSync(roadmapSrc, roadmapDst);
   }
 
-  // Link references/ → extension directory so SKILL.md paths resolve correctly
-  // (mcp/server.js, lib/core/*, dashboard/, bin/ etc.)
+  // ── Ensure references/ junction exists (runs even for existing installations) ──
   const refsTarget = path.join(skillTarget, 'references');
-  if (!fs.existsSync(refsTarget)) {
+  const refsIsJunction = _isSymlinkOrJunction(refsTarget);
+  const refsIsPlainDir = !refsIsJunction && fs.existsSync(refsTarget);
+  const refsMissingRuntime = refsIsPlainDir && !fs.existsSync(path.join(refsTarget, 'mcp'));
+
+  if (!fs.existsSync(refsTarget) || refsMissingRuntime) {
+    // Remove old plain directory if it only has docs (no runtime)
+    if (refsMissingRuntime) {
+      try { fs.rmSync(refsTarget, { recursive: true, force: true }); } catch { /* ok */ }
+    }
     try {
       fs.symlinkSync(extRoot, refsTarget, 'junction');
       actions.push('references/ linked');
     } catch {
-      // junction failed (rare) — fall back to copying essential docs only
       fs.mkdirSync(refsTarget, { recursive: true });
       _copyDocFiles(skillSrc, refsTarget);
     }
   }
 
-  // Copy package.json so `require('../../package.json')` in source mode works
-  const pkgSrc = path.join(extRoot, '..', '..', 'package.json');
+  // ── Ensure package.json exists ──
   const pkgDst = path.join(skillTarget, 'package.json');
-  if (fs.existsSync(pkgSrc) && !fs.existsSync(pkgDst)) {
-    fs.copyFileSync(pkgSrc, pkgDst);
+  if (!fs.existsSync(pkgDst)) {
+    const pkgSrc = path.join(extRoot, '..', '..', 'package.json');
+    const guardVer = path.join(extRoot, 'guard-version.json');
+    if (fs.existsSync(pkgSrc)) {
+      fs.copyFileSync(pkgSrc, pkgDst);
+    } else if (fs.existsSync(guardVer)) {
+      fs.copyFileSync(guardVer, pkgDst);
+    }
   }
 
   return actions;
+}
+
+function _isSymlinkOrJunction(p) {
+  try {
+    const stat = fs.lstatSync(p);
+    return stat.isSymbolicLink();
+  } catch { return false; }
 }
 
 function _copyDocFiles(skillSrc, refsTarget) {

@@ -35568,7 +35568,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.8.2",
+      version: "4.8.3",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -35875,6 +35875,27 @@ var require_doctor = __commonJS({
       }
       const mcpServerPath = path2.resolve(__dirname, "../../mcp/server.js");
       const mcpServerExists = fs.existsSync(mcpServerPath);
+      let mcpConfigured = false;
+      let mcpConfigSource = "";
+      const home = process.env.USERPROFILE || process.env.HOME || "";
+      const mcpJsonCandidates = [
+        projectDir ? path2.join(projectDir, ".cursor", "mcp.json") : null,
+        projectDir ? path2.join(projectDir, ".windsurf", "mcp.json") : null,
+        path2.join(home, ".cursor", "mcp.json"),
+        path2.join(home, ".windsurf", "mcp.json")
+      ].filter(Boolean);
+      for (const mcpJsonPath of mcpJsonCandidates) {
+        try {
+          if (!fs.existsSync(mcpJsonPath)) continue;
+          const mcpJson = JSON.parse(fs.readFileSync(mcpJsonPath, "utf-8"));
+          if (mcpJson.mcpServers?.["cursor-guard"]) {
+            mcpConfigured = true;
+            mcpConfigSource = path2.relative(projectDir || home, mcpJsonPath);
+            break;
+          }
+        } catch {
+        }
+      }
       let mcpSdkAvailable = false;
       let mcpSdkVersion = null;
       const skillRoot = path2.resolve(__dirname, "../../..");
@@ -35883,11 +35904,9 @@ var require_doctor = __commonJS({
       ];
       for (const candidate of sdkCandidates) {
         try {
-          const resolved = path2.resolve(candidate);
-          if (fs.existsSync(resolved)) {
-            const mcpPkg = JSON.parse(fs.readFileSync(resolved, "utf-8"));
+          if (fs.existsSync(candidate)) {
+            mcpSdkVersion = JSON.parse(fs.readFileSync(candidate, "utf-8")).version;
             mcpSdkAvailable = true;
-            mcpSdkVersion = mcpPkg.version;
             break;
           }
         } catch {
@@ -35899,19 +35918,19 @@ var require_doctor = __commonJS({
           const sdkDir = mainPath.replace(/[/\\]dist[/\\].*$/, "").replace(/[/\\]src[/\\].*$/, "");
           const pkgPath = path2.join(sdkDir, "package.json");
           if (fs.existsSync(pkgPath)) {
-            const mcpPkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+            mcpSdkVersion = JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
             mcpSdkAvailable = true;
-            mcpSdkVersion = mcpPkg.version;
           }
         } catch {
         }
       }
-      if (mcpServerExists && mcpSdkAvailable) {
+      if (mcpConfigured) {
+        const detail = mcpSdkAvailable ? `registered in ${mcpConfigSource}, SDK ${mcpSdkVersion}` : `registered in ${mcpConfigSource} (bundled mode)`;
+        check("MCP server", "PASS", detail);
+      } else if (mcpServerExists && mcpSdkAvailable) {
         check("MCP server", "PASS", `server.js found, SDK ${mcpSdkVersion}`);
       } else if (mcpServerExists && !mcpSdkAvailable) {
         check("MCP server", "WARN", "server.js found but @modelcontextprotocol/sdk not installed \u2014 run: cd <skill-dir> && npm install");
-      } else if (!mcpServerExists && mcpSdkAvailable) {
-        check("MCP server", "WARN", `SDK installed (${mcpSdkVersion}) but server.js not found at expected path`);
       } else {
         check("MCP server", "WARN", "MCP not configured (optional \u2014 cursor-guard works without it)");
       }
