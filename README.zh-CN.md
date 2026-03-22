@@ -23,7 +23,7 @@
 - **MCP 工具调用（可选）** — 9 个标准化工具（诊断、快照、恢复、状态、看板、告警等），结构化 JSON 返回，低 token 消耗
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
-- **事先预警删除风险（V4.9.6）** — 在危险的局部删除真正“悄悄生效”前先提醒你，支持 `popup` / `dashboard` / `silent` 三种模式
+- **事先预警删除风险（V4.9.7）** — 在危险的局部删除真正“悄悄生效”前先提醒你，支持更柔和的自动继续提示、侧边栏语言同步，以及 `popup` / `dashboard` / `silent` 三种模式
 - **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
 - **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、自动刷新、支持多项目监控
 - **IDE 扩展（V4.7）** — 完整仪表盘嵌入 VSCode/Cursor/Windsurf，WebView 标签页 + 状态栏告警指示器 + 侧边栏项目树。无需打开浏览器
@@ -125,7 +125,7 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       ├── restore.js              # 单文件/全项目恢复
     │       ├── status.js               # 备份系统状态
     │       ├── anomaly.js             # V4：变更频率检测
-    │       ├── pre-warning.js         # V4.9.6：删除风险评分 + 持久化
+│       ├── pre-warning.js         # V4.9.7：删除风险评分 + 持久化
     │       └── dashboard.js           # V4：健康看板聚合
     ├── dashboard/
     │   ├── server.js                   # 仪表盘 HTTP 服务 + API
@@ -336,7 +336,7 @@ cd dist
 npx vsce package
 
 # 安装生成的 .vsix 文件（或从 GitHub Releases 下载）
-code --install-extension cursor-guard-ide-4.9.6.vsix
+code --install-extension cursor-guard-ide-4.9.7.vsix
 ```
 
 首次激活时，扩展自动：
@@ -456,6 +456,14 @@ code --install-extension .
 ---
 
 ## 更新日志
+
+### v4.9.7 — 更柔和的事先预警、侧边栏语言同步与 Watcher 单例保护
+
+- **改进**：`popup` 模式改为 2 秒自动继续的柔性提示，不再用硬阻塞弹窗打断连续编辑
+- **改进**：事先预警提示文案会跟随侧边栏语言切换，IDE 内中英文保持一致
+- **修复**：即使存在删除风险提示，侧边栏也会持续展示 watcher / health 状态；`popup` 模式的预警不会一直挂住不消失
+- **修复**：IDE 启停 watcher 时改为读取真实项目锁路径，并增加启动中的单例保护，避免重复点击拉起多个 watcher
+- **文档**：README、ROADMAP、SKILL 一并更新到 4.9.7 发版说明
 
 ### v4.9.6 — 事先预警局部破坏性删除
 

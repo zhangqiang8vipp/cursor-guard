@@ -72,7 +72,7 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
     "cooldown_seconds": 60   // min gap between alerts
   },
 
-  // V4.9.6: destructive partial-delete pre-warning (default: off).
+  // V4.9.7: destructive partial-delete pre-warning (default: off).
   // Triggered when deletion risk is high or whole methods/functions disappear.
   "enable_pre_warning": false,
   "pre_warning_threshold": 30,

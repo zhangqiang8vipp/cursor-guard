@@ -1,10 +1,13 @@
 'use strict';
 
 const vscode = require('vscode');
+const { getLocale, setLocale } = require('./locale');
 
 class SidebarDashboardProvider {
-  constructor(poller) {
+  constructor(poller, context) {
     this._poller = poller;
+    this._localeStorage = context?.globalState;
+    this._locale = getLocale(this._localeStorage);
     this._view = null;
     this._sub = poller.onChange(data => this._push(data));
   }
@@ -14,14 +17,29 @@ class SidebarDashboardProvider {
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = _getHtml();
 
-    webviewView.webview.onDidReceiveMessage(msg => {
-      if (msg.cmd === 'ready') this._push(this._poller.data);
+    webviewView.webview.onDidReceiveMessage(async msg => {
+      if (msg.cmd === 'ready') {
+        this._postLocale();
+        this._push(this._poller.data);
+      }
+      if (msg.cmd === 'setLocale') {
+        this._locale = await setLocale(this._localeStorage, msg.locale);
+        this._postLocale();
+      }
       if (msg.cmd === 'exec') vscode.commands.executeCommand(msg.command);
     });
 
     webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) this._push(this._poller.data);
+      if (webviewView.visible) {
+        this._postLocale();
+        this._push(this._poller.data);
+      }
     });
+  }
+
+  _postLocale() {
+    if (!this._view) return;
+    this._view.webview.postMessage({ type: 'locale', locale: this._locale });
   }
 
   _push(data) {
@@ -271,20 +289,247 @@ body {
 .btn.full {
   grid-column: 1 / -1;
 }
+
+.shell-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.shell-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lang-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  padding: 4px 10px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lang-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
 </style>
 </head>
 <body>
+<div class="shell-topbar">
+  <div id="shell-title" class="shell-title">Cursor Guard Sidebar</div>
+  <button id="lang-toggle" class="lang-btn" type="button">中文</button>
+</div>
 <div id="root">
   <div class="empty">Waiting for data...</div>
 </div>
 <script>
 const vscode = acquireVsCodeApi();
+const root = document.getElementById('root');
+const shellTitle = document.getElementById('shell-title');
+const langToggle = document.getElementById('lang-toggle');
+const savedState = vscode.getState() || {};
+let _locale = savedState.locale || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US');
 let _alertExpiresAt = 0;
+let _projects = {};
+
+const I18N = {
+  'en-US': {
+    'chrome.title': 'Cursor Guard Sidebar',
+    'chrome.switch': '中文',
+    'state.waiting': 'Waiting for data...',
+    'state.loading': 'Loading...',
+    'state.empty': 'No projects detected.<br>Add .cursor-guard.json to get started.',
+    'hero.pre.kicker': 'Pre-Warning',
+    'hero.pre.title': 'Delete Risk',
+    'hero.pre.subtitle': 'Review pending destructive edit',
+    'hero.alert.kicker': 'Change Alert',
+    'hero.alert.subtitle': 'Abnormal change velocity detected',
+    'hero.protection.kicker': 'Protection',
+    'hero.protection.stopped': 'Watcher Stopped',
+    'hero.protection.stoppedSub': 'Start watcher to enable continuous protection',
+    'hero.health.kicker': 'Health',
+    'hero.health.critical': 'Critical Issue',
+    'hero.health.check': 'Check diagnostics',
+    'hero.protection.safe': 'Protected',
+    'hero.protection.safeSub': 'Watcher running and backups healthy',
+    'card.deletionRisk': 'Deletion Risk',
+    'card.activeAlert': 'Active Alert',
+    'card.quickStats': 'Quick Stats',
+    'card.protectionScope': 'Protection Scope',
+    'row.file': 'File',
+    'row.risk': 'Risk',
+    'row.methodsRemoved': 'Methods removed',
+    'row.summary': 'Summary',
+    'row.window': 'Window',
+    'row.files': 'Files',
+    'row.threshold': 'Threshold',
+    'row.expires': 'Expires',
+    'row.watcher': 'Watcher',
+    'row.health': 'Health',
+    'row.lastBackup': 'Last backup',
+    'row.gitBackups': 'Git backups',
+    'row.shadowCopies': 'Shadow copies',
+    'row.diskFree': 'Disk free',
+    'status.watcher.running': 'Running',
+    'status.watcher.stale': 'Stale Lock',
+    'status.watcher.stopped': 'Stopped',
+    'status.health.healthy': 'Healthy',
+    'status.health.warning': 'Warning',
+    'status.health.critical': 'Critical',
+    'pill.protected': '{n} protected',
+    'pill.excluded': '{n} excluded',
+    'pill.total': '{n} total',
+    'tag.protect': 'Protect',
+    'tag.ignore': 'Ignore',
+    'tag.more': '+{n} more',
+    'actions.openDashboard': 'Open Dashboard',
+    'actions.restore': 'Restore',
+    'actions.viewDetails': 'View Details',
+    'actions.snapshot': 'Snapshot',
+    'actions.watcherOn': 'Stop Watcher',
+    'actions.watcherOff': 'Start Watcher',
+    'actions.doctor': 'Doctor',
+    'stats.never': 'never',
+    'time.secondsAgo': '{n}s ago',
+    'time.minutesAgo': '{m}m {s}s ago',
+    'time.hoursAgo': '{h}h {m}m ago',
+    'time.daysAgo': '{d}d ago',
+    'time.seconds': '{n}s',
+    'time.minutes': '{m}m {s}s',
+    'alert.filesChangedFast': '{count} files changed fast'
+  },
+  'zh-CN': {
+    'chrome.title': 'Cursor Guard 侧边栏',
+    'chrome.switch': 'EN',
+    'state.waiting': '等待数据中...',
+    'state.loading': '加载中...',
+    'state.empty': '未检测到项目。<br>添加 .cursor-guard.json 后即可启用。',
+    'hero.pre.kicker': '事先预警',
+    'hero.pre.title': '删除风险',
+    'hero.pre.subtitle': '请先检查这次破坏性编辑',
+    'hero.alert.kicker': '变更告警',
+    'hero.alert.subtitle': '检测到异常高频文件变更',
+    'hero.protection.kicker': '保护状态',
+    'hero.protection.stopped': 'Watcher 未运行',
+    'hero.protection.stoppedSub': '启动 watcher 以开启持续保护',
+    'hero.health.kicker': '健康状态',
+    'hero.health.critical': '严重问题',
+    'hero.health.check': '请检查诊断结果',
+    'hero.protection.safe': '保护中',
+    'hero.protection.safeSub': 'Watcher 正在运行，备份状态健康',
+    'card.deletionRisk': '删除风险',
+    'card.activeAlert': '活跃告警',
+    'card.quickStats': '快速概览',
+    'card.protectionScope': '保护范围',
+    'row.file': '文件',
+    'row.risk': '风险',
+    'row.methodsRemoved': '移除的方法数',
+    'row.summary': '摘要',
+    'row.window': '窗口',
+    'row.files': '文件数',
+    'row.threshold': '阈值',
+    'row.expires': '剩余时间',
+    'row.watcher': '\u76d1\u63a7',
+    'row.health': '\u5065\u5eb7',
+    'row.lastBackup': '上次备份',
+    'row.gitBackups': 'Git 备份数',
+    'row.shadowCopies': 'Shadow 备份数',
+    'row.diskFree': '剩余磁盘',
+    'status.watcher.running': '\u8fd0\u884c\u4e2d',
+    'status.watcher.stale': '\u9501\u6b8b\u7559',
+    'status.watcher.stopped': '\u5df2\u505c\u6b62',
+    'status.health.healthy': '\u5065\u5eb7',
+    'status.health.warning': '\u8b66\u544a',
+    'status.health.critical': '\u4e25\u91cd',
+    'pill.protected': '{n} 个受保护',
+    'pill.excluded': '{n} 个排除',
+    'pill.total': '{n} 个总计',
+    'tag.protect': '保护',
+    'tag.ignore': '忽略',
+    'tag.more': '+{n} 个更多',
+    'actions.openDashboard': '打开看板',
+    'actions.restore': '恢复',
+    'actions.viewDetails': '查看详情',
+    'actions.snapshot': '立即快照',
+    'actions.watcherOn': '\u505c\u6b62 Watcher',
+    'actions.watcherOff': '\u542f\u52a8 Watcher',
+    'actions.doctor': '诊断',
+    'stats.never': '从未',
+    'time.secondsAgo': '{n} 秒前',
+    'time.minutesAgo': '{m} 分 {s} 秒前',
+    'time.hoursAgo': '{h} 小时 {m} 分前',
+    'time.daysAgo': '{d} 天前',
+    'time.seconds': '{n} 秒',
+    'time.minutes': '{m} 分 {s} 秒',
+    'alert.filesChangedFast': '{count} 个文件快速变更'
+  }
+};
+
+function t(key, params) {
+  const dict = I18N[_locale] || I18N['en-US'];
+  let value = dict[key] || I18N['en-US'][key] || key;
+  for (const [name, replacement] of Object.entries(params || {})) {
+    value = value.replaceAll('{' + name + '}', String(replacement));
+  }
+  return value;
+}
+
+function setLocale(locale, opts) {
+  _locale = locale === 'zh-CN' ? 'zh-CN' : 'en-US';
+  document.documentElement.lang = _locale === 'zh-CN' ? 'zh-CN' : 'en';
+  vscode.setState({ locale: _locale });
+  if (!opts || opts.syncHost !== false) {
+    vscode.postMessage({ cmd: 'setLocale', locale: _locale });
+  }
+  updateChrome();
+  if (!opts || opts.render !== false) {
+    render(_projects);
+  }
+}
+
+function toggleLocale() {
+  setLocale(_locale === 'zh-CN' ? 'en-US' : 'zh-CN');
+}
+
+function updateChrome() {
+  document.documentElement.lang = _locale === 'zh-CN' ? 'zh-CN' : 'en';
+  shellTitle.textContent = t('chrome.title');
+  langToggle.textContent = t('chrome.switch');
+}
+
+function formatRelativeAge(ms) {
+  const sec = Math.floor((Date.now() - ms) / 1000);
+  if (sec < 60) return t('time.secondsAgo', { n: sec });
+  if (sec < 3600) return t('time.minutesAgo', { m: Math.floor(sec / 60), s: sec % 60 });
+  if (sec < 86400) return t('time.hoursAgo', { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) });
+  return t('time.daysAgo', { d: Math.floor(sec / 86400) });
+}
+
+function formatCountdown(seconds) {
+  if (seconds > 60) return t('time.minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
+  return t('time.seconds', { n: seconds });
+}
 
 window.addEventListener('message', event => {
+  if (event.data.type === 'locale') {
+    setLocale(event.data.locale, { syncHost: false });
+    return;
+  }
   if (event.data.type === 'update') render(event.data.data);
 });
 
+langToggle.addEventListener('click', toggleLocale);
+updateChrome();
+root.innerHTML = '<div class="empty">' + t('state.waiting') + '</div>';
 vscode.postMessage({ cmd: 'ready' });
 
 setInterval(() => {
@@ -293,12 +538,10 @@ setInterval(() => {
     if (el) {
       const remain = Math.max(0, Math.ceil((_alertExpiresAt - Date.now()) / 1000));
       if (remain <= 0) {
-        el.textContent = '0s';
+        el.textContent = formatCountdown(0);
         _alertExpiresAt = 0;
-      } else if (remain > 60) {
-        el.textContent = Math.floor(remain / 60) + 'm ' + (remain % 60) + 's';
       } else {
-        el.textContent = remain + 's';
+        el.textContent = formatCountdown(remain);
       }
     }
   }
@@ -307,18 +550,14 @@ setInterval(() => {
   if (!ageEl) return;
   const ts = parseInt(ageEl.dataset.backupTs, 10);
   if (!ts) return;
-
-  const sec = Math.floor((Date.now() - ts) / 1000);
-  if (sec < 60) ageEl.textContent = sec + 's ago';
-  else if (sec < 3600) ageEl.textContent = Math.floor(sec / 60) + 'm ' + (sec % 60) + 's ago';
-  else if (sec < 86400) ageEl.textContent = Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm ago';
-  else ageEl.textContent = Math.floor(sec / 86400) + 'd ago';
+  ageEl.textContent = formatRelativeAge(ts);
 }, 1000);
 
 function render(projects) {
+  _projects = projects || {};
   const ids = Object.keys(projects);
   if (ids.length === 0) {
-    root.innerHTML = '<div class="empty">No projects detected.<br>Add .cursor-guard.json to get started.</div>';
+    root.innerHTML = '<div class="empty">' + t('state.empty') + '</div>';
     return;
   }
 
@@ -327,7 +566,7 @@ function render(projects) {
     const project = projects[id];
     const dashboard = project.dashboard;
     if (!dashboard) {
-      html += '<div class="empty">Loading...</div>';
+      html += '<div class="empty">' + esc(t('state.loading')) + '</div>';
       continue;
     }
     html += renderProject(dashboard);
@@ -347,36 +586,37 @@ function render(projects) {
 
 function renderProject(dashboard) {
   const watcherRunning = dashboard.watcher?.running;
-  const preWarning = dashboard.preWarnings?.active ? dashboard.preWarnings.latest : null;
+  const latestPreWarning = dashboard.preWarnings?.active ? dashboard.preWarnings.latest : null;
+  const preWarning = latestPreWarning?.mode === 'dashboard' ? latestPreWarning : null;
   const alert = dashboard.alerts?.active ? dashboard.alerts.latest : null;
   const health = dashboard.health?.status || 'unknown';
   const critical = health === 'critical';
   let html = '';
 
   if (preWarning) {
-    html += hero('risk', 'Pre-Warning', 'Delete Risk', preWarning.summary || 'Review pending destructive edit');
+    html += hero('risk', t('hero.pre.kicker'), t('hero.pre.title'), preWarning.summary || t('hero.pre.subtitle'));
   } else if (alert) {
-    html += hero('alert', 'Change Alert', (alert.fileCount || '?') + ' files changed fast', 'Abnormal change velocity detected');
+    html += hero('alert', t('hero.alert.kicker'), t('alert.filesChangedFast', { count: alert.fileCount || '?' }), t('hero.alert.subtitle'));
   } else if (!watcherRunning) {
-    html += hero('stopped', 'Protection', 'Watcher Stopped', 'Start watcher to enable continuous protection');
+    html += hero('stopped', t('hero.protection.kicker'), t('hero.protection.stopped'), t('hero.protection.stoppedSub'));
   } else if (critical) {
-    html += hero('critical', 'Health', 'Critical Issue', esc(dashboard.health.issues?.[0] || 'Check diagnostics'));
+    html += hero('critical', t('hero.health.kicker'), t('hero.health.critical'), dashboard.health.issues?.[0] || t('hero.health.check'));
   } else {
-    html += hero('protected', 'Protection', 'Protected', 'Watcher running and backups healthy');
+    html += hero('protected', t('hero.protection.kicker'), t('hero.protection.safe'), t('hero.protection.safeSub'));
   }
 
   if (preWarning) {
     html += '<div class="card risk-card">';
-    html += '<div class="card-title">Deletion Risk</div>';
-    html += row('File', esc(preWarning.file || 'Unknown'), 'orange');
-    html += row('Risk', esc(String(preWarning.riskPercent || '?')) + '%', 'orange');
+    html += '<div class="card-title">' + esc(t('card.deletionRisk')) + '</div>';
+    html += row(t('row.file'), esc(preWarning.file || 'Unknown'), 'orange');
+    html += row(t('row.risk'), esc(String(preWarning.riskPercent || '?')) + '%', 'orange');
     if (preWarning.removedMethodCount) {
-      html += row('Methods removed', esc(String(preWarning.removedMethodCount)), 'red');
+      html += row(t('row.methodsRemoved'), esc(String(preWarning.removedMethodCount)), 'red');
     }
-    html += row('Summary', esc(preWarning.summary || 'Pending destructive edit warning'), 'orange');
+    html += row(t('row.summary'), esc(preWarning.summary || t('hero.pre.subtitle')), 'orange');
     html += '<div class="actions">';
-    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">Open Dashboard</button>';
-    html += '<button class="btn" data-cmd="cursorGuard.quickRestore">Restore</button>';
+    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
+    html += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
     html += '</div>';
     html += '</div>';
   }
@@ -384,15 +624,15 @@ function renderProject(dashboard) {
   if (alert) {
     const expiresTs = alert.expiresAt ? new Date(alert.expiresAt).getTime() : 0;
     const remain = expiresTs ? Math.max(0, Math.ceil((expiresTs - Date.now()) / 1000)) : 0;
-    const display = remain > 60 ? Math.floor(remain / 60) + 'm ' + (remain % 60) + 's' : remain + 's';
+    const display = formatCountdown(remain);
     html += '<div class="card alert-card" data-expires="' + expiresTs + '">';
-    html += '<div class="card-title">Active Alert</div>';
-    html += row('Window', (alert.windowSeconds || '?') + 's', 'red');
-    html += row('Files', String(alert.fileCount || '?'), 'red');
-    html += row('Threshold', String(alert.threshold || '?'), 'yellow');
-    html += row('Expires', '<span class="alert-countdown">' + display + '</span>', 'yellow', true);
+    html += '<div class="card-title">' + esc(t('card.activeAlert')) + '</div>';
+    html += row(t('row.window'), (alert.windowSeconds || '?') + 's', 'red');
+    html += row(t('row.files'), String(alert.fileCount || '?'), 'red');
+    html += row(t('row.threshold'), String(alert.threshold || '?'), 'yellow');
+    html += row(t('row.expires'), '<span class="alert-countdown">' + esc(display) + '</span>', 'yellow', true);
     html += '<div class="actions">';
-    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">View Details</button>';
+    html += '<button class="btn" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.viewDetails')) + '</button>';
     html += '</div>';
     html += '</div>';
   }
@@ -400,21 +640,25 @@ function renderProject(dashboard) {
   const gitCount = dashboard.counts?.git?.commits || 0;
   const shadowCount = dashboard.counts?.shadow?.snapshots || 0;
   const lastGitTs = dashboard.lastBackup?.git?.timestamp || '';
-  const lastGit = dashboard.lastBackup?.git?.relativeTime || 'never';
+  const lastGit = dashboard.lastBackup?.git?.relativeTime || t('stats.never');
   const freeGB = dashboard.disk?.freeGB;
   const freeDisplay = typeof freeGB === 'number' ? freeGB.toFixed(1) + ' GB' : 'N/A';
   const diskWarn = dashboard.disk?.warning;
+  const watcherInfo = watcherStateInfo(dashboard);
+  const healthInfo = healthStateInfo(dashboard);
 
   html += '<div class="card">';
-  html += '<div class="card-title">Quick Stats</div>';
+  html += '<div class="card-title">' + esc(t('card.quickStats')) + '</div>';
+  html += row(t('row.watcher'), watcherInfo.label, watcherInfo.tone);
+  html += row(t('row.health'), healthInfo.label, healthInfo.tone);
   if (lastGitTs) {
-    html += '<div class="row"><span class="row-name">Last backup</span><span class="row-value green backup-age" data-backup-ts="' + new Date(lastGitTs).getTime() + '">' + esc(lastGit) + '</span></div>';
+    html += '<div class="row"><span class="row-name">' + esc(t('row.lastBackup')) + '</span><span class="row-value green backup-age" data-backup-ts="' + new Date(lastGitTs).getTime() + '">' + esc(formatRelativeAge(new Date(lastGitTs).getTime())) + '</span></div>';
   } else {
-    html += row('Last backup', lastGit, 'green');
+    html += row(t('row.lastBackup'), lastGit, 'green');
   }
-  html += row('Git backups', String(gitCount), 'blue');
-  if (shadowCount > 0) html += row('Shadow copies', String(shadowCount), 'blue');
-  html += row('Disk free', freeDisplay, diskWarn ? 'yellow' : 'green');
+  html += row(t('row.gitBackups'), String(gitCount), 'blue');
+  if (shadowCount > 0) html += row(t('row.shadowCopies'), String(shadowCount), 'blue');
+  html += row(t('row.diskFree'), freeDisplay, diskWarn ? 'yellow' : 'green');
   html += '</div>';
 
   const scope = dashboard.protectionScope || {};
@@ -422,20 +666,20 @@ function renderProject(dashboard) {
   const ignore = scope.ignore || [];
 
   html += '<div class="card">';
-  html += '<div class="card-title">Protection Scope</div>';
+  html += '<div class="card-title">' + esc(t('card.protectionScope')) + '</div>';
   html += '<div class="pill-wrap">';
-  html += '<span class="pill green">' + esc(String(scope.fileCount || 0)) + ' protected</span>';
+  html += '<span class="pill green">' + esc(t('pill.protected', { n: String(scope.fileCount || 0) })) + '</span>';
   if ((scope.excludedCount || 0) > 0) {
-    html += '<span class="pill red">' + esc(String(scope.excludedCount || 0)) + ' excluded</span>';
+    html += '<span class="pill red">' + esc(t('pill.excluded', { n: String(scope.excludedCount || 0) })) + '</span>';
   }
-  html += '<span class="pill dim">' + esc(String(scope.totalFiles || 0)) + ' total</span>';
+  html += '<span class="pill dim">' + esc(t('pill.total', { n: String(scope.totalFiles || 0) })) + '</span>';
   html += '</div>';
 
   if (protect.length > 0) {
-    html += renderTags('Protect', protect, 'green');
+    html += renderTags(t('tag.protect'), protect, 'green');
   }
   if (ignore.length > 0) {
-    html += renderTags('Ignore', ignore, 'red');
+    html += renderTags(t('tag.ignore'), ignore, 'red');
   }
   html += '</div>';
 
@@ -451,10 +695,24 @@ function renderTags(label, values, tone) {
     html += '<span class="tag ' + tone + '">' + esc(value) + '</span>';
   }
   if (values.length > 6) {
-    html += '<span class="tag dim">+' + (values.length - 6) + ' more</span>';
+    html += '<span class="tag dim">' + esc(t('tag.more', { n: values.length - 6 })) + '</span>';
   }
   html += '</div></div>';
   return html;
+}
+
+function watcherStateInfo(dashboard) {
+  const watcher = dashboard?.watcher || {};
+  if (watcher.running) return { label: t('status.watcher.running'), tone: 'green' };
+  if (watcher.stale) return { label: t('status.watcher.stale'), tone: 'yellow' };
+  return { label: t('status.watcher.stopped'), tone: 'red' };
+}
+
+function healthStateInfo(dashboard) {
+  const health = dashboard?.health?.status || 'warning';
+  if (health === 'critical') return { label: t('status.health.critical'), tone: 'red' };
+  if (health === 'healthy') return { label: t('status.health.healthy'), tone: 'green' };
+  return { label: t('status.health.warning'), tone: 'yellow' };
 }
 
 function renderActions(projects) {
@@ -463,13 +721,13 @@ function renderActions(projects) {
   const watcherRunning = dashboard?.watcher?.running;
 
   let html = '<div class="actions">';
-  html += '<button class="btn primary" data-cmd="cursorGuard.snapshotNow">Snapshot</button>';
-  html += '<button class="btn" data-cmd="cursorGuard.quickRestore">Restore</button>';
+  html += '<button class="btn primary" data-cmd="cursorGuard.snapshotNow">' + esc(t('actions.snapshot')) + '</button>';
+  html += '<button class="btn" data-cmd="cursorGuard.quickRestore">' + esc(t('actions.restore')) + '</button>';
   html += watcherRunning
-    ? '<button class="btn" data-cmd="cursorGuard.stopWatcher">Watcher On</button>'
-    : '<button class="btn" data-cmd="cursorGuard.startWatcher">Watcher Off</button>';
-  html += '<button class="btn" data-cmd="cursorGuard.doctor">Doctor</button>';
-  html += '<button class="btn primary full" data-cmd="cursorGuard.openDashboard">Open Dashboard</button>';
+    ? '<button class="btn" data-cmd="cursorGuard.stopWatcher">' + esc(t('actions.watcherOn')) + '</button>'
+    : '<button class="btn" data-cmd="cursorGuard.startWatcher">' + esc(t('actions.watcherOff')) + '</button>';
+  html += '<button class="btn" data-cmd="cursorGuard.doctor">' + esc(t('actions.doctor')) + '</button>';
+  html += '<button class="btn primary full" data-cmd="cursorGuard.openDashboard">' + esc(t('actions.openDashboard')) + '</button>';
   html += '</div>';
   return html;
 }

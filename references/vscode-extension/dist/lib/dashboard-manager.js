@@ -7,11 +7,13 @@ const { spawn } = require('child_process');
 const { guardPath } = require('./paths');
 
 const CONFIG_FILE = '.cursor-guard.json';
+const WATCHER_START_GRACE_MS = 8000;
 
 class DashboardManager {
   constructor() {
     this._instance = null;
     this._serverModule = null;
+    this._startingWatchers = new Map();
   }
 
   get running() { return !!this._instance; }
@@ -95,6 +97,38 @@ class DashboardManager {
     }
   }
 
+  _getWatcherLockPath(projectPath) {
+    try {
+      const { gitAvailable, isGitRepo, gitDir: getGitDir } = require(guardPath('lib', 'utils'));
+      const repo = gitAvailable() && isGitRepo(projectPath);
+      if (repo) {
+        const gDir = getGitDir(projectPath);
+        if (gDir) return path.join(gDir, 'cursor-guard.lock');
+      }
+    } catch { /* ignore */ }
+    return path.join(projectPath, '.cursor-guard-backup', 'cursor-guard.lock');
+  }
+
+  _getPendingWatcherPid(projectPath) {
+    const pending = this._startingWatchers.get(projectPath);
+    if (!pending) return null;
+    try {
+      process.kill(pending.pid, 0);
+      return pending.pid;
+    } catch {
+      this._startingWatchers.delete(projectPath);
+      return null;
+    }
+  }
+
+  _clearPendingWatcher(projectPath, pid) {
+    const pending = this._startingWatchers.get(projectPath);
+    if (!pending) return;
+    if (pid == null || pending.pid === pid) {
+      this._startingWatchers.delete(projectPath);
+    }
+  }
+
   startWatcher(projectPath) {
     if (!projectPath) return null;
     const existingPid = this.getWatcherPid(projectPath);
@@ -106,33 +140,49 @@ class DashboardManager {
       detached: true,
       env: { ...process.env, GUARD_SPAWNED_BY_EXT: '1' },
     });
+    this._startingWatchers.set(projectPath, { pid: child.pid, startedAt: Date.now() });
+    const clearPending = () => this._clearPendingWatcher(projectPath, child.pid);
+    child.once('exit', clearPending);
+    child.once('error', clearPending);
+    setTimeout(clearPending, WATCHER_START_GRACE_MS);
     child.unref();
     return child.pid;
   }
 
   stopWatcher(projectPath) {
     if (!projectPath) return false;
+    const pendingPid = this._getPendingWatcherPid(projectPath);
+    if (pendingPid) {
+      try { process.kill(pendingPid, 'SIGTERM'); } catch { /* ignore */ }
+      this._clearPendingWatcher(projectPath, pendingPid);
+    }
     try {
-      const lockPath = path.join(projectPath, '.cursor-guard-backup.lock');
+      const lockPath = this._getWatcherLockPath(projectPath);
       if (!fs.existsSync(lockPath)) return false;
-      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
-      if (lockData.pid) {
-        process.kill(lockData.pid, 'SIGTERM');
-        try { fs.unlinkSync(lockPath); } catch { /* ok */ }
-        return true;
+      const content = fs.readFileSync(lockPath, 'utf-8');
+      const pidMatch = content.match(/pid=(\d+)/);
+      if (pidMatch) {
+        process.kill(parseInt(pidMatch[1], 10), 'SIGTERM');
       }
+      try { fs.unlinkSync(lockPath); } catch { /* ok */ }
+      return true;
     } catch { /* ok */ }
-    return false;
+    return !!pendingPid;
   }
 
   getWatcherPid(projectPath) {
+    const pendingPid = this._getPendingWatcherPid(projectPath);
+    if (pendingPid) return pendingPid;
     try {
-      const lockPath = path.join(projectPath, '.cursor-guard-backup.lock');
+      const lockPath = this._getWatcherLockPath(projectPath);
       if (!fs.existsSync(lockPath)) return null;
-      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
-      if (lockData.pid) {
-        process.kill(lockData.pid, 0);
-        return lockData.pid;
+      const content = fs.readFileSync(lockPath, 'utf-8');
+      const pidMatch = content.match(/pid=(\d+)/);
+      if (pidMatch) {
+        const pid = parseInt(pidMatch[1], 10);
+        process.kill(pid, 0);
+        this._clearPendingWatcher(projectPath, pid);
+        return pid;
       }
     } catch { /* not running */ }
     return null;

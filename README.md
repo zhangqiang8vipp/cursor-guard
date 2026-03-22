@@ -23,7 +23,7 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **MCP tool calls (optional)** — 9 structured tools (diagnostics, snapshot, restore, status, dashboard, alerts, etc.) with JSON responses and lower token cost
 - **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
-- **Pre-warning destructive edit guard (V4.9.6)** — Detects risky partial deletions before they quietly stick, with `popup` / `dashboard` / `silent` modes in the IDE
+- **Pre-warning destructive edit guard (V4.9.7)** — Detects risky partial deletions before they quietly stick, with softer auto-continue review, sidebar language sync, and `popup` / `dashboard` / `silent` modes
 - **Backup health dashboard (V4)** — One-call comprehensive view: strategy, counts, disk usage, protection scope, health status
 - **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh, multi-project support
 - **IDE extension (V4.7)** — Full dashboard embedded in VSCode/Cursor/Windsurf as a WebView tab + status bar alert indicator + sidebar project tree. No browser needed
@@ -125,7 +125,7 @@ After installation, your directory structure should look like this:
     │       ├── restore.js              # Single file / project restore
     │       ├── status.js               # Backup system status
     │       ├── anomaly.js             # V4: Change-velocity detection
-    │       ├── pre-warning.js         # V4.9.6: destructive edit risk scoring + persistence
+│       ├── pre-warning.js         # V4.9.7: destructive edit risk scoring + persistence
     │       └── dashboard.js           # V4: Health dashboard aggregation
     ├── dashboard/
     │   ├── server.js                   # Dashboard HTTP server + API
@@ -336,7 +336,7 @@ cd dist
 npx vsce package
 
 # Install the generated .vsix file (or download from GitHub Releases)
-code --install-extension cursor-guard-ide-4.9.6.vsix
+code --install-extension cursor-guard-ide-4.9.7.vsix
 ```
 
 On first activation, the extension automatically:
@@ -456,6 +456,14 @@ The skill activates on these signals:
 ---
 
 ## Changelog
+
+### v4.9.7 — Softer Pre-Warning UX, Sidebar Locale Sync, and Watcher Singleton Guard
+
+- **Improve**: `popup` mode now uses a softer auto-continue review flow with a 2-second timeout instead of a hard modal stop
+- **Improve**: Pre-warning review text now follows the sidebar language toggle, keeping zh-CN / en-US messaging consistent inside the IDE
+- **Fix**: Sidebar keeps showing watcher / health status even when delete-risk warnings are present, and popup-mode warnings no longer stick forever
+- **Fix**: IDE watcher start/stop logic now uses the real per-project lock path and pending-process guard, preventing repeated clicks from spawning duplicate watchers
+- **Docs**: README, roadmap, and skill notes updated for the 4.9.7 release flow and IDE behavior
 
 ### v4.9.6 — Pre-Warning for Destructive Partial Deletes
 
