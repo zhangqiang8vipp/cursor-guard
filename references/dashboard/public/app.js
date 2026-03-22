@@ -56,6 +56,13 @@ const I18N = {
     'alert.action.added':    'Added',
     'alert.action.deleted':  'Deleted',
     'alert.action.renamed':  'Renamed',
+    'alert.breakdown':       '{added} added, {modified} modified, {deleted} deleted',
+    'alert.suggestion':      'Check recent changes and consider creating a manual snapshot',
+    'alert.viewFiles':       'View file details ({n} files)',
+    'modal.alertFiles':      'Alert File Details',
+    'modal.col.restore':     'Restore',
+    'modal.copyRestore':     'Copy cmd',
+    'modal.copied':          'Copied!',
 
     'backups.gitCommits':       'Git Commits',
     'backups.shadowSnapshots':  'Shadow Snapshots',
@@ -264,6 +271,13 @@ const I18N = {
     'alert.action.added':    '新增',
     'alert.action.deleted':  '删除',
     'alert.action.renamed':  '重命名',
+    'alert.breakdown':       '新增 {added} · 修改 {modified} · 删除 {deleted}',
+    'alert.suggestion':      '建议检查近期变更，并考虑手动创建快照',
+    'alert.viewFiles':       '查看文件详情（{n} 个文件）',
+    'modal.alertFiles':      '告警文件详情',
+    'modal.col.restore':     '恢复',
+    'modal.copyRestore':     '复制命令',
+    'modal.copied':          '已复制！',
 
     'backups.gitCommits':       'Git 提交数',
     'backups.shadowSnapshots':  '影子快照',
@@ -846,19 +860,32 @@ function renderWatcherCard(watcher) {
   `;
 }
 
+function alertFileBreakdown(files) {
+  if (!Array.isArray(files) || files.length === 0) return '';
+  let added = 0, modified = 0, deleted = 0;
+  for (const f of files) {
+    if (f.action === 'added') added++;
+    else if (f.action === 'deleted') deleted++;
+    else modified++;
+  }
+  return t('alert.breakdown', { added, modified, deleted });
+}
+
 function renderAlertCard(alerts) {
   const el = $('#card-alert');
   if (!alerts?.active) {
     let historyHtml = '';
     if (state.alertHistory.length > 0) {
       const count = state.alertHistory.length;
-      const rows = state.alertHistory.slice(-5).reverse().map(h =>
-        `<div class="alert-history-row text-sm text-muted">
-          <span>${esc(formatTime(h.timestamp))}</span>
+      const rows = state.alertHistory.slice(-5).reverse().map(h => {
+        const breakdown = alertFileBreakdown(h.files);
+        return `<div class="alert-history-row text-sm text-muted">
+          <span class="alert-history-time">${esc(formatTime(h.timestamp))}</span>
           <span>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</span>
+          ${breakdown ? `<span class="alert-history-breakdown">${esc(breakdown)}</span>` : ''}
           <span class="badge badge-expired">${t('alert.expired')}</span>
-        </div>`
-      ).join('');
+        </div>`;
+      }).join('');
       historyHtml = `
         <div class="alert-history-toggle-wrap">
           <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-toggle>${t('alert.historyCount', { n: count })}</button>
@@ -893,25 +920,9 @@ function renderAlertCard(alerts) {
   const files = Array.isArray(a.files) ? a.files : [];
   let filesHtml = '';
   if (files.length > 0) {
-    const actionBadge = (action) => {
-      const cls = action === 'deleted' ? 'alert-action-deleted'
-        : action === 'added' ? 'alert-action-added'
-        : action === 'renamed' ? 'alert-action-renamed'
-        : 'alert-action-modified';
-      return `<span class="alert-action-badge ${cls}">${t('alert.action.' + action)}</span>`;
-    };
-    const rows = files.map(f =>
-      `<tr><td class="text-mono alert-file-path">${esc(f.path)}</td><td>${actionBadge(f.action)}</td><td class="text-mono alert-file-changes">+${f.added || 0} -${f.deleted || 0}</td></tr>`
-    ).join('');
     filesHtml = `
       <div class="alert-files-section">
-        <button class="alert-files-toggle" data-alert-files-toggle>${t('alert.showFiles')}</button>
-        <div class="alert-files-table-wrap alert-files-hidden">
-          <table class="alert-files-table">
-            <thead><tr><th>${t('alert.col.file')}</th><th>${t('alert.col.action')}</th><th>${t('alert.col.changes')}</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
+        <button class="alert-files-toggle" data-alert-files-modal>${t('alert.viewFiles', { n: files.length })}</button>
       </div>
     `;
   }
@@ -923,6 +934,8 @@ function renderAlertCard(alerts) {
       <div class="alert-detail-row"><span class="alert-detail-label">${t('alert.triggered')}</span><span>${esc(triggeredAt)}</span></div>
       <div class="alert-detail-row"><span class="alert-detail-label">${t('alert.expires')}</span><span class="alert-countdown">${esc(remainDisplay)}</span></div>
       <div class="alert-detail-row alert-numbers">${esc(detailText)}</div>
+      ${alertFileBreakdown(files) ? `<div class="alert-detail-row alert-breakdown text-sm">${esc(alertFileBreakdown(files))}</div>` : ''}
+      <div class="alert-detail-row alert-suggestion text-sm text-muted">${t('alert.suggestion')}</div>
     </div>
     ${filesHtml}
   `;
@@ -1046,10 +1059,13 @@ function formatSummaryCell(b) {
     line2 = `<div class="summary-restore-ctx">${label}<span class="text-mono">${esc(b.from)}</span> → <span class="text-mono">${esc(b.restoreTo)}</span></div>`;
   } else if (b.intent) {
     const intentShort = b.intent.length > 70 ? b.intent.substring(0, 67) + '...' : b.intent;
-    line2 = `<div class="summary-intent">${esc(intentShort)}</div>`;
+    line2 = `<div class="summary-intent"><span class="summary-intent-label">${t('drawer.field.intent')}:</span> ${esc(intentShort)}</div>`;
   } else if (b.message && !b.message.startsWith('guard:')) {
     const msgShort = b.message.length > 70 ? b.message.substring(0, 67) + '...' : b.message;
     line2 = `<div class="summary-message">${esc(msgShort)}</div>`;
+  }
+  if (b.trigger && !line2) {
+    line2 = `<div class="summary-trigger text-sm text-muted">${t('trigger.' + b.trigger)}</div>`;
   }
 
   let line3 = '';
@@ -1182,6 +1198,67 @@ function renderSectionError(elementId, msg) {
   el.innerHTML = `<div class="error-panel"><div class="error-icon">⚠</div><p>${esc(msg || t('error.sectionFailed'))}</p></div>`;
 }
 
+/* ── File Detail Modal ────────────────────────────────────── */
+
+function openFileModal(title, files, projectPath, commitHash) {
+  $('#file-modal-title').textContent = title;
+  const body = $('#file-modal-body');
+  let sortKey = 'changes';
+  const render = () => {
+    const sorted = [...files];
+    if (sortKey === 'path') sorted.sort((a, b) => a.path.localeCompare(b.path));
+    else if (sortKey === 'action') sorted.sort((a, b) => a.action.localeCompare(b.action));
+    else sorted.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+
+    const rows = sorted.map(f => {
+      const restoreCmd = commitHash
+        ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${commitHash}" })`
+        : '';
+      return `<tr>
+        <td class="text-mono modal-file-path" title="${esc(f.path)}">${esc(f.path)}</td>
+        <td>${formatFileActionBadge(f.action)}</td>
+        <td class="text-mono modal-file-changes">+${f.added || 0} -${f.deleted || 0}</td>
+        ${commitHash ? `<td><button class="modal-restore-btn" data-restore-cmd="${esc(restoreCmd)}">${t('modal.copyRestore')}</button></td>` : ''}
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `<table>
+      <thead><tr>
+        <th data-msort="path">${t('alert.col.file')} ↕</th>
+        <th data-msort="action">${t('alert.col.action')} ↕</th>
+        <th data-msort="changes">${t('alert.col.changes')} ↕</th>
+        ${commitHash ? `<th>${t('modal.col.restore')}</th>` : ''}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  };
+  render();
+
+  body.addEventListener('click', (e) => {
+    const th = e.target.closest('[data-msort]');
+    if (th) {
+      sortKey = th.dataset.msort;
+      render();
+      return;
+    }
+    const btn = e.target.closest('[data-restore-cmd]');
+    if (btn) {
+      copyText(btn.dataset.restoreCmd);
+      btn.textContent = t('modal.copied');
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = t('modal.copyRestore'); btn.classList.remove('copied'); }, 1500);
+    }
+  });
+
+  $('#file-modal-overlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeFileModal() {
+  $('#file-modal-overlay').classList.remove('active');
+  document.body.style.overflow = state.drawerOpen ? 'hidden' : '';
+}
+
 /* ── Drawers ──────────────────────────────────────────────── */
 
 function openDrawer(name) {
@@ -1199,19 +1276,27 @@ function closeDrawer() {
   state.drawerOpen = null;
 }
 
-function renderDrawerFilesTable(files, sortKey) {
+function renderDrawerFilesTable(files, sortKey, commitHash, projectPath) {
   const sorted = [...files];
   if (sortKey === 'path') sorted.sort((a, b) => a.path.localeCompare(b.path));
   else if (sortKey === 'action') sorted.sort((a, b) => a.action.localeCompare(b.action));
   else sorted.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
-  const rows = sorted.map(f =>
-    `<tr><td class="text-mono drawer-file-path">${esc(f.path)}</td><td>${formatFileActionBadge(f.action)}</td><td class="text-mono drawer-file-changes">+${f.added} -${f.deleted}</td></tr>`
-  ).join('');
+  const hasRestore = !!commitHash;
+  const rows = sorted.map(f => {
+    const cmd = hasRestore ? `restore_file({ path: "${projectPath || ''}", file: "${f.path}", source: "${commitHash}" })` : '';
+    return `<tr>
+      <td class="text-mono drawer-file-path">${esc(f.path)}</td>
+      <td>${formatFileActionBadge(f.action)}</td>
+      <td class="text-mono drawer-file-changes">+${f.added} -${f.deleted}</td>
+      ${hasRestore ? `<td><button class="modal-restore-btn" data-restore-cmd="${esc(cmd)}">${t('modal.copyRestore')}</button></td>` : ''}
+    </tr>`;
+  }).join('');
   return `<table class="drawer-files-table">
     <thead><tr>
       <th data-sort="path" class="drawer-sort-header">${t('alert.col.file')} ↕</th>
       <th data-sort="action" class="drawer-sort-header">${t('alert.col.action')} ↕</th>
       <th data-sort="changes" class="drawer-sort-header">${t('alert.col.changes')} ↕</th>
+      ${hasRestore ? `<th>${t('modal.col.restore')}</th>` : ''}
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -1292,28 +1377,40 @@ function openRestoreDrawer(backup) {
     wrap.classList.toggle('hidden');
   });
 
+  const projPath = backup.path || state.pageData?.status?.config?.path || '';
+
   // Lazy-load full file list for summary section
   if (backup.summary && isGit && hash) {
     let currentFiles = [];
     let currentSort = 'changes';
+    const setupContainer = (container) => {
+      container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort, hash, projPath);
+      container.addEventListener('click', (e) => {
+        const th = e.target.closest('[data-sort]');
+        if (th) {
+          currentSort = th.dataset.sort;
+          container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort, hash, projPath);
+          return;
+        }
+        const restoreBtn = e.target.closest('[data-restore-cmd]');
+        if (restoreBtn) {
+          copyText(restoreBtn.dataset.restoreCmd);
+          restoreBtn.textContent = t('modal.copied');
+          restoreBtn.classList.add('copied');
+          setTimeout(() => { restoreBtn.textContent = t('modal.copyRestore'); restoreBtn.classList.remove('copied'); }, 1500);
+        }
+      });
+    };
     fetchBackupFiles(hash).then(files => {
       currentFiles = files.length > 0 ? files : parseSummaryToFiles(backup.summary);
       const container = body.querySelector('#drawer-files-container');
-      if (container) {
-        container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort);
-        container.addEventListener('click', (e) => {
-          const th = e.target.closest('[data-sort]');
-          if (!th) return;
-          currentSort = th.dataset.sort;
-          container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort);
-        });
-      }
+      if (container) setupContainer(container);
     });
   } else if (backup.summary) {
     const fallback = parseSummaryToFiles(backup.summary);
     const container = body.querySelector('#drawer-files-container');
     if (container && fallback.length > 0) {
-      container.innerHTML = renderDrawerFilesTable(fallback, 'changes');
+      container.innerHTML = renderDrawerFilesTable(fallback, 'changes', hash, projPath);
     } else if (container) {
       const translated = backup.summary.split('; ').map(s => translateSummary(s)).join('\n');
       container.innerHTML = `<pre class="restore-field-value text-mono summary-pre">${esc(translated)}</pre>`;
@@ -1432,7 +1529,7 @@ function setupEvents() {
     if (backup) openRestoreDrawer(backup);
   });
 
-  // Alert history + files toggle (event delegation)
+  // Alert history toggle + file modal (event delegation)
   $('#card-alert').addEventListener('click', (e) => {
     const historyToggle = e.target.closest('[data-alert-history-toggle]');
     if (historyToggle) {
@@ -1441,14 +1538,16 @@ function setupEvents() {
       if (history) history.classList.toggle('alert-history-collapsed');
       return;
     }
-    const toggleBtn = e.target.closest('[data-alert-files-toggle]');
-    if (!toggleBtn) return;
-    const section = toggleBtn.closest('.alert-files-section');
-    if (!section) return;
-    const wrap = section.querySelector('.alert-files-table-wrap');
-    if (!wrap) return;
-    const hidden = wrap.classList.toggle('alert-files-hidden');
-    toggleBtn.textContent = hidden ? t('alert.showFiles') : t('alert.hideFiles');
+    const modalBtn = e.target.closest('[data-alert-files-modal]');
+    if (modalBtn) {
+      const alerts = state.pageData?.alerts;
+      const files = alerts?.latest?.files || [];
+      if (files.length > 0) {
+        const proj = state.pageData?.status?.config?.path || '';
+        openFileModal(t('modal.alertFiles'), files, proj, '');
+      }
+      return;
+    }
   });
 
   // Diagnostics summary click
@@ -1467,8 +1566,17 @@ function setupEvents() {
   document.querySelectorAll('[data-action="close-drawer"]').forEach(btn => {
     btn.addEventListener('click', closeDrawer);
   });
+
+  // Close modal
+  $('#file-modal-overlay').addEventListener('click', (e) => {
+    if (e.target === $('#file-modal-overlay')) closeFileModal();
+  });
+  document.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeFileModal);
+  });
+
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawer();
+    if (e.key === 'Escape') { closeFileModal(); closeDrawer(); }
   });
 }
 

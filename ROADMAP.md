@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.5`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.5` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.5.6`（V4 最终版）  
+> **文档状态**：`V2` ~ `V4.5.6` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -462,6 +462,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.5.2 | **告警结构化文件列表**：见下方详细说明 | ✅ |
 | V4.5.3 | **告警历史 UX 优化 + 备份结构化文件表格**：见下方详细说明 | ✅ |
 | V4.5.4 | **Shadow 硬链接增量优化 + always_watch 强保护模式**：见下方详细说明 | ✅ |
+| V4.5.6 | **Bug 修复 + 告警 UX + init 优化**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -618,6 +619,38 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 资源开销 | 无后台进程 | 后台 watcher 进程（低 CPU，周期性扫描） |
 
 > 这个特性直接填补了 V4 最大的架构缺口——"Watcher 停止 = 裸奔"。详见下方"V4 遗留的架构缺口"中该条目已标记为 **已解决**。
+
+#### V4.5.6 详细内容
+
+**Bug 修复**：
+
+| 问题 | 严重度 | 根因 | 修复 |
+|------|--------|------|------|
+| Shadow hard-link 永远为 0 | 中 | `createShadowCopy` 中 `fs.mkdirSync(snapDir)` 在 `findPreviousSnapshot(backupDir)` 之前执行。新创建的空目录时间戳最新，被当作"上一个快照"返回，导致硬链接永远找不到文件 | 调换两行顺序：先 `findPreviousSnapshot`，再 `mkdirSync` |
+| changedFiles 包含 ignore 路径 | 低 | `createGitSnapshot` 的 `diff-tree` 解析未按 `cfg.ignore` 过滤，`.cursor/` 等被忽略路径的文件混入告警的 files 数组和 changedCount | 在 diff-tree 解析循环中增加 `matchesAny(cfg.ignore, fileName)` 过滤；initial snapshot 的 `ls-tree` 列表同样过滤 |
+
+**告警 UX 优化**：
+
+| 改进 | 说明 |
+|------|------|
+| 告警详情增加文件类型摘要 | 活跃告警和历史告警均显示 "新增 N · 修改 N · 删除 N" 分类统计（`alertFileBreakdown` 辅助函数） |
+| 活跃告警增加建议操作 | 告警卡片底部显示 "建议检查近期变更，并考虑手动创建快照" 提示文字 |
+| i18n 补全 | 新增 `alert.breakdown`、`alert.suggestion` 双语 key |
+
+**Dashboard UX 优化**：
+
+| 改进 | 说明 |
+|------|------|
+| 文件详情弹出框（Modal） | 告警的"展开文件详情"改为全屏居中 Modal 弹窗，替代原本卡片内联展开（太小看不清）。Modal 支持排序、可滚动、720px 宽 |
+| 每个文件可复制恢复命令 | Modal 和 Drawer 的文件表格中，每行增加"复制命令"按钮，一键生成 `restore_file({ path, file, source })` MCP 命令 |
+| 备份表补全操作意图 | 备份表 summary 列：有 intent 时显示 "操作意图: xxx"（蓝色标签），无 intent 时显示 trigger 类型（自动/手动/恢复前）灰色文字 |
+
+**工具链优化**：
+
+| 改进 | 说明 |
+|------|------|
+| `cursor-guard-init` 自动创建配置 | init 流程新增 Step 4/5：若 `.cursor-guard.json` 不存在，自动从 `cursor-guard.example.json` 复制为项目根默认配置。升级场景下保留现有配置 |
+| `backup_interval_seconds` 兼容别名 | `loadConfig` 支持 `backup_interval_seconds` 作为 `auto_backup_interval_seconds` 的别名（带 deprecation 警告） |
 
 #### V4.5.x 新增配置参考
 

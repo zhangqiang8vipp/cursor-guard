@@ -64,7 +64,7 @@ if (fs.existsSync(configPath)) {
 }
 
 // Step 1: Copy skill files (excluding node_modules and .git)
-console.log('  [1/4] Copying skill files...');
+console.log('  [1/5] Copying skill files...');
 if (fs.existsSync(skillTarget)) {
   fs.rmSync(skillTarget, { recursive: true, force: true });
 }
@@ -72,7 +72,7 @@ copyRecursive(skillSource, skillTarget);
 console.log('        Done.');
 
 // Step 2: Install MCP dependencies in skill directory
-console.log('  [2/4] Installing MCP dependencies...');
+console.log('  [2/5] Installing MCP dependencies...');
 try {
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   execFileSync(npmCmd, ['install', '--omit=dev', '--ignore-scripts'], {
@@ -86,7 +86,7 @@ try {
 }
 
 // Step 3: Add .gitignore entries for skill node_modules
-console.log('  [3/4] Updating .gitignore...');
+console.log('  [3/5] Updating .gitignore...');
 const gitignorePath = path.join(projectDir, '.gitignore');
 const entries = ['node_modules/', '.cursor/skills/**/node_modules/'];
 let gitignoreUpdated = false;
@@ -106,8 +106,22 @@ if (!isGlobal) {
   console.log('        Skipped (global install, not inside a project).');
 }
 
-// Step 4: Summary
-console.log('  [4/4] Verifying...');
+// Step 4: Create default config if missing
+console.log('  [4/5] Checking .cursor-guard.json...');
+if (!fs.existsSync(configPath)) {
+  const examplePath = path.join(skillTarget, 'references', 'cursor-guard.example.json');
+  if (fs.existsSync(examplePath)) {
+    fs.copyFileSync(examplePath, configPath);
+    console.log('        Created .cursor-guard.json with default settings.');
+  } else {
+    console.log('        Warning: example config not found, skipping.');
+  }
+} else {
+  console.log('        Already exists — preserved.');
+}
+
+// Step 5: Summary
+console.log('  [5/5] Verifying...');
 const serverExists = fs.existsSync(path.join(skillTarget, 'references', 'mcp', 'server.js'));
 const sdkExists = fs.existsSync(path.join(skillTarget, 'node_modules', '@modelcontextprotocol', 'sdk'));
 const skillMdExists = fs.existsSync(path.join(skillTarget, 'SKILL.md'));
@@ -130,8 +144,7 @@ console.log('  If MCP was already configured, restart Cursor (or Ctrl+Shift+P ->
 console.log('     "Developer: Reload Window") to load the updated MCP server.\n');
 console.log('  Next steps:');
 console.log('  1. The skill activates automatically in Cursor Agent conversations.');
-console.log('  2. (Optional) Copy example config to project root:');
-console.log(`     cp "${path.join(skillTarget, 'references', 'cursor-guard.example.json')}" .cursor-guard.json`);
+console.log('  2. (Optional) Edit .cursor-guard.json to customize protect/ignore patterns.');
 console.log('  3. (Optional) Enable MCP — add to .cursor/mcp.json:');
 console.log(`     { "mcpServers": { "cursor-guard": { "command": "node", "args": ["${path.join(skillTarget, 'references', 'mcp', 'server.js').replace(/\\/g, '/')}"] } } }`);
 console.log('  4. (Optional) Start auto-backup:');

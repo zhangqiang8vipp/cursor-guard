@@ -177,7 +177,12 @@ function loadConfig(projectDir) {
         warnings.push(`Unknown backup_strategy "${raw.backup_strategy}", using default "${cfg.backup_strategy}"`);
       }
     }
-    if (typeof raw.auto_backup_interval_seconds === 'number') cfg.auto_backup_interval_seconds = raw.auto_backup_interval_seconds;
+    if (typeof raw.auto_backup_interval_seconds === 'number') {
+      cfg.auto_backup_interval_seconds = raw.auto_backup_interval_seconds;
+    } else if (typeof raw.backup_interval_seconds === 'number') {
+      cfg.auto_backup_interval_seconds = raw.backup_interval_seconds;
+      warnings.push('backup_interval_seconds is a deprecated alias — please use auto_backup_interval_seconds');
+    }
     if (typeof raw.pre_restore_backup === 'string') {
       if (VALID_PRE_RESTORE.includes(raw.pre_restore_backup)) {
         cfg.pre_restore_backup = raw.pre_restore_backup;

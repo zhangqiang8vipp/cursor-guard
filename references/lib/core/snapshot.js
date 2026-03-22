@@ -146,7 +146,6 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       const diffOut = git(['diff-tree', '--no-commit-id', '--name-status', '-r', parentTree, newTree], { cwd, allowFail: true });
       if (diffOut) {
         const diffLines = diffOut.split('\n').filter(Boolean);
-        changedCount = diffLines.length;
         const groups = { M: [], A: [], D: [], R: [] };
         for (const line of diffLines) {
           const tab = line.indexOf('\t');
@@ -158,8 +157,10 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
             : code === 'A' ? 'A'
             : 'M';
           const fileName = filePart.split('\t').pop();
+          if (matchesAny(cfg.ignore, fileName) || matchesAny(cfg.ignore, path.basename(fileName))) continue;
           groups[key].push(fileName);
         }
+        changedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
 
         const numstatOut = git(['diff-tree', '--no-commit-id', '--numstat', '-r', parentTree, newTree], { cwd, allowFail: true });
         const stats = {};
@@ -199,7 +200,8 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     } else {
       const lsInitial = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
       if (lsInitial) {
-        const files = lsInitial.split('\n').filter(Boolean);
+        const files = lsInitial.split('\n').filter(Boolean)
+          .filter(f => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path.basename(f)));
         changedCount = files.length;
         const sample = files.slice(0, 5).join(', ');
         incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ', ...' : ''}`;
@@ -290,9 +292,9 @@ function createShadowCopy(projectDir, cfg, opts = {}) {
         snapDir = path.join(backupDir, ts);
       }
     }
-    fs.mkdirSync(snapDir, { recursive: true });
-
     const prevSnapDir = findPreviousSnapshot(backupDir);
+
+    fs.mkdirSync(snapDir, { recursive: true });
 
     const allFiles = walkDir(projectDir, projectDir);
     const files = filterFiles(allFiles, cfg);

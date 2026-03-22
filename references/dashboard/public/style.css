@@ -349,6 +349,14 @@ main {
   max-width: 400px;
   line-height: 1.4;
 }
+.summary-intent-label {
+  font-weight: 600;
+  opacity: 0.7;
+}
+.summary-trigger {
+  font-size: 11px;
+  padding: 2px 0;
+}
 .summary-restore-ctx {
   font-size: 12px;
   color: var(--amber);
@@ -997,6 +1005,22 @@ main {
   border-left: 3px solid var(--yellow);
 }
 
+.alert-breakdown {
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 2px 12px;
+}
+.alert-suggestion {
+  padding: 4px 12px;
+  font-style: italic;
+}
+.alert-history-breakdown {
+  display: block;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
 .alert-history-toggle-wrap {
   margin-top: 8px;
 }
@@ -1234,6 +1258,103 @@ main {
 ::selection {
   background: rgba(59,130,246,.3);
   color: var(--text-heading);
+}
+
+/* ── File Detail Modal ────────────────────────────────────── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.modal-overlay.active {
+  display: flex;
+}
+.file-modal {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 90vw;
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+.file-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.file-modal-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.file-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.file-modal-body table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.file-modal-body th,
+.file-modal-body td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.file-modal-body th {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.file-modal-body th:hover {
+  color: var(--accent);
+}
+.modal-file-path {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-file-changes {
+  white-space: nowrap;
+}
+.modal-restore-btn {
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.modal-restore-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.modal-restore-btn.copied {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
 }
 
 /* ── Responsive ───────────────────────────────────────────── */
