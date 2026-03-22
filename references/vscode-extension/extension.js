@@ -36,10 +36,12 @@ async function activate(context) {
       const result = await dashMgr.snapshotNow(projectPath);
       if (result?.status === 'created') {
         vscode.window.showInformationMessage(`Cursor Guard: snapshot created (${result.changedCount || 0} changes)`);
-      } else if (result?.status === 'unchanged') {
+      } else if (result?.status === 'unchanged' || result?.status === 'skipped') {
         vscode.window.showInformationMessage('Cursor Guard: no changes to snapshot');
+      } else if (result?.status === 'error') {
+        vscode.window.showWarningMessage(`Cursor Guard: ${result.error}`);
       } else {
-        vscode.window.showWarningMessage(`Cursor Guard: ${result?.error || 'snapshot failed'}`);
+        vscode.window.showWarningMessage(`Cursor Guard: snapshot returned status "${result?.status || 'unknown'}"`);
       }
       poller.forceRefresh();
     }),

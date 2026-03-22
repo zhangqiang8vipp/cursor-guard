@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
+const { guardPath } = require('./paths');
 
 const CONFIG_FILE = '.cursor-guard.json';
 
@@ -30,7 +31,7 @@ class DashboardManager {
 
   async start(paths) {
     if (!this._serverModule) {
-      this._serverModule = require('../../dashboard/server');
+      this._serverModule = require(guardPath('dashboard', 'server'));
     }
     const { startDashboardServer, getInstance } = this._serverModule;
     const existing = getInstance();
@@ -46,7 +47,7 @@ class DashboardManager {
   async fetchApi(endpoint) {
     if (!this._instance) return null;
     const url = `${this.baseUrl}${endpoint}${endpoint.includes('?') ? '&' : '?'}token=${this.token}`;
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       http.get(url, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
@@ -78,8 +79,8 @@ class DashboardManager {
   async snapshotNow(projectPath) {
     if (!projectPath) return;
     try {
-      const { createGitSnapshot } = require('../../lib/core/snapshot');
-      const { loadConfig } = require('../../lib/utils');
+      const { createGitSnapshot } = require(guardPath('lib', 'core', 'snapshot'));
+      const { loadConfig } = require(guardPath('lib', 'utils'));
       const { cfg } = loadConfig(projectPath);
       return createGitSnapshot(projectPath, cfg, { message: 'guard: manual snapshot via IDE extension' });
     } catch (e) {
@@ -91,7 +92,7 @@ class DashboardManager {
     if (!projectPath) return null;
     const existingPid = this.getWatcherPid(projectPath);
     if (existingPid) return existingPid;
-    const cliScript = path.resolve(__dirname, '..', '..', 'bin', 'cursor-guard-backup.js');
+    const cliScript = guardPath('bin', 'cursor-guard-backup.js');
     const child = spawn(process.execPath, [cliScript, '--path', projectPath], {
       cwd: projectPath,
       stdio: 'ignore',

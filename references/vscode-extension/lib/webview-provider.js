@@ -3,8 +3,9 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { getPublicDir } = require('./paths');
 
-const PUBLIC_DIR = path.resolve(__dirname, '..', '..', 'dashboard', 'public');
+const PUBLIC_DIR = getPublicDir();
 
 class WebViewProvider {
   constructor(context, dashMgr) {

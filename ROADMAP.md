@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.3`  
-> **文档状态**：`V2` ~ `V4.7.3` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.4`  
+> **文档状态**：`V2` ~ `V4.7.4` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,16 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.4：路径解析器 + 4 Bug 修复 ✅
+
+| 修复 | 说明 |
+|------|------|
+| **根本修复：`paths.js` 路径解析器** | 新增智能路径解析模块，支持 3 种安装方式：① Skill 目录结构（`references/vscode-extension/lib/` → `../../`）② VSIX 扁平结构（`lib/` → `../`）③ 全局 skill 目录回退（`~/.cursor/skills/cursor-guard/references/`）。所有模块统一使用 `guardPath()` 替代硬编码 `../../` |
+| **Bug #1: Dashboard 无法启动** | `dashboard-manager.js` 中 `require('../../dashboard/server')` 等 5 处路径在 VSIX 扁平结构中全部失败。改为 `require(guardPath('dashboard', 'server'))` |
+| **Bug #2: Snapshot Now 报错** | `snapshotNow` 中 `require('../../lib/core/snapshot')` 路径错误 + `loadConfig` 解构已在 v4.7.1 修复但 `require` 路径仍错。改为 `guardPath('lib', 'core', 'snapshot')` |
+| **Bug #3: snapshot skipped 未处理** | `createGitSnapshot` 无变更时返回 `{ status: 'skipped' }`，但 `extension.js` 只处理了 `created` 和 `unchanged`，导致显示 "snapshot failed"。新增 `skipped` 分支 |
+| **Bug #4: WebView PUBLIC_DIR 多一层 `..`** | `webview-provider.js` 的 `path.resolve(__dirname, '..', '..', 'dashboard', 'public')` 多了一层。改为 `getPublicDir()` 动态解析 |
 
 ### V4.7.3：可视化图表侧边栏 ✅
 
