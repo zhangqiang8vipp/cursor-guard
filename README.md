@@ -25,6 +25,10 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
 - **Backup health dashboard (V4)** — One-call comprehensive view: strategy, counts, disk usage, protection scope, health status
 - **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh every 15s, multi-project support
+- **IDE extension (V4.7)** — Full dashboard embedded in VSCode/Cursor/Windsurf as a WebView tab + status bar alert indicator + sidebar project tree. No browser needed
+- **One-click hot restart (V4.5.8)** — Dashboard detects new versions and offers in-place server restart without losing state
+- **Shadow incremental hard links (V4.5.4)** — Unchanged files are hard-linked to save disk space and I/O
+- **Strong protection mode (V4.5.4)** — `always_watch: true` auto-starts watcher with MCP server, ensuring zero protection gaps
 
 ---
 
@@ -124,6 +128,11 @@ After installation, your directory structure should look like this:
     │       └── app.js
     ├── mcp/
     │   └── server.js                   # MCP Server (9 tools)
+    ├── vscode-extension/               # IDE Extension (V4.7)
+    │   ├── extension.js                # Extension entry point
+    │   ├── package.json                # Extension manifest
+    │   ├── lib/                        # Modules (dashboard-manager, webview, status-bar, tree-view, poller)
+    │   └── media/                      # Icons (SVG + PNG)
     ├── bin/
     │   ├── cursor-guard-backup.js      # CLI: npx cursor-guard-backup
     │   ├── cursor-guard-doctor.js      # CLI: npx cursor-guard-doctor
@@ -388,6 +397,7 @@ The skill activates on these signals:
 | `references/bin/cursor-guard-doctor.js` | CLI entry: `npx cursor-guard-doctor` |
 | `references/dashboard/server.js` | Dashboard HTTP server + REST API |
 | `references/dashboard/public/` | Dashboard web UI (index.html, style.css, app.js) |
+| `references/vscode-extension/` | IDE Extension: WebView dashboard, status bar, sidebar tree, commands |
 | `references/auto-backup.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
 | `references/guard-doctor.ps1` / `.sh` | Thin wrappers (Windows / macOS+Linux) |
 | `references/recovery.md` | Recovery command templates |
@@ -399,6 +409,33 @@ The skill activates on these signals:
 ---
 
 ## Changelog
+
+### v4.7.0 — IDE Extension
+
+- **Feature**: VSCode/Cursor/Windsurf extension — full dashboard as WebView tab, status bar alert indicator, sidebar TreeView with project status, Command Palette integration
+- **Feature**: Auto-activation on `.cursor-guard.json` detection, dashboard server runs in extension host process (zero subprocess overhead)
+- **Adapt**: `fetchJson()` supports `__GUARD_BASE_URL__` for WebView; `copyText()` bridges to `vscode.env.clipboard` when in IDE
+
+### v4.6.x — Alert UX Overhaul
+
+- **Fix**: Alert countdown now updates every second (was only on 15s page refresh)
+- **Fix**: Alert file details modal now shows per-file "Copy Restore Command" buttons
+- **Fix**: Backup stale threshold changed to `max(interval*10, 300)s` (min 5 min); only checks when watcher is running
+- **Feature**: Alert history always accessible (both active and no-alert states), persisted in `localStorage`
+- **Feature**: Alert history as modal dialog with nested file detail drill-down
+
+### v4.5.x — Protection Hardening
+
+- **Fix**: Shadow hard-link ordering bug (previous snapshot was always empty directory)
+- **Fix**: `changedFiles` now filters ignored paths from git diff output
+- **Feature**: Alert structured file list — per-file path, action, +/- lines, sortable tables
+- **Feature**: Shadow incremental hard links — unchanged files linked to previous snapshot, saving disk space
+- **Feature**: `always_watch: true` config — watcher auto-starts with MCP server, zero protection gaps
+- **Feature**: Dashboard server singleton — multiple projects share one port, hot-add new projects
+- **Feature**: Dashboard version detection + one-click hot restart (`/api/restart` endpoint)
+- **Feature**: File detail modal with per-file restore command copy buttons
+- **Feature**: `cursor-guard-init` auto-creates `.cursor-guard.json`; `backup_interval_seconds` alias supported
+- **License**: Changed from MIT to BSL 1.1 (source available, commercial use requires author authorization)
 
 ### v4.4.0 — V4 Final
 
@@ -491,4 +528,4 @@ The skill activates on these signals:
 
 ## License
 
-MIT
+[BSL 1.1 (Business Source License)](LICENSE) — Source code is freely available for viewing, modification, and non-commercial use. Commercial use requires authorization from the author. Auto-converts to Apache 2.0 on 2056-03-22.

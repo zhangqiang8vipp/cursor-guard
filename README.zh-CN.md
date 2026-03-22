@@ -25,6 +25,10 @@
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
 - **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
 - **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、每 15 秒自动刷新、支持多项目监控
+- **IDE 扩展（V4.7）** — 完整仪表盘嵌入 VSCode/Cursor/Windsurf，WebView 标签页 + 状态栏告警指示器 + 侧边栏项目树。无需打开浏览器
+- **一键热重启（V4.5.8）** — 仪表盘检测到新版本时可原地重启服务，不丢失状态
+- **Shadow 增量硬链接（V4.5.4）** — 未变更文件硬链接到上次快照，节省磁盘空间和 I/O
+- **强保护模式（V4.5.4）** — `always_watch: true` 让 watcher 随 MCP server 自动启动，确保零保护缺口
 
 ---
 
@@ -124,6 +128,11 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       └── app.js
     ├── mcp/
     │   └── server.js                   # MCP Server（9 个工具）
+    ├── vscode-extension/               # IDE 扩展（V4.7）
+    │   ├── extension.js                # 扩展入口
+    │   ├── package.json                # 扩展清单
+    │   ├── lib/                        # 模块（dashboard-manager、webview、status-bar、tree-view、poller）
+    │   └── media/                      # 图标（SVG + PNG）
     ├── bin/
     │   ├── cursor-guard-backup.js      # CLI：npx cursor-guard-backup
     │   ├── cursor-guard-doctor.js      # CLI：npx cursor-guard-doctor
@@ -388,6 +397,7 @@ code --install-extension .
 | `references/bin/cursor-guard-doctor.js` | CLI 入口：`npx cursor-guard-doctor` |
 | `references/dashboard/server.js` | 仪表盘 HTTP 服务 + REST API |
 | `references/dashboard/public/` | 仪表盘 Web UI（index.html、style.css、app.js） |
+| `references/vscode-extension/` | IDE 扩展：WebView 仪表盘、状态栏、侧边栏树、命令面板 |
 | `references/auto-backup.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
 | `references/guard-doctor.ps1` / `.sh` | 薄封装（Windows / macOS+Linux） |
 | `references/recovery.md` | 恢复命令模板 |
@@ -399,6 +409,33 @@ code --install-extension .
 ---
 
 ## 更新日志
+
+### v4.7.0 — IDE 扩展
+
+- **功能**：VSCode/Cursor/Windsurf 扩展 — 完整仪表盘作为 WebView 标签页嵌入，状态栏告警指示器，侧边栏 TreeView 项目状态，命令面板集成
+- **功能**：检测到 `.cursor-guard.json` 自动激活，Dashboard 服务在扩展宿主进程内运行（零额外进程开销）
+- **适配**：`fetchJson()` 支持 `__GUARD_BASE_URL__` 用于 WebView；`copyText()` 在 IDE 中通过 `postMessage` 桥接到 `vscode.env.clipboard`
+
+### v4.6.x — 告警 UX 大优化
+
+- **修复**：告警倒计时现在每秒更新（之前仅在 15 秒页面刷新时更新）
+- **修复**：告警文件详情弹窗支持每文件「复制恢复命令」按钮
+- **修复**：备份过时阈值改为 `max(interval*10, 300)` 秒（至少 5 分钟）；仅在 watcher 运行时检查
+- **功能**：告警历史始终可访问（无论是否有活跃告警），使用 `localStorage` 持久化
+- **功能**：告警历史作为弹窗展示，支持嵌套查看文件详情
+
+### v4.5.x — 保护加固
+
+- **修复**：Shadow 硬链接顺序 bug（上次快照总是空目录）
+- **修复**：`changedFiles` 现在过滤忽略路径
+- **功能**：告警结构化文件列表 — 每文件路径、操作、+/- 行数，支持排序
+- **功能**：Shadow 增量硬链接 — 未变更文件链接到上次快照，节省磁盘空间
+- **功能**：`always_watch: true` 配置 — watcher 随 MCP server 自动启动，零保护缺口
+- **功能**：Dashboard 服务单例 — 多项目共享一个端口，热加载新项目
+- **功能**：Dashboard 版本检测 + 一键热重启（`/api/restart` 端点）
+- **功能**：文件详情弹窗 + 每文件恢复命令复制按钮
+- **功能**：`cursor-guard-init` 自动创建 `.cursor-guard.json`；支持 `backup_interval_seconds` 别名
+- **许可证**：从 MIT 变更为 BSL 1.1（源码可见，商业使用需作者授权）
 
 ### v4.4.0 — V4 收官版
 
@@ -491,4 +528,4 @@ code --install-extension .
 
 ## 许可证
 
-MIT
+[BSL 1.1（商业源代码许可证）](LICENSE) — 源代码自由查看、修改和非商业使用。商业使用需获得作者授权。2056-03-22 之后自动转为 Apache 2.0。
