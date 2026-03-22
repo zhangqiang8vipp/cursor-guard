@@ -166,6 +166,14 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
         if (groups.R.length) parts.push(`Renamed ${groups.R.length}: ${groups.R.slice(0, 5).join(', ')}`);
         if (parts.length) incrementalSummary = parts.join('; ');
       }
+    } else {
+      const lsInitial = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
+      if (lsInitial) {
+        const files = lsInitial.split('\n').filter(Boolean);
+        changedCount = files.length;
+        const sample = files.slice(0, 5).join(', ');
+        incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ', ...' : ''}`;
+      }
     }
 
     // Override context summary with the accurate incremental one

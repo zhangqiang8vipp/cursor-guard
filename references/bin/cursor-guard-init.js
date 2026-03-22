@@ -56,6 +56,13 @@ console.log(`  Source:  ${skillSource}`);
 console.log(`  Target:  ${skillTarget}`);
 console.log(`  Mode:    ${isGlobal ? 'global (~/.cursor/skills/)' : 'project-local (.cursor/skills/)'}\n`);
 
+// Pre-check: warn if .cursor-guard.json already exists (upgrade scenario)
+const configPath = path.join(projectDir, '.cursor-guard.json');
+if (fs.existsSync(configPath)) {
+  console.log('  NOTE: .cursor-guard.json already exists — your config will be preserved.');
+  console.log('        Only skill files will be updated (upgrade mode).\n');
+}
+
 // Step 1: Copy skill files (excluding node_modules and .git)
 console.log('  [1/4] Copying skill files...');
 if (fs.existsSync(skillTarget)) {

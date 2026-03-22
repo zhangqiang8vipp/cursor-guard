@@ -377,6 +377,13 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ## 更新日志
 
+### v4.4.0 — V4 收官版
+
+- **修复**：首次快照现在会生成 "Added N: file1, file2, ..." 摘要，而不是空白——之前第一次备份因为没有 parent tree 对比所以 summary 始终为空
+- **功能**：Doctor 新增 "Git retention" 检查——当 Git 备份 commit 数超过 500 且 `git_retention.enabled` 为 `false` 时发出 WARN，引导用户开启自动清理防止 ref 无限增长
+- **功能**：Doctor 新增 "Backup integrity" 检查——通过 `git cat-file -t` 验证最近一次 auto-backup commit 的 tree 对象是否可达，尽早发现静默损坏
+- **改进**：`cursor-guard-init` 现在检测已有 `.cursor-guard.json`，显示升级提示而非静默覆盖
+
 ### v4.3.5
 
 - **修复**：备份摘要（Summary）现使用增量 `diff-tree` 替代 `git status --porcelain`——之前 summary 始终显示自 HEAD 以来的累计差异，现在正确显示自上次 auto-backup 以来的增量变化

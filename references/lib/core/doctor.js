@@ -92,6 +92,33 @@ function runDiagnostics(projectDir) {
     }
   }
 
+  // 5b. Git retention warning
+  if (repo) {
+    const guardRef = 'refs/guard/auto-backup';
+    const countStr = git(['rev-list', '--count', guardRef], { cwd: projectDir, allowFail: true });
+    const commitCount = countStr ? parseInt(countStr, 10) : 0;
+    if (commitCount > 500 && !cfg.git_retention.enabled) {
+      check('Git retention', 'WARN',
+        `${commitCount} backup commits and git_retention is disabled — set git_retention.enabled=true in .cursor-guard.json to auto-prune old snapshots`);
+    } else if (commitCount > 0 && cfg.git_retention.enabled) {
+      check('Git retention', 'PASS', `${commitCount} commits, auto-prune enabled (${cfg.git_retention.mode}: ${cfg.git_retention.mode === 'days' ? cfg.git_retention.days + 'd' : cfg.git_retention.max_count})`);
+    }
+  }
+
+  // 5c. Backup integrity — verify latest auto-backup tree is reachable
+  if (repo) {
+    const guardRef = 'refs/guard/auto-backup';
+    const latestHash = git(['rev-parse', '--verify', guardRef], { cwd: projectDir, allowFail: true });
+    if (latestHash) {
+      const treeType = git(['cat-file', '-t', `${latestHash}^{tree}`], { cwd: projectDir, allowFail: true });
+      if (treeType === 'tree') {
+        check('Backup integrity', 'PASS', `latest auto-backup commit ${latestHash.substring(0, 7)} tree is valid`);
+      } else {
+        check('Backup integrity', 'FAIL', `latest auto-backup commit ${latestHash.substring(0, 7)} tree is corrupted or unreachable`);
+      }
+    }
+  }
+
   // 6. Guard refs
   if (repo) {
     const refs = git(['for-each-ref', 'refs/guard/', '--format=%(refname)'], { cwd: projectDir, allowFail: true });

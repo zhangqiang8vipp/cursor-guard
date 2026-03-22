@@ -377,6 +377,13 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.4.0 — V4 Final
+
+- **Fix**: First snapshot now generates "Added N: file1, file2, ..." summary instead of blank — previously the very first backup had no summary because there was no parent tree to diff against
+- **Feature**: Doctor check "Git retention" — warns when git backup commits exceed 500 and `git_retention.enabled` is `false`, guiding users to enable auto-pruning before refs grow unbounded
+- **Feature**: Doctor check "Backup integrity" — verifies that the latest auto-backup commit's tree object is reachable via `git cat-file -t`, catching silent corruption early
+- **Improve**: `cursor-guard-init` now detects existing `.cursor-guard.json` and displays an upgrade notice instead of silently overwriting
+
 ### v4.3.5
 
 - **Fix**: Backup summary now uses incremental `diff-tree` instead of `git status --porcelain` — previously summary always showed cumulative changes since HEAD, now correctly shows changes since the last auto-backup
