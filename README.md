@@ -377,6 +377,12 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.3.5
+
+- **Fix**: Backup summary now uses incremental `diff-tree` instead of `git status --porcelain` — previously summary always showed cumulative changes since HEAD, now correctly shows changes since the last auto-backup
+- **Improve**: Dashboard backup table "Changes" column uses stacked layout (file count + trigger / intent / detail on separate rows) for better readability
+- **Improve**: Refined color palette — deeper background contrast, softer status colors (green `#4ade80`, amber `#f59e0b`, red `#ef4444`), deeper brand blue `#3b82f6`, wider text hierarchy gap
+
 ### v4.3.4
 
 - **Improve**: Log rotation — `backup.log` now rotates at 1MB, keeping up to 3 old files (`backup.log.1`, `.2`, `.3`). Rotation runs on watcher startup and every 100 writes

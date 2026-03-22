@@ -377,6 +377,12 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ## 更新日志
 
+### v4.3.5
+
+- **修复**：备份摘要（Summary）现使用增量 `diff-tree` 替代 `git status --porcelain`——之前 summary 始终显示自 HEAD 以来的累计差异，现在正确显示自上次 auto-backup 以来的增量变化
+- **改进**：仪表盘备份表格"变更"列改为分层堆叠布局（文件数 + 触发方式 / 意图 / 明细分行显示），可读性更好
+- **改进**：配色优化——背景层级差距加大，状态色柔和（绿 `#4ade80`、琥珀 `#f59e0b`、红 `#ef4444`），品牌蓝加深 `#3b82f6`，文字层级对比更清晰
+
 ### v4.3.4
 
 - **改进**：日志轮转——`backup.log` 超过 1MB 自动轮转，保留最近 3 个旧文件。watcher 启动时和每 100 次写入时检查
