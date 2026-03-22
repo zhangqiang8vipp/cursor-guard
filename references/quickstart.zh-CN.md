@@ -206,6 +206,10 @@ npx cursor-guard-backup --path .
   "auto_backup_interval_seconds": 60,
   "pre_restore_backup": "always",
   "secrets_patterns_extra": ["*.secret", "tokens.*"],
+  "enable_pre_warning": true,
+  "pre_warning_threshold": 30,
+  "pre_warning_mode": "popup",
+  "pre_warning_exclude_patterns": ["generated/**"],
   "retention": {
     "mode": "days",
     "days": 30,
@@ -233,6 +237,7 @@ npx cursor-guard-backup --path .
 - 同时启用 Git 备份和影子拷贝
 - 每 60 秒检查一次变化
 - 恢复前默认先保留当前版本
+- 开启局部删除的事先预警，删方法/大段删行时会先提醒
 - 额外排除自定义敏感文件
 - 自动清理过旧备份
 - 开启主动变更频率检测（10 秒内 20+ 文件变更时告警）
@@ -284,6 +289,26 @@ npx cursor-guard-backup --path .
 - `files_per_window`：窗口内触发告警的文件数（默认 20）
 - `window_seconds`：滑动窗口秒数（默认 10）
 - `cooldown_seconds`：连续告警最小间隔（默认 60）
+
+### `enable_pre_warning`
+
+是否开启“事先预警”功能（默认 `false`）。开启后，IDE 扩展会对局部删代码、删方法这类高风险编辑先做提醒。
+
+### `pre_warning_threshold`
+
+删除风险阈值（默认 `30`）。删行比例达到这个值时触发预警。
+
+### `pre_warning_mode`
+
+预警展示模式：
+
+- `popup`：弹窗提醒，可快速撤销或看 diff
+- `dashboard`：只在仪表盘/状态栏/侧边栏高亮
+- `silent`：只记录，不主动打断
+
+### `pre_warning_exclude_patterns`
+
+哪些文件跳过事先预警评估。常用于生成文件、迁移脚本、第三方目录等。
 
 ---
 

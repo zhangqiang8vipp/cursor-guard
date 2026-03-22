@@ -23,6 +23,7 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **MCP tool calls (optional)** — 9 structured tools (diagnostics, snapshot, restore, status, dashboard, alerts, etc.) with JSON responses and lower token cost
 - **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
+- **Pre-warning destructive edit guard (V4.9.6)** — Detects risky partial deletions before they quietly stick, with `popup` / `dashboard` / `silent` modes in the IDE
 - **Backup health dashboard (V4)** — One-call comprehensive view: strategy, counts, disk usage, protection scope, health status
 - **Web dashboard (V4.2)** — Local read-only web UI at `http://127.0.0.1:3120` — see health, backups, restore points, diagnostics, protection scope at a glance. Dual-language (zh-CN / en-US), auto-refresh, multi-project support
 - **IDE extension (V4.7)** — Full dashboard embedded in VSCode/Cursor/Windsurf as a WebView tab + status bar alert indicator + sidebar project tree. No browser needed
@@ -124,6 +125,7 @@ After installation, your directory structure should look like this:
     │       ├── restore.js              # Single file / project restore
     │       ├── status.js               # Backup system status
     │       ├── anomaly.js             # V4: Change-velocity detection
+    │       ├── pre-warning.js         # V4.9.6: destructive edit risk scoring + persistence
     │       └── dashboard.js           # V4: Health dashboard aggregation
     ├── dashboard/
     │   ├── server.js                   # Dashboard HTTP server + API
@@ -205,6 +207,12 @@ Edit `.cursor-guard.json` to define which files to protect:
   "auto_backup_interval_seconds": 60,
   "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"],
   "pre_restore_backup": "always",
+  "proactive_alert": true,
+  "alert_thresholds": { "files_per_window": 20, "window_seconds": 10, "cooldown_seconds": 60 },
+  "enable_pre_warning": true,
+  "pre_warning_threshold": 30,
+  "pre_warning_mode": "popup",
+  "pre_warning_exclude_patterns": ["generated/**"],
   "retention": { "mode": "days", "days": 30 }
 }
 ```
@@ -220,6 +228,19 @@ Edit `.cursor-guard.json` to define which files to protect:
 Regardless of config, you can always override per-request:
 - Say "don't preserve current version" to skip even when config is `"always"`
 - Say "preserve current first" to force even when config is `"never"`
+
+#### `enable_pre_warning` — destructive partial-delete pre-warning
+
+When enabled, the IDE extension evaluates edits that remove lines or whole methods/functions before they slip by unnoticed.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `enable_pre_warning` | `false` | Turn pre-warning on without affecting existing projects |
+| `pre_warning_threshold` | `30` | Warn when deletion risk reaches this percent |
+| `pre_warning_mode` | `"popup"` | `popup` = interrupt with actions, `dashboard` = highlight only, `silent` = log/status only |
+| `pre_warning_exclude_patterns` | `[]` | Skip generated files, migrations, vendored code, etc. |
+
+Method/function removal is treated as high risk and can still trigger a warning even when the deleted-line percentage is below the threshold.
 
 ---
 
@@ -315,7 +336,7 @@ cd dist
 npx vsce package
 
 # Install the generated .vsix file (or download from GitHub Releases)
-code --install-extension cursor-guard-ide-4.9.1.vsix
+code --install-extension cursor-guard-ide-4.9.6.vsix
 ```
 
 On first activation, the extension automatically:
@@ -336,6 +357,7 @@ Features:
 - **Status Bar Indicator** — shows `Guard: OK` (green) or `Guard: 22 files!` (yellow) in real-time
 - **Sidebar TreeView** — activity bar icon with project list, watcher status, backup stats, alerts, health
 - **Visual Sidebar** — graphical dashboard with live-ticking backup age, alert countdown, protection scope, quick stats
+- **Pre-warning delete guard** — flags risky partial deletions, removed methods, and suspicious line drops before they quietly stick
 - **Command Palette** — `Open Dashboard`, `Snapshot Now`, `Start/Stop Watcher`, `Quick Restore`, `Doctor`, `Refresh`
 - **Right-click menus** — add files/folders to `protect` or `ignore` via Explorer/Editor context menu
 - **Event-driven refresh** — `FileSystemWatcher` pushes UI updates on file changes (< 1.5s latency), 30s heartbeat fallback
@@ -413,7 +435,7 @@ The skill activates on these signals:
 |------|---------|
 | `SKILL.md` | Main skill instructions for the AI agent (with MCP dual-path) |
 | `ROADMAP.md` | Version evolution roadmap (V2-V7) |
-| `references/lib/core/` | Core layer: 8 pure-logic modules (doctor / doctor-fix / snapshot / backups / restore / status / anomaly / dashboard) |
+| `references/lib/core/` | Core layer: 9 pure-logic modules (doctor / doctor-fix / snapshot / backups / restore / status / anomaly / pre-warning / dashboard) |
 | `references/mcp/server.js` | MCP Server: 9 structured tools (optional) |
 | `references/lib/auto-backup.js` | Auto-backup watcher (calls Core) |
 | `references/lib/guard-doctor.js` | Health check CLI shell (calls Core) |
@@ -434,6 +456,14 @@ The skill activates on these signals:
 ---
 
 ## Changelog
+
+### v4.9.6 — Pre-Warning for Destructive Partial Deletes
+
+- **Feature**: Added configurable `pre_warning` support in `.cursor-guard.json` — `enable_pre_warning`, `pre_warning_threshold`, `pre_warning_mode`, `pre_warning_exclude_patterns`
+- **Feature**: IDE extension now detects risky line/method removals and can react in `popup`, `dashboard`, or `silent` mode
+- **Feature**: `backup_status`, `dashboard`, sidebar, status bar, and browser dashboard surface active delete-risk warnings
+- **Improve**: New `pre-warning.js` core module centralizes deletion-risk scoring, active-warning persistence, and warning history
+- **Docs**: README, skill guide, roadmap, and config references now document the pre-warning flow end-to-end
 
 ### v4.9.0–v4.9.1 — Event-Driven Architecture
 
@@ -577,6 +607,7 @@ The skill activates on these signals:
 - **Concurrent agents**: If multiple AI agent threads write to the same file simultaneously, snapshots cannot prevent race conditions. Avoid parallel edits to the same file.
 - **External tools modifying the index**: Tools that alter Git's index (e.g. other Git GUIs, IDE Git integrations) while auto-backup is running may conflict. The script uses a temporary index to minimize this, but edge cases exist.
 - **Git worktree**: The auto-backup script supports worktree layouts (`git rev-parse --git-dir`), but has not been tested with all exotic setups (e.g. `--separate-git-dir`).
+- **Pre-warning scope**: `pre_warning` is currently an editor/extension-side "last brake", not a universal cross-process write blocker. Headless shell / MCP flows surface it through status and dashboard after detection rather than hard-blocking writes.
 - **Cursor terminal interference**: Cursor's integrated terminal injects `--trailer` flags into `git commit` commands, which breaks plumbing commands like `commit-tree`. Always run auto-backup in a **separate terminal window**.
 - **Large repos**: For very large repositories, `git add -A` in the backup loop may be slow. Use `protect` patterns in `.cursor-guard.json` to narrow scope.
 

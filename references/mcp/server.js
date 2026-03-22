@@ -14,6 +14,7 @@ const { runFixes } = require('../lib/core/doctor-fix');
 const { getBackupStatus } = require('../lib/core/status');
 const { getDashboard } = require('../lib/core/dashboard');
 const { loadActiveAlert } = require('../lib/core/anomaly');
+const { loadActivePreWarnings } = require('../lib/core/pre-warning');
 
 const { loadConfig, gitDir: getGitDir } = require('../lib/utils');
 
@@ -54,6 +55,17 @@ function injectAlert(projectPath, result) {
       message: alert.recommendation || `${alert.fileCount} files changed in ${alert.windowSeconds}s`,
       timestamp: alert.timestamp,
       expiresAt: alert.expiresAt,
+    };
+  }
+  return result;
+}
+
+function injectPreWarning(projectPath, result) {
+  const warnings = loadActivePreWarnings(projectPath);
+  if (warnings.length > 0) {
+    result._activePreWarning = {
+      count: warnings.length,
+      latest: warnings[0],
     };
   }
   return result;
@@ -104,7 +116,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, runDiagnostics(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, runDiagnostics(resolved)));
     injectWatcherWarning(resolved, result);
     return {
       content: [{
@@ -129,7 +141,7 @@ server.tool(
   async ({ path: projectPath, file, before, limit }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, listBackups(resolved, { file, before, limit }));
+    const result = injectPreWarning(resolved, injectAlert(resolved, listBackups(resolved, { file, before, limit })));
     return {
       content: [{
         type: 'text',
@@ -184,7 +196,7 @@ server.tool(
       results.shadow = createShadowCopy(resolved, cfg);
     }
 
-    injectAlert(resolved, results);
+    injectPreWarning(resolved, injectAlert(resolved, results));
     injectWatcherWarning(resolved, results);
 
     return {
@@ -210,9 +222,9 @@ server.tool(
   async ({ path: projectPath, file, source, preserve_current }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, restoreFile(resolved, file, source, {
+    const result = injectPreWarning(resolved, injectAlert(resolved, restoreFile(resolved, file, source, {
       preserveCurrent: preserve_current,
-    }));
+    })));
     injectWatcherWarning(resolved, result);
     return {
       content: [{
@@ -240,14 +252,14 @@ server.tool(
     ensureWatcher(resolved);
 
     if (preview !== false) {
-      const result = injectAlert(resolved, previewProjectRestore(resolved, source));
+      const result = injectPreWarning(resolved, injectAlert(resolved, previewProjectRestore(resolved, source)));
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
 
-    const result = injectAlert(resolved, executeProjectRestore(resolved, source, {
+    const result = injectPreWarning(resolved, injectAlert(resolved, executeProjectRestore(resolved, source, {
       preserveCurrent: preserve_current,
       cleanUntracked: clean_untracked,
-    }));
+    })));
     injectWatcherWarning(resolved, result);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
@@ -265,7 +277,7 @@ server.tool(
   async ({ path: projectPath, dry_run }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run }));
+    const result = injectPreWarning(resolved, injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run })));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -281,7 +293,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, getBackupStatus(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, getBackupStatus(resolved)));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -297,7 +309,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, getDashboard(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, getDashboard(resolved)));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
 );

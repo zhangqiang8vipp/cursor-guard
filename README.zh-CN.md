@@ -23,6 +23,7 @@
 - **MCP 工具调用（可选）** — 9 个标准化工具（诊断、快照、恢复、状态、看板、告警等），结构化 JSON 返回，低 token 消耗
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
+- **事先预警删除风险（V4.9.6）** — 在危险的局部删除真正“悄悄生效”前先提醒你，支持 `popup` / `dashboard` / `silent` 三种模式
 - **备份健康看板（V4）** — 一次调用全面查看：策略、数量、磁盘占用、保护范围、健康状态
 - **Web 仪表盘（V4.2）** — 本地只读 Web 页面 `http://127.0.0.1:3120`——健康状态、备份、恢复点、诊断、保护范围一目了然。中英双语、自动刷新、支持多项目监控
 - **IDE 扩展（V4.7）** — 完整仪表盘嵌入 VSCode/Cursor/Windsurf，WebView 标签页 + 状态栏告警指示器 + 侧边栏项目树。无需打开浏览器
@@ -124,6 +125,7 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       ├── restore.js              # 单文件/全项目恢复
     │       ├── status.js               # 备份系统状态
     │       ├── anomaly.js             # V4：变更频率检测
+    │       ├── pre-warning.js         # V4.9.6：删除风险评分 + 持久化
     │       └── dashboard.js           # V4：健康看板聚合
     ├── dashboard/
     │   ├── server.js                   # 仪表盘 HTTP 服务 + API
@@ -205,6 +207,12 @@ npx cursor-guard-backup --path /my/project
   "auto_backup_interval_seconds": 60,
   "secrets_patterns": [".env", ".env.*", "*.key", "*.pem"],
   "pre_restore_backup": "always",
+  "proactive_alert": true,
+  "alert_thresholds": { "files_per_window": 20, "window_seconds": 10, "cooldown_seconds": 60 },
+  "enable_pre_warning": true,
+  "pre_warning_threshold": 30,
+  "pre_warning_mode": "popup",
+  "pre_warning_exclude_patterns": ["generated/**"],
   "retention": { "mode": "days", "days": 30 }
 }
 ```
@@ -220,6 +228,19 @@ npx cursor-guard-backup --path /my/project
 无论配置如何，你始终可以在单次请求中覆盖：
 - 说"不保留当前版本"可跳过保留（即使配置为 `"always"`）
 - 说"先保留当前版本"可强制保留（即使配置为 `"never"`）
+
+#### `enable_pre_warning` — 局部破坏性删除的事先预警
+
+开启后，IDE 扩展会在“删行很多”或“直接删掉方法/函数”这类高风险编辑发生时，先给出最后一道提醒。
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `enable_pre_warning` | `false` | 默认关闭，兼容旧项目 |
+| `pre_warning_threshold` | `30` | 删除风险达到这个百分比时触发预警 |
+| `pre_warning_mode` | `"popup"` | `popup` 弹窗拦一下，`dashboard` 仅高亮看板，`silent` 只记日志/状态 |
+| `pre_warning_exclude_patterns` | `[]` | 跳过生成文件、迁移脚本、第三方代码等 |
+
+如果检测到方法/函数被移除，即使删行比例没到阈值，也会按高风险处理并触发提醒。
 
 ---
 
@@ -315,7 +336,7 @@ cd dist
 npx vsce package
 
 # 安装生成的 .vsix 文件（或从 GitHub Releases 下载）
-code --install-extension cursor-guard-ide-4.9.1.vsix
+code --install-extension cursor-guard-ide-4.9.6.vsix
 ```
 
 首次激活时，扩展自动：
@@ -336,6 +357,7 @@ code --install-extension .
 - **状态栏指示器** — 实时显示 `Guard: OK`（绿色）或 `Guard: 22 files!`（黄色告警）
 - **侧边栏 TreeView** — Activity Bar 图标，树形展示项目列表、Watcher 状态、备份统计、告警、健康评估
 - **可视化图表侧边栏** — 备份时间实时跳动、告警倒计时、保护范围、Quick Stats
+- **事先预警删除保护** — 在局部删代码、删方法、可疑大段删行时提前亮警报
 - **命令面板** — `Open Dashboard`、`Snapshot Now`、`Start/Stop Watcher`、`Quick Restore`、`Doctor`、`Refresh`
 - **右键菜单** — 在资源管理器/编辑器右键菜单中将文件或文件夹添加到 `protect` 或 `ignore`
 - **事件驱动刷新** — `FileSystemWatcher` 监听文件变化推送 UI 更新（< 1.5s 延迟），30s 心跳兜底
@@ -413,7 +435,7 @@ code --install-extension .
 |------|------|
 | `SKILL.md` | AI 代理的主要技能指令（含 MCP 双路径逻辑） |
 | `ROADMAP.md` | 版本演进规划书（V2-V7） |
-| `references/lib/core/` | Core 层：8 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status / anomaly / dashboard） |
+| `references/lib/core/` | Core 层：9 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status / anomaly / pre-warning / dashboard） |
 | `references/mcp/server.js` | MCP Server：9 个标准化工具（可选） |
 | `references/lib/auto-backup.js` | 自动备份 watcher（调用 Core） |
 | `references/lib/guard-doctor.js` | 健康检查 CLI 壳（调用 Core） |
@@ -434,6 +456,14 @@ code --install-extension .
 ---
 
 ## 更新日志
+
+### v4.9.6 — 事先预警局部破坏性删除
+
+- **新功能**：`.cursor-guard.json` 新增 `enable_pre_warning`、`pre_warning_threshold`、`pre_warning_mode`、`pre_warning_exclude_patterns`
+- **新功能**：IDE 扩展现在会检测高风险删行 / 删方法，并支持 `popup`、`dashboard`、`silent` 三种预警模式
+- **新功能**：`backup_status`、`dashboard`、侧边栏、状态栏、浏览器仪表盘都会展示活跃的删除风险预警
+- **增强**：新增 `pre-warning.js` Core 模块，统一负责删除风险评分、活跃预警持久化和历史记录
+- **文档**：README、SKILL、ROADMAP 与配置说明已补齐预警功能说明
 
 ### v4.9.0–v4.9.1 — 事件驱动架构
 
@@ -576,6 +606,7 @@ code --install-extension .
 - **并发 Agent**：如果多个 AI 代理线程同时写入同一文件，快照无法防止竞态条件。请避免并行编辑同一文件。
 - **外部工具修改索引**：在自动备份运行期间，其他修改 Git 索引的工具（如 Git GUI、IDE Git 集成）可能冲突。脚本使用临时索引来最小化风险，但边缘情况仍存在。
 - **Git worktree**：自动备份脚本支持 worktree 布局（`git rev-parse --git-dir`），但未在所有特殊配置下测试（如 `--separate-git-dir`）。
+- **预警边界**：`pre_warning` 目前属于编辑器/扩展侧的“最后一道刹车”，还不是跨进程、全场景的硬拦截。纯 shell / 纯 MCP 无界面场景下，主要通过状态和看板暴露风险。
 - **Cursor 终端干扰**：Cursor 集成终端会向 `git commit` 命令注入 `--trailer` 标志，导致 `commit-tree` 等底层命令异常。请始终在**独立的终端窗口**中运行自动备份脚本。
 - **大型仓库**：对于非常大的仓库，备份循环中的 `git add -A` 可能较慢。使用 `.cursor-guard.json` 中的 `protect` 模式缩小范围。
 

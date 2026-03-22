@@ -42,6 +42,29 @@
       "default": "always",
       "description": "'always' (default): automatically preserve current version before every restore. 'ask': prompt the user each time to choose whether to preserve. 'never': skip preservation entirely (not recommended)."
     },
+    "enable_pre_warning": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable pre-warning before risky partial deletions in the IDE extension. Default false for backwards compatibility."
+    },
+    "pre_warning_threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 30,
+      "description": "Deletion risk percentage threshold that triggers a pre-warning. Method/function removal may trigger even when below this threshold."
+    },
+    "pre_warning_mode": {
+      "type": "string",
+      "enum": ["popup", "dashboard", "silent"],
+      "default": "popup",
+      "description": "'popup': show an immediate IDE warning with actions. 'dashboard': mark the project in dashboard/status UI only. 'silent': record the warning in history without surfacing UI alerts."
+    },
+    "pre_warning_exclude_patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Glob patterns excluded from pre-warning checks. Useful for generated files or intentionally volatile code."
+    },
     "retention": {
       "type": "object",
       "description": "Controls automatic cleanup of old shadow-copy snapshots.",

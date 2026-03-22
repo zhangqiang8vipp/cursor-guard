@@ -145,6 +145,10 @@ const DEFAULT_CONFIG = {
   proactive_alert: true,
   alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
   always_watch: false,
+  enable_pre_warning: false,
+  pre_warning_threshold: 30,
+  pre_warning_mode: 'popup',
+  pre_warning_exclude_patterns: [],
 };
 
 function loadConfig(projectDir) {
@@ -238,6 +242,28 @@ function loadConfig(projectDir) {
       cfg.always_watch = true;
     } else if (raw.always_watch !== undefined && raw.always_watch !== false) {
       warnings.push(`always_watch should be a boolean, got ${JSON.stringify(raw.always_watch)} — using default (false)`);
+    }
+    if (raw.enable_pre_warning === true) {
+      cfg.enable_pre_warning = true;
+    } else if (raw.enable_pre_warning !== undefined && raw.enable_pre_warning !== false) {
+      warnings.push(`enable_pre_warning should be a boolean, got ${JSON.stringify(raw.enable_pre_warning)} — using default (false)`);
+    }
+    if (typeof raw.pre_warning_threshold === 'number') {
+      if (raw.pre_warning_threshold >= 1 && raw.pre_warning_threshold <= 100) {
+        cfg.pre_warning_threshold = raw.pre_warning_threshold;
+      } else {
+        warnings.push(`pre_warning_threshold should be 1-100, got ${JSON.stringify(raw.pre_warning_threshold)} — using default (${cfg.pre_warning_threshold})`);
+      }
+    }
+    if (typeof raw.pre_warning_mode === 'string') {
+      if (['popup', 'dashboard', 'silent'].includes(raw.pre_warning_mode)) {
+        cfg.pre_warning_mode = raw.pre_warning_mode;
+      } else {
+        warnings.push(`Unknown pre_warning_mode "${raw.pre_warning_mode}", using default "${cfg.pre_warning_mode}"`);
+      }
+    }
+    if (Array.isArray(raw.pre_warning_exclude_patterns)) {
+      cfg.pre_warning_exclude_patterns = sanitizeStringArray(raw.pre_warning_exclude_patterns, 'pre_warning_exclude_patterns');
     }
     return { cfg, loaded: true, error: null, warnings };
   } catch (e) {

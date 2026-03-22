@@ -178,6 +178,12 @@ function runDiagnostics(projectDir) {
     if (cfg.auto_backup_interval_seconds && cfg.auto_backup_interval_seconds < 5) {
       check('Config: interval', 'WARN', `${cfg.auto_backup_interval_seconds}s is below minimum (5s), will be clamped`);
     }
+    if (cfg.pre_warning_threshold < 1 || cfg.pre_warning_threshold > 100) {
+      check('Config: pre_warning_threshold', 'FAIL', `invalid value '${cfg.pre_warning_threshold}'`);
+    }
+    if (!['popup', 'dashboard', 'silent'].includes(cfg.pre_warning_mode)) {
+      check('Config: pre_warning_mode', 'FAIL', `invalid value '${cfg.pre_warning_mode}'`);
+    }
     if (cfg.retention && cfg.retention.mode) {
       const validModes = ['days', 'count', 'size'];
       if (!validModes.includes(cfg.retention.mode)) {

@@ -70,7 +70,14 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
     "files_per_window": 20,  // trigger threshold
     "window_seconds": 10,    // sliding window
     "cooldown_seconds": 60   // min gap between alerts
-  }
+  },
+
+  // V4.9.6: destructive partial-delete pre-warning (default: off).
+  // Triggered when deletion risk is high or whole methods/functions disappear.
+  "enable_pre_warning": false,
+  "pre_warning_threshold": 30,
+  "pre_warning_mode": "popup",
+  "pre_warning_exclude_patterns": []
 }
 ```
 
@@ -86,6 +93,8 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
 - `"days"` (default): keep snapshots from the last N days (default **30**).
 - `"count"`: keep the N most recent snapshots (default 100).
 - `"size"`: keep total shadow-copy folder under N MB (default 500).
+
+**`enable_pre_warning` / `pre_warning_*`**: Optional IDE-side "last brake" for destructive partial deletions. When enabled, the extension scores deletion-heavy edits, removed methods/functions, and suspicious line drops. `popup` interrupts with quick actions, `dashboard` only surfaces the warning in UI/status, and `silent` only records it. Active warnings are exposed through `backup_status` / `dashboard` as `_activePreWarning`.
 
 **If no config file exists**, the agent operates in "protect everything" mode (backward compatible). Mention to the user that they can create `.cursor-guard.json` to narrow scope — see [references/cursor-guard.example.json](references/cursor-guard.example.json).
 
@@ -115,6 +124,7 @@ cursor-guard provides an **MCP server** (`cursor-guard-mcp`) as an optional enha
 - If an MCP call returns an `error` field, report it to the user and fall back to the shell path for that operation.
 - All Hard Rules (§Hard Rules) still apply regardless of execution path. MCP tools enforce them internally (e.g. `restore_file` creates a pre-restore snapshot by default).
 - If MCP is not configured, the skill works exactly as before — **no degradation**.
+- `backup_status` and `dashboard` may include `_activePreWarning`; when present, surface it as an active delete-risk warning before giving the rest of the health summary.
 - `doctor_fix` is safe to call — each fix is idempotent. Use `dry_run: true` to preview changes before applying. Typical fixes: create missing config, init git repo, gitignore backup dir, remove stale lock file.
 - `restore_project` with `preview: false` executes a full restore including pre-restore snapshot. Always call with `preview: true` first, show the result to the user, and only execute after explicit confirmation.
 
@@ -603,7 +613,7 @@ Skip the block for unrelated turns.
 - Recovery commands: [references/recovery.md](references/recovery.md)
 - Auto-backup (Node.js core): [references/lib/auto-backup.js](references/lib/auto-backup.js)
 - Guard doctor (Node.js core): [references/lib/guard-doctor.js](references/lib/guard-doctor.js)
-- Core modules: [references/lib/core/](references/lib/core/) (doctor, doctor-fix, snapshot, backups, restore, status, anomaly, dashboard)
+- Core modules: [references/lib/core/](references/lib/core/) (doctor, doctor-fix, snapshot, backups, restore, status, anomaly, pre-warning, dashboard)
 - MCP server: [references/mcp/server.js](references/mcp/server.js) (9 tools: doctor, doctor_fix, backup_status, list_backups, snapshot_now, restore_file, restore_project, dashboard, alert_status)
 - Web dashboard: [references/dashboard/](references/dashboard/) (local read-only web UI — `node references/dashboard/server.js --path <project>`)
 - Shared utilities: [references/lib/utils.js](references/lib/utils.js)

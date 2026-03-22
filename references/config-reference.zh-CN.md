@@ -213,3 +213,64 @@
   "cooldown_seconds": 60
 }
 ```
+
+---
+
+## `enable_pre_warning`
+
+- **类型**：`boolean`
+- **默认值**：`false`
+
+开启破坏性编辑的事先预警。开启后，IDE 扩展会在高比例删行或方法/函数被移除时先做风险评估；触发后的活跃预警会持久化，`backup_status`、`dashboard`、侧边栏和浏览器仪表盘都能看到。
+
+```json
+"enable_pre_warning": true
+```
+
+---
+
+## `pre_warning_threshold`
+
+- **类型**：`integer`
+- **最小值**：`1`
+- **最大值**：`100`
+- **默认值**：`30`
+
+触发事先预警的风险阈值。评分主要基于删行比例，但“删掉方法/函数”会被视为天然高风险，即使删行占比没到阈值，也可能直接触发预警。
+
+```json
+"pre_warning_threshold": 30
+```
+
+---
+
+## `pre_warning_mode`
+
+- **类型**：`string`
+- **可选值**：`"popup"` | `"dashboard"` | `"silent"`
+- **默认值**：`"popup"`
+
+控制 IDE 扩展里如何呈现预警。
+
+| 值 | 说明 |
+|----|------|
+| `"popup"` | 弹出可交互提醒，支持快速撤销、查看 diff 等动作 |
+| `"dashboard"` | 不打断编辑，只在仪表盘、侧边栏、状态面上高亮风险 |
+| `"silent"` | 仅持久化 / 记录预警，不主动弹出 UI |
+
+```json
+"pre_warning_mode": "popup"
+```
+
+---
+
+## `pre_warning_exclude_patterns`
+
+- **类型**：`string[]`（glob 模式）
+- **默认值**：未设置
+
+跳过事先预警评估的 glob 模式。适合生成代码、迁移脚本、第三方 vendored 目录、锁文件等“经常大段删除但无需人工拦截”的文件。
+
+```json
+"pre_warning_exclude_patterns": ["generated/**", "vendor/**"]
+```

@@ -39,5 +39,9 @@
     "files_per_window": 20,
     "window_seconds": 10,
     "cooldown_seconds": 60
-  }
+  },
+  "enable_pre_warning": false,
+  "pre_warning_threshold": 30,
+  "pre_warning_mode": "popup",
+  "pre_warning_exclude_patterns": []
 }

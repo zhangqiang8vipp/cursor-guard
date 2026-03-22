@@ -8,6 +8,7 @@ const {
 } = require('../utils');
 const { getBackupStatus } = require('./status');
 const { loadActiveAlert } = require('./anomaly');
+const { loadActivePreWarnings } = require('./pre-warning');
 const { parseShadowTimestamp } = require('./backups');
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -193,6 +194,18 @@ function getDashboard(projectDir) {
     issues.push(`Active alert: ${activeAlert.type} — ${activeAlert.fileCount} files in ${activeAlert.windowSeconds}s`);
   }
 
+  const activePreWarnings = loadActivePreWarnings(projectDir);
+  const preWarnings = {
+    active: activePreWarnings.length > 0,
+    count: activePreWarnings.length,
+    latest: activePreWarnings[0] || undefined,
+    warnings: activePreWarnings,
+  };
+  if (preWarnings.active) {
+    if (healthStatus === 'healthy') healthStatus = 'warning';
+    issues.push(`Pre-warning active: ${preWarnings.latest?.summary || `${preWarnings.count} pending destructive edit warning(s)`}`);
+  }
+
   return {
     strategy,
     lastBackup,
@@ -201,6 +214,7 @@ function getDashboard(projectDir) {
     protectionScope,
     health: { status: healthStatus, issues },
     alerts,
+    preWarnings,
     watcher: status.watcher,
     disk: status.disk,
   };

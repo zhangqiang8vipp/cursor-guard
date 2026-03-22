@@ -30,6 +30,7 @@ const copyMap = [
 
   { src: path.join(ROOT, 'SKILL.md'), dst: path.join('skill', 'SKILL.md') },
   { src: path.join(ROOT, 'ROADMAP.md'), dst: path.join('skill', 'ROADMAP.md') },
+  { src: path.join(ROOT, 'LICENSE'), dst: 'LICENSE' },
   { src: path.join(REFS, 'cursor-guard.example.json'), dst: path.join('skill', 'cursor-guard.example.json') },
   { src: path.join(REFS, 'cursor-guard.schema.json'), dst: path.join('skill', 'cursor-guard.schema.json') },
   { src: path.join(REFS, 'config-reference.md'), dst: path.join('skill', 'config-reference.md') },

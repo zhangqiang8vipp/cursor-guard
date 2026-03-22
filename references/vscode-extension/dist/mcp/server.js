@@ -35225,7 +35225,11 @@ var require_utils2 = __commonJS({
       git_retention: { enabled: false, mode: "count", days: 30, max_count: 200 },
       proactive_alert: true,
       alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
-      always_watch: false
+      always_watch: false,
+      enable_pre_warning: false,
+      pre_warning_threshold: 30,
+      pre_warning_mode: "popup",
+      pre_warning_exclude_patterns: []
     };
     function loadConfig2(projectDir) {
       const cfgPath = path2.join(projectDir, ".cursor-guard.json");
@@ -35316,6 +35320,28 @@ var require_utils2 = __commonJS({
           cfg.always_watch = true;
         } else if (raw.always_watch !== void 0 && raw.always_watch !== false) {
           warnings.push(`always_watch should be a boolean, got ${JSON.stringify(raw.always_watch)} \u2014 using default (false)`);
+        }
+        if (raw.enable_pre_warning === true) {
+          cfg.enable_pre_warning = true;
+        } else if (raw.enable_pre_warning !== void 0 && raw.enable_pre_warning !== false) {
+          warnings.push(`enable_pre_warning should be a boolean, got ${JSON.stringify(raw.enable_pre_warning)} \u2014 using default (false)`);
+        }
+        if (typeof raw.pre_warning_threshold === "number") {
+          if (raw.pre_warning_threshold >= 1 && raw.pre_warning_threshold <= 100) {
+            cfg.pre_warning_threshold = raw.pre_warning_threshold;
+          } else {
+            warnings.push(`pre_warning_threshold should be 1-100, got ${JSON.stringify(raw.pre_warning_threshold)} \u2014 using default (${cfg.pre_warning_threshold})`);
+          }
+        }
+        if (typeof raw.pre_warning_mode === "string") {
+          if (["popup", "dashboard", "silent"].includes(raw.pre_warning_mode)) {
+            cfg.pre_warning_mode = raw.pre_warning_mode;
+          } else {
+            warnings.push(`Unknown pre_warning_mode "${raw.pre_warning_mode}", using default "${cfg.pre_warning_mode}"`);
+          }
+        }
+        if (Array.isArray(raw.pre_warning_exclude_patterns)) {
+          cfg.pre_warning_exclude_patterns = sanitizeStringArray(raw.pre_warning_exclude_patterns, "pre_warning_exclude_patterns");
         }
         return { cfg, loaded: true, error: null, warnings };
       } catch (e) {
@@ -35568,7 +35594,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.9.5",
+      version: "4.9.6",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -35802,6 +35828,12 @@ var require_doctor = __commonJS({
         }
         if (cfg.auto_backup_interval_seconds && cfg.auto_backup_interval_seconds < 5) {
           check("Config: interval", "WARN", `${cfg.auto_backup_interval_seconds}s is below minimum (5s), will be clamped`);
+        }
+        if (cfg.pre_warning_threshold < 1 || cfg.pre_warning_threshold > 100) {
+          check("Config: pre_warning_threshold", "FAIL", `invalid value '${cfg.pre_warning_threshold}'`);
+        }
+        if (!["popup", "dashboard", "silent"].includes(cfg.pre_warning_mode)) {
+          check("Config: pre_warning_mode", "FAIL", `invalid value '${cfg.pre_warning_mode}'`);
         }
         if (cfg.retention && cfg.retention.mode) {
           const validModes = ["days", "count", "size"];
@@ -37243,6 +37275,266 @@ var require_doctor_fix = __commonJS({
   }
 });
 
+// references/lib/core/pre-warning.js
+var require_pre_warning = __commonJS({
+  "references/lib/core/pre-warning.js"(exports2, module2) {
+    "use strict";
+    var fs = require("fs");
+    var path2 = require("path");
+    var { isGitRepo, gitDir: getGitDir2, matchesAny } = require_utils2();
+    var DEFAULT_EXPIRY_MS = 10 * 60 * 1e3;
+    var MAX_ACTIVE_WARNINGS = 20;
+    var MAX_HISTORY = 100;
+    function warningFilePath(projectDir) {
+      if (isGitRepo(projectDir)) {
+        const gDir = getGitDir2(projectDir);
+        if (gDir) return path2.join(gDir, "cursor-guard-pre-warning.json");
+      }
+      return path2.join(projectDir, ".cursor-guard-backup", "cursor-guard-pre-warning.json");
+    }
+    function historyFilePath(projectDir) {
+      if (isGitRepo(projectDir)) {
+        const gDir = getGitDir2(projectDir);
+        if (gDir) return path2.join(gDir, "cursor-guard-pre-warning-history.json");
+      }
+      return path2.join(projectDir, ".cursor-guard-backup", "cursor-guard-pre-warning-history.json");
+    }
+    function _readActiveStore(projectDir) {
+      const filePath = warningFilePath(projectDir);
+      try {
+        if (!fs.existsSync(filePath)) return [];
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings : [];
+        return warnings.filter((w) => w && typeof w.file === "string");
+      } catch {
+        return [];
+      }
+    }
+    function _writeActiveStore(projectDir, warnings) {
+      const filePath = warningFilePath(projectDir);
+      try {
+        fs.mkdirSync(path2.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify({
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          warnings
+        }, null, 2));
+      } catch {
+      }
+    }
+    function _readHistory(projectDir) {
+      const filePath = historyFilePath(projectDir);
+      try {
+        if (!fs.existsSync(filePath)) return [];
+        const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    function _writeHistory(projectDir, warnings) {
+      const filePath = historyFilePath(projectDir);
+      try {
+        fs.mkdirSync(path2.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify(warnings.slice(0, MAX_HISTORY), null, 2));
+      } catch {
+      }
+    }
+    function _normalizeWarning(warning, opts = {}) {
+      const now = warning.detectedAt || Date.now();
+      return {
+        type: "destructive_edit_risk",
+        detectedAt: now,
+        timestamp: warning.timestamp || new Date(now).toISOString(),
+        expiresAt: warning.expiresAt || new Date(now + (opts.expiryMs || DEFAULT_EXPIRY_MS)).toISOString(),
+        ...warning
+      };
+    }
+    function isPreWarningEnabled(cfg) {
+      return cfg?.enable_pre_warning === true;
+    }
+    function shouldExcludePreWarning(file, cfg) {
+      if (!file || !Array.isArray(cfg?.pre_warning_exclude_patterns)) return false;
+      return matchesAny(cfg.pre_warning_exclude_patterns, file);
+    }
+    function recordPreWarning(projectDir, warning, opts = {}) {
+      const normalized = _normalizeWarning(warning, opts);
+      const history = _readHistory(projectDir);
+      _writeHistory(projectDir, [normalized, ...history]);
+      if (opts.setActive === false) return normalized;
+      const active = loadActivePreWarnings2(projectDir).filter((w) => w.file !== normalized.file);
+      active.unshift(normalized);
+      _writeActiveStore(projectDir, active.slice(0, MAX_ACTIVE_WARNINGS));
+      return normalized;
+    }
+    function loadActivePreWarnings2(projectDir) {
+      const now = Date.now();
+      return _readActiveStore(projectDir).filter((w) => !w.expiresAt || now < new Date(w.expiresAt).getTime()).sort((a, b) => (b.detectedAt || 0) - (a.detectedAt || 0));
+    }
+    function loadActivePreWarning(projectDir) {
+      return loadActivePreWarnings2(projectDir)[0] || null;
+    }
+    function listPreWarningHistory(projectDir, limit = 20) {
+      return _readHistory(projectDir).sort((a, b) => (b.detectedAt || 0) - (a.detectedAt || 0)).slice(0, limit);
+    }
+    function clearPreWarning(projectDir, file) {
+      if (!file) {
+        _writeActiveStore(projectDir, []);
+        return;
+      }
+      const active = loadActivePreWarnings2(projectDir).filter((w) => w.file !== file);
+      if (active.length === 0) {
+        const filePath = warningFilePath(projectDir);
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+        }
+        return;
+      }
+      _writeActiveStore(projectDir, active);
+    }
+    function clearExpiredPreWarnings(projectDir) {
+      const active = loadActivePreWarnings2(projectDir);
+      if (active.length === 0) {
+        const filePath = warningFilePath(projectDir);
+        try {
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            return true;
+          }
+        } catch {
+        }
+        return false;
+      }
+      _writeActiveStore(projectDir, active);
+      return false;
+    }
+    function _splitLines(text) {
+      return String(text || "").replace(/\r\n/g, "\n").split("\n");
+    }
+    function _normalizeLine(line) {
+      return String(line || "").trim().replace(/\s+/g, " ");
+    }
+    function _countLines(lines) {
+      const counts = /* @__PURE__ */ new Map();
+      for (const line of lines) {
+        const normalized = _normalizeLine(line);
+        if (!normalized) continue;
+        counts.set(normalized, (counts.get(normalized) || 0) + 1);
+      }
+      return counts;
+    }
+    function _extractRemovedLines(prevLines, nextLines) {
+      const nextCounts = _countLines(nextLines);
+      const removed = [];
+      for (let i = 0; i < prevLines.length; i++) {
+        const raw = prevLines[i];
+        const normalized = _normalizeLine(raw);
+        if (!normalized) continue;
+        const remaining = nextCounts.get(normalized) || 0;
+        if (remaining > 0) {
+          nextCounts.set(normalized, remaining - 1);
+          continue;
+        }
+        removed.push({
+          line: raw,
+          normalized,
+          lineNumber: i + 1
+        });
+      }
+      return removed;
+    }
+    function _extractDefinitions(lines) {
+      const defs = [];
+      const patterns = [
+        /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/,
+        /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\([^=]*\)\s*=>/,
+        /^\s*(?:public|private|protected|static|async|get|set|\s)*([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*(?:\{|=>)\s*$/,
+        /^\s*(?:public|private|protected|internal|static|final|virtual|override|abstract|synchronized|\s)+(?:[\w<>\[\],.?]+\s+)+([A-Za-z_]\w*)\s*\([^;]*\)\s*(?:\{|=>)\s*$/,
+        /^\s*def\s+([A-Za-z_]\w*[!?=]?)\s*\(/,
+        /^\s*func\s+(?:\([^)]+\)\s*)?([A-Za-z_]\w*)\s*\(/,
+        /^\s*(?:public|private|protected|static|\s)*function\s+([A-Za-z_]\w*)\s*\(/
+      ];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const pattern of patterns) {
+          const match = line.match(pattern);
+          if (!match) continue;
+          defs.push({
+            name: match[1],
+            signature: _normalizeLine(line),
+            lineNumber: i + 1
+          });
+          break;
+        }
+      }
+      return defs;
+    }
+    function _removedDefinitions(prevLines, nextLines) {
+      const prevDefs = _extractDefinitions(prevLines);
+      const nextDefs = _extractDefinitions(nextLines);
+      const nextNames = new Set(nextDefs.map((d) => d.name));
+      return prevDefs.filter((d) => !nextNames.has(d.name));
+    }
+    function assessDeletionRisk(prevText, nextText, opts = {}) {
+      const threshold = Math.max(1, parseInt(opts.threshold, 10) || 30);
+      const prevLines = _splitLines(prevText);
+      const nextLines = _splitLines(nextText);
+      const previousNonEmptyLines = prevLines.filter((line) => _normalizeLine(line)).length;
+      const nextNonEmptyLines = nextLines.filter((line) => _normalizeLine(line)).length;
+      if (String(prevText || "") === String(nextText || "")) {
+        return {
+          triggered: false,
+          threshold,
+          previousNonEmptyLines,
+          nextNonEmptyLines,
+          deletedLines: 0,
+          removedMethodCount: 0,
+          removedMethods: [],
+          riskPercent: 0,
+          summary: "No deletion risk detected."
+        };
+      }
+      const removedLines = _extractRemovedLines(prevLines, nextLines);
+      const removedMethods = _removedDefinitions(prevLines, nextLines);
+      const deletedLines = removedLines.length;
+      const baseRisk = previousNonEmptyLines > 0 ? Math.round(deletedLines / previousNonEmptyLines * 100) : 0;
+      const methodBoost = removedMethods.length > 0 ? Math.min(100, baseRisk + removedMethods.length * 20) : baseRisk;
+      const riskPercent = Math.min(100, Math.max(baseRisk, methodBoost));
+      const triggered = deletedLines > 0 && (riskPercent >= threshold || removedMethods.length > 0);
+      const methodSummary = removedMethods.length > 0 ? `${removedMethods.length} method${removedMethods.length === 1 ? "" : "s"} removed` : null;
+      const lineSummary = deletedLines > 0 ? `${deletedLines} line${deletedLines === 1 ? "" : "s"} deleted` : null;
+      const summaryParts = [methodSummary, lineSummary].filter(Boolean);
+      const deletedLineSamples = removedLines.map((r) => r.normalized).filter(Boolean).slice(0, 5);
+      return {
+        triggered,
+        threshold,
+        previousNonEmptyLines,
+        nextNonEmptyLines,
+        deletedLines,
+        netLineDelta: nextNonEmptyLines - previousNonEmptyLines,
+        removedMethodCount: removedMethods.length,
+        removedMethods,
+        riskPercent,
+        deletedLineSamples,
+        summary: summaryParts.length > 0 ? `${summaryParts.join(", ")} (risk ${riskPercent}%)` : `Deletion risk ${riskPercent}%`
+      };
+    }
+    module2.exports = {
+      assessDeletionRisk,
+      isPreWarningEnabled,
+      shouldExcludePreWarning,
+      recordPreWarning,
+      loadActivePreWarning,
+      loadActivePreWarnings: loadActivePreWarnings2,
+      listPreWarningHistory,
+      clearPreWarning,
+      clearExpiredPreWarnings,
+      warningFilePath,
+      historyFilePath
+    };
+  }
+});
+
 // references/lib/core/status.js
 var require_status = __commonJS({
   "references/lib/core/status.js"(exports2, module2) {
@@ -37257,6 +37549,7 @@ var require_status = __commonJS({
       gitDir: getGitDir2,
       diskFreeGB
     } = require_utils2();
+    var { loadActivePreWarnings: loadActivePreWarnings2 } = require_pre_warning();
     function getBackupStatus2(projectDir) {
       const hasGit = gitAvailable();
       const repo = hasGit && isGitRepo(projectDir);
@@ -37374,7 +37667,13 @@ var require_status = __commonJS({
         if (freeGB < 1) disk.warning = "critically low";
         else if (freeGB < 5) disk.warning = "low";
       }
-      return { watcher, config, lastBackup, refs, disk };
+      const activePreWarnings = loadActivePreWarnings2(projectDir);
+      const preWarnings = {
+        active: activePreWarnings.length > 0,
+        count: activePreWarnings.length,
+        latest: activePreWarnings[0] || void 0
+      };
+      return { watcher, config, lastBackup, refs, disk, preWarnings };
     }
     module2.exports = { getBackupStatus: getBackupStatus2 };
   }
@@ -37572,6 +37871,7 @@ var require_dashboard = __commonJS({
     } = require_utils2();
     var { getBackupStatus: getBackupStatus2 } = require_status();
     var { loadActiveAlert: loadActiveAlert2 } = require_anomaly();
+    var { loadActivePreWarnings: loadActivePreWarnings2 } = require_pre_warning();
     var { parseShadowTimestamp } = require_backups();
     function dirSizeBytes(dirPath) {
       let total = 0;
@@ -37713,6 +38013,17 @@ var require_dashboard = __commonJS({
         if (healthStatus === "healthy") healthStatus = "warning";
         issues.push(`Active alert: ${activeAlert.type} \u2014 ${activeAlert.fileCount} files in ${activeAlert.windowSeconds}s`);
       }
+      const activePreWarnings = loadActivePreWarnings2(projectDir);
+      const preWarnings = {
+        active: activePreWarnings.length > 0,
+        count: activePreWarnings.length,
+        latest: activePreWarnings[0] || void 0,
+        warnings: activePreWarnings
+      };
+      if (preWarnings.active) {
+        if (healthStatus === "healthy") healthStatus = "warning";
+        issues.push(`Pre-warning active: ${preWarnings.latest?.summary || `${preWarnings.count} pending destructive edit warning(s)`}`);
+      }
       return {
         strategy,
         lastBackup,
@@ -37721,6 +38032,7 @@ var require_dashboard = __commonJS({
         protectionScope,
         health: { status: healthStatus, issues },
         alerts,
+        preWarnings,
         watcher: status.watcher,
         disk: status.disk
       };
@@ -37742,6 +38054,7 @@ var { runFixes } = require_doctor_fix();
 var { getBackupStatus } = require_status();
 var { getDashboard } = require_dashboard();
 var { loadActiveAlert } = require_anomaly();
+var { loadActivePreWarnings } = require_pre_warning();
 var { loadConfig, gitDir: getGitDir } = require_utils2();
 var pkg = require_package();
 var watchedProjects = /* @__PURE__ */ new Map();
@@ -37774,6 +38087,16 @@ function injectAlert(projectPath, result) {
       message: alert.recommendation || `${alert.fileCount} files changed in ${alert.windowSeconds}s`,
       timestamp: alert.timestamp,
       expiresAt: alert.expiresAt
+    };
+  }
+  return result;
+}
+function injectPreWarning(projectPath, result) {
+  const warnings = loadActivePreWarnings(projectPath);
+  if (warnings.length > 0) {
+    result._activePreWarning = {
+      count: warnings.length,
+      latest: warnings[0]
     };
   }
   return result;
@@ -37813,7 +38136,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, runDiagnostics(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, runDiagnostics(resolved)));
     injectWatcherWarning(resolved, result);
     return {
       content: [{
@@ -37835,7 +38158,7 @@ server.tool(
   async ({ path: projectPath, file, before, limit }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, listBackups(resolved, { file, before, limit }));
+    const result = injectPreWarning(resolved, injectAlert(resolved, listBackups(resolved, { file, before, limit })));
     return {
       content: [{
         type: "text",
@@ -37880,7 +38203,7 @@ server.tool(
     if (effectiveStrategy === "shadow" || effectiveStrategy === "both") {
       results.shadow = createShadowCopy(resolved, cfg);
     }
-    injectAlert(resolved, results);
+    injectPreWarning(resolved, injectAlert(resolved, results));
     injectWatcherWarning(resolved, results);
     return {
       content: [{
@@ -37902,9 +38225,9 @@ server.tool(
   async ({ path: projectPath, file, source, preserve_current }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, restoreFile(resolved, file, source, {
+    const result = injectPreWarning(resolved, injectAlert(resolved, restoreFile(resolved, file, source, {
       preserveCurrent: preserve_current
-    }));
+    })));
     injectWatcherWarning(resolved, result);
     return {
       content: [{
@@ -37928,13 +38251,13 @@ server.tool(
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
     if (preview !== false) {
-      const result2 = injectAlert(resolved, previewProjectRestore(resolved, source));
+      const result2 = injectPreWarning(resolved, injectAlert(resolved, previewProjectRestore(resolved, source)));
       return { content: [{ type: "text", text: JSON.stringify(result2, null, 2) }] };
     }
-    const result = injectAlert(resolved, executeProjectRestore(resolved, source, {
+    const result = injectPreWarning(resolved, injectAlert(resolved, executeProjectRestore(resolved, source, {
       preserveCurrent: preserve_current,
       cleanUntracked: clean_untracked
-    }));
+    })));
     injectWatcherWarning(resolved, result);
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }
@@ -37949,7 +38272,7 @@ server.tool(
   async ({ path: projectPath, dry_run }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run }));
+    const result = injectPreWarning(resolved, injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run })));
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -37962,7 +38285,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, getBackupStatus(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, getBackupStatus(resolved)));
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -37975,7 +38298,7 @@ server.tool(
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
     ensureWatcher(resolved);
-    const result = injectAlert(resolved, getDashboard(resolved));
+    const result = injectPreWarning(resolved, injectAlert(resolved, getDashboard(resolved)));
     return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   }
 );

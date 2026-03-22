@@ -251,6 +251,49 @@ test('invalid enum values fall back to defaults with warnings', () => {
 
 // ── filterFiles ──────────────────────────────────────────────────
 
+test('loads pre_warning configuration fields', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-test-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({
+      enable_pre_warning: true,
+      pre_warning_threshold: 45,
+      pre_warning_mode: 'dashboard',
+      pre_warning_exclude_patterns: ['dist/**', '*.snap'],
+    }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.strictEqual(cfg.enable_pre_warning, true);
+    assert.strictEqual(cfg.pre_warning_threshold, 45);
+    assert.strictEqual(cfg.pre_warning_mode, 'dashboard');
+    assert.deepStrictEqual(cfg.pre_warning_exclude_patterns, ['dist/**', '*.snap']);
+    assert.deepStrictEqual(warnings, []);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('invalid pre_warning configuration falls back with warnings', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-test-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({
+      enable_pre_warning: 'yes',
+      pre_warning_threshold: 150,
+      pre_warning_mode: 'toast',
+      pre_warning_exclude_patterns: ['src/**', 123],
+    }));
+    const { cfg, warnings } = loadConfig(tmpDir);
+    assert.strictEqual(cfg.enable_pre_warning, false);
+    assert.strictEqual(cfg.pre_warning_threshold, 30);
+    assert.strictEqual(cfg.pre_warning_mode, 'popup');
+    assert.deepStrictEqual(cfg.pre_warning_exclude_patterns, ['src/**']);
+    assert.ok(warnings.some(w => w.includes('enable_pre_warning')), 'should warn on invalid boolean');
+    assert.ok(warnings.some(w => w.includes('pre_warning_threshold')), 'should warn on invalid threshold');
+    assert.ok(warnings.some(w => w.includes('pre_warning_mode')), 'should warn on invalid mode');
+    assert.ok(warnings.some(w => w.includes('pre_warning_exclude_patterns')), 'should warn on invalid array members');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 console.log('\nfilterFiles:');
 
 const makeFiles = names => names.map(n => ({ full: `/fake/${n}`, rel: n, name: path.basename(n) }));

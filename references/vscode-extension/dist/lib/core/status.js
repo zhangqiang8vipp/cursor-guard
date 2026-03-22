@@ -5,6 +5,7 @@ const path = require('path');
 const {
   loadConfig, gitAvailable, git, isGitRepo, gitDir: getGitDir, diskFreeGB,
 } = require('../utils');
+const { loadActivePreWarnings } = require('./pre-warning');
 
 /**
  * Gather comprehensive backup system status.
@@ -157,7 +158,14 @@ function getBackupStatus(projectDir) {
     else if (freeGB < 5) disk.warning = 'low';
   }
 
-  return { watcher, config, lastBackup, refs, disk };
+  const activePreWarnings = loadActivePreWarnings(projectDir);
+  const preWarnings = {
+    active: activePreWarnings.length > 0,
+    count: activePreWarnings.length,
+    latest: activePreWarnings[0] || undefined,
+  };
+
+  return { watcher, config, lastBackup, refs, disk, preWarnings };
 }
 
 module.exports = { getBackupStatus };

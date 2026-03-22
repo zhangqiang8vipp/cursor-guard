@@ -213,3 +213,64 @@ Thresholds for proactive change-velocity alerts. Only effective when `proactive_
   "cooldown_seconds": 60
 }
 ```
+
+---
+
+## `enable_pre_warning`
+
+- **Type**: `boolean`
+- **Default**: `false`
+
+Enable destructive-edit pre-warning. When enabled, the IDE extension evaluates deletion-heavy edits and removed methods/functions before they quietly land. Active warnings are persisted so `backup_status`, `dashboard`, the sidebar, and the browser dashboard can surface them.
+
+```json
+"enable_pre_warning": true
+```
+
+---
+
+## `pre_warning_threshold`
+
+- **Type**: `integer`
+- **Minimum**: `1`
+- **Maximum**: `100`
+- **Default**: `30`
+
+Risk threshold for triggering a pre-warning. The score is based primarily on deletion ratio, but method/function removal is treated as inherently risky and can still trigger a warning even if the line percentage is below the threshold.
+
+```json
+"pre_warning_threshold": 30
+```
+
+---
+
+## `pre_warning_mode`
+
+- **Type**: `string`
+- **Allowed**: `"popup"` | `"dashboard"` | `"silent"`
+- **Default**: `"popup"`
+
+Controls how the warning is presented inside the IDE extension.
+
+| Value | Description |
+|-------|-------------|
+| `"popup"` | Show an interactive warning with quick actions such as undo / diff review |
+| `"dashboard"` | Do not interrupt editing; highlight the risk in dashboard, sidebar, and status surfaces |
+| `"silent"` | Persist/log the warning without UI interruption |
+
+```json
+"pre_warning_mode": "popup"
+```
+
+---
+
+## `pre_warning_exclude_patterns`
+
+- **Type**: `string[]` (glob patterns)
+- **Default**: not set
+
+Glob patterns that skip pre-warning evaluation. Useful for generated code, migrations, vendored directories, lockfiles, or other files where large deletions are expected and not actionable.
+
+```json
+"pre_warning_exclude_patterns": ["generated/**", "vendor/**"]
+```

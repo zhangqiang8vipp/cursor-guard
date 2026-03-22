@@ -13,6 +13,166 @@ const { autoSetup } = require('./lib/auto-setup');
 const { guardPath } = require('./lib/paths');
 
 let dashMgr, poller, statusBar, treeView, webviewProvider, sidebarProvider;
+const _preWarningBaselines = new Map();
+const _preWarningTimers = new Map();
+const _preWarningFingerprints = new Map();
+const PRE_WARNING_DEBOUNCE_MS = 200;
+const PRE_WARNING_POPUP_COOLDOWN_MS = 5000;
+
+function _docKey(document) {
+  return document.uri.toString();
+}
+
+function _getPreWarningDeps() {
+  return {
+    loadConfig: require(guardPath('lib', 'utils')).loadConfig,
+    ...require(guardPath('lib', 'core', 'pre-warning')),
+  };
+}
+
+function _getProjectInfo(document) {
+  if (!document || document.uri.scheme !== 'file') return null;
+  const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!folder) return null;
+  const projectPath = folder.uri.fsPath;
+  const relPath = path.relative(projectPath, document.uri.fsPath).replace(/\\/g, '/');
+  if (!relPath || relPath.startsWith('..')) return null;
+  return { projectPath, relPath };
+}
+
+function _seedBaseline(document) {
+  if (!document || document.uri.scheme !== 'file') return;
+  _preWarningBaselines.set(_docKey(document), document.getText());
+}
+
+function _clearDocPreWarningState(document) {
+  const key = _docKey(document);
+  const timer = _preWarningTimers.get(key);
+  if (timer) clearTimeout(timer);
+  _preWarningTimers.delete(key);
+  _preWarningBaselines.delete(key);
+  _preWarningFingerprints.delete(key);
+}
+
+function _isLikelyDeleteBatch(event) {
+  const deletedChars = event.contentChanges.reduce((sum, change) => {
+    return sum + Math.max(0, change.rangeLength - (change.text || '').length);
+  }, 0);
+  const deletedLines = event.contentChanges.reduce((sum, change) => {
+    return sum + Math.max(0, change.range.end.line - change.range.start.line);
+  }, 0);
+  return deletedChars >= 8
+    || deletedLines > 0
+    || event.contentChanges.some(change => change.rangeLength >= 20 || (change.rangeLength > 0 && !change.text));
+}
+
+async function _openPreWarningDiff(document, previousText) {
+  const beforeDoc = await vscode.workspace.openTextDocument({
+    language: document.languageId,
+    content: previousText,
+  });
+  await vscode.commands.executeCommand(
+    'vscode.diff',
+    beforeDoc.uri,
+    document.uri,
+    `Cursor Guard Pre-Warning: ${path.basename(document.uri.fsPath)}`
+  );
+}
+
+async function _showPreWarningPopup(document, relPath, previousText, warning, projectPath) {
+  const methodHint = Array.isArray(warning.removedMethods) && warning.removedMethods.length > 0
+    ? ` - ${warning.removedMethods.slice(0, 3).map(m => `${m.name}:${m.lineNumber}`).join(', ')}`
+    : '';
+  const action = await vscode.window.showWarningMessage(
+    `Cursor Guard: risky deletion detected in ${relPath} - ${warning.summary}${methodHint}`,
+    { modal: true },
+    'Undo Change',
+    'View Diff',
+    'Keep Changes'
+  );
+
+  if (action === 'Undo Change') {
+    await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
+    await vscode.commands.executeCommand('undo');
+    const { clearPreWarning } = _getPreWarningDeps();
+    clearPreWarning(projectPath, relPath);
+    if (poller) poller.forceRefresh();
+    return;
+  }
+
+  if (action === 'View Diff') {
+    await _openPreWarningDiff(document, previousText);
+  }
+}
+
+async function _assessPreWarning(document) {
+  if (!document || document.isClosed || document.uri.scheme !== 'file') return;
+
+  const info = _getProjectInfo(document);
+  if (!info) return;
+
+  const key = _docKey(document);
+  const previousText = _preWarningBaselines.get(key) ?? document.getText();
+  const deps = _getPreWarningDeps();
+  const { cfg } = deps.loadConfig(info.projectPath);
+
+  if (!deps.isPreWarningEnabled(cfg) || deps.shouldExcludePreWarning(info.relPath, cfg)) {
+    deps.clearPreWarning(info.projectPath, info.relPath);
+    _preWarningFingerprints.delete(key);
+    if (poller) poller.forceRefresh();
+    return;
+  }
+
+  const assessment = deps.assessDeletionRisk(previousText, document.getText(), {
+    threshold: cfg.pre_warning_threshold,
+  });
+
+  if (!assessment.triggered) {
+    deps.clearPreWarning(info.projectPath, info.relPath);
+    _preWarningFingerprints.delete(key);
+    if (poller) poller.forceRefresh();
+    return;
+  }
+
+  const warning = {
+    file: info.relPath,
+    mode: cfg.pre_warning_mode,
+    threshold: cfg.pre_warning_threshold,
+    deletedLines: assessment.deletedLines,
+    removedMethodCount: assessment.removedMethodCount,
+    removedMethods: assessment.removedMethods.slice(0, 10),
+    riskPercent: assessment.riskPercent,
+    summary: assessment.summary,
+    deletedLineSamples: assessment.deletedLineSamples,
+  };
+
+  const fingerprint = JSON.stringify([
+    warning.file,
+    warning.deletedLines,
+    warning.removedMethodCount,
+    warning.riskPercent,
+    warning.removedMethods.map(m => m.name).join(','),
+  ]);
+  const last = _preWarningFingerprints.get(key);
+  _preWarningFingerprints.set(key, { fingerprint, at: Date.now() });
+
+  deps.recordPreWarning(info.projectPath, warning, {
+    setActive: cfg.pre_warning_mode !== 'silent',
+  });
+  if (poller) poller.forceRefresh();
+
+  if (cfg.pre_warning_mode === 'silent') {
+    console.warn(`[cursor-guard] pre-warning ${info.relPath}: ${warning.summary}`);
+    return;
+  }
+
+  if (cfg.pre_warning_mode === 'popup') {
+    if (last && last.fingerprint === fingerprint && Date.now() - last.at < PRE_WARNING_POPUP_COOLDOWN_MS) {
+      return;
+    }
+    await _showPreWarningPopup(document, info.relPath, previousText, warning, info.projectPath);
+  }
+}
 
 async function activate(context) {
   await autoSetup(context, vscode);
@@ -127,7 +287,7 @@ async function activate(context) {
         const summary = b.summary ? b.summary.slice(0, 60) : '';
         return {
           label: `$(git-commit) ${time}`,
-          description: `${b.type || 'auto'} · ${files}`,
+          description: `${b.type || 'auto'} - ${files}`,
           detail: summary,
           hash: b.commitHash,
         };
@@ -161,7 +321,7 @@ async function activate(context) {
         } else if (warned > 0) {
           vscode.window.showWarningMessage(`Cursor Guard: ${msg}`);
         } else {
-          vscode.window.showInformationMessage(`Cursor Guard: ${msg} ✓`);
+          vscode.window.showInformationMessage(`Cursor Guard: ${msg}`);
         }
       } catch (e) {
         vscode.window.showErrorMessage(`Cursor Guard Doctor: ${e.message}`);
@@ -189,7 +349,6 @@ async function activate(context) {
     vscode.window.showInformationMessage(`Cursor Guard: dashboard started on port ${dashMgr.port}`);
   }
 
-  // Event-driven UI refresh: FileSystemWatcher triggers immediate poller refresh
   let _fsRefreshTimer = null;
   const _scheduleRefresh = () => {
     if (_fsRefreshTimer) clearTimeout(_fsRefreshTimer);
@@ -201,7 +360,50 @@ async function activate(context) {
   fileWatcher.onDidDelete(_scheduleRefresh);
   context.subscriptions.push(fileWatcher);
 
+  for (const document of vscode.workspace.textDocuments) {
+    _seedBaseline(document);
+  }
+
   context.subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument(document => {
+      _seedBaseline(document);
+    }),
+    vscode.workspace.onDidCloseTextDocument(document => {
+      const info = _getProjectInfo(document);
+      _clearDocPreWarningState(document);
+      if (info) {
+        const { clearPreWarning } = _getPreWarningDeps();
+        clearPreWarning(info.projectPath, info.relPath);
+        if (poller) poller.forceRefresh();
+      }
+    }),
+    vscode.workspace.onDidSaveTextDocument(document => {
+      const info = _getProjectInfo(document);
+      _seedBaseline(document);
+      _preWarningFingerprints.delete(_docKey(document));
+      if (info) {
+        const { clearPreWarning } = _getPreWarningDeps();
+        clearPreWarning(info.projectPath, info.relPath);
+        if (poller) poller.forceRefresh();
+      }
+    }),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      const info = _getProjectInfo(event.document);
+      if (!info || !_isLikelyDeleteBatch(event)) return;
+
+      const key = _docKey(event.document);
+      const existing = _preWarningTimers.get(key);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(() => {
+        _preWarningTimers.delete(key);
+        _assessPreWarning(event.document).catch(err => {
+          console.warn(`[cursor-guard] pre-warning failed for ${info.relPath}: ${err.message}`);
+        });
+      }, PRE_WARNING_DEBOUNCE_MS);
+
+      _preWarningTimers.set(key, timer);
+    }),
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       const restarted = await dashMgr.autoStart(vscode.workspace.workspaceFolders);
       if (restarted && !poller._timer) poller.start();

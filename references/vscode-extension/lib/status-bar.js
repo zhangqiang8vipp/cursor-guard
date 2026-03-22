@@ -6,7 +6,7 @@ class StatusBarController {
   constructor(poller) {
     this._item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this._item.command = 'cursorGuard.openDashboard';
-    this._item.tooltip = 'Cursor Guard — click to open dashboard';
+    this._item.tooltip = 'Cursor Guard - click to open dashboard';
     this._setIdle();
     this._item.show();
 
@@ -20,43 +20,70 @@ class StatusBarController {
   }
 
   _update(data) {
+    let hasPreWarning = false;
     let hasAlert = false;
     let watcherRunning = false;
+    let preWarningLabel = '';
     let alertFileCount = 0;
     let projectCount = 0;
 
-    for (const [, p] of data) {
+    for (const [, project] of data) {
       projectCount++;
-      const d = p.dashboard;
-      if (!d) continue;
-      if (d.alerts?.active) {
-        hasAlert = true;
-        alertFileCount = d.alerts.latest?.fileCount || 0;
+      const dashboard = project.dashboard;
+      if (!dashboard) continue;
+
+      if (dashboard.preWarnings?.active && !hasPreWarning) {
+        hasPreWarning = true;
+        const latest = dashboard.preWarnings.latest;
+        preWarningLabel = latest?.file
+          ? `${latest.file} (${latest.riskPercent || '?'}%)`
+          : `${dashboard.preWarnings.count || 1} pending`;
       }
-      if (d.watcher?.running) watcherRunning = true;
+
+      if (dashboard.alerts?.active) {
+        hasAlert = true;
+        alertFileCount = dashboard.alerts.latest?.fileCount || 0;
+      }
+
+      if (dashboard.watcher?.running) watcherRunning = true;
+    }
+
+    if (hasPreWarning) {
+      this._item.text = `$(warning) Guard: Delete Risk`;
+      this._item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this._item.color = undefined;
+      this._item.tooltip = `Cursor Guard - pre-warning active: ${preWarningLabel}. Click to open dashboard.`;
+      return;
     }
 
     if (hasAlert) {
       this._item.text = `$(bell~spin) Guard: ${alertFileCount} files!`;
       this._item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       this._item.color = undefined;
-      this._item.tooltip = `Cursor Guard — ALERT: ${alertFileCount} files changed rapidly. Click to open dashboard.`;
-    } else if (watcherRunning) {
+      this._item.tooltip = `Cursor Guard - alert: ${alertFileCount} files changed rapidly. Click to open dashboard.`;
+      return;
+    }
+
+    if (watcherRunning) {
       this._item.text = '$(shield) Guard: OK';
       this._item.backgroundColor = undefined;
       this._item.color = new vscode.ThemeColor('statusBar.foreground');
-      this._item.tooltip = 'Cursor Guard — watcher running, no alerts. Click to open dashboard.';
-    } else if (projectCount > 0) {
+      this._item.tooltip = 'Cursor Guard - watcher running, no active alerts. Click to open dashboard.';
+      return;
+    }
+
+    if (projectCount > 0) {
       this._item.text = '$(eye-closed) Guard: Unprotected';
       this._item.backgroundColor = undefined;
       this._item.color = new vscode.ThemeColor('statusBar.foreground');
-      this._item.tooltip = 'Cursor Guard — watcher NOT running. Click to open dashboard, or use Command Palette > Start Watcher.';
-    } else {
-      this._item.text = '$(shield) Guard';
-      this._item.backgroundColor = undefined;
-      this._item.color = new vscode.ThemeColor('statusBar.foreground');
-      this._item.tooltip = 'Cursor Guard — no projects detected';
+      this._item.tooltip = 'Cursor Guard - watcher not running. Click to open dashboard or start watcher from the Command Palette.';
+      return;
     }
+
+    this._item.text = '$(shield) Guard';
+    this._item.backgroundColor = undefined;
+    this._item.color = new vscode.ThemeColor('statusBar.foreground');
+    this._item.tooltip = 'Cursor Guard - no projects detected';
   }
 
   dispose() {

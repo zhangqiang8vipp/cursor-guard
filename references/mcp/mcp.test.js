@@ -359,6 +359,54 @@ async function run() {
   // Clean up alert file
   try { fs.unlinkSync(alertFile); } catch { /* ignore */ }
 
+  // Verify pre-warning injection
+  const preWarningFile = path.join(gitDir, 'cursor-guard-pre-warning.json');
+  const fakePreWarning = {
+    type: 'destructive_edit_risk',
+    detectedAt: Date.now(),
+    timestamp: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 300000).toISOString(),
+    file: 'src/app.js',
+    summary: '1 method removed, 5 lines deleted (risk 68%)',
+    riskPercent: 68,
+    removedMethodCount: 1,
+    removedMethods: [{ name: 'login', lineNumber: 12 }],
+    deletedLines: 5,
+  };
+  fs.writeFileSync(preWarningFile, JSON.stringify({
+    updatedAt: new Date().toISOString(),
+    warnings: [fakePreWarning],
+  }, null, 2));
+
+  const toolsWithPreWarning = ['doctor', 'backup_status', 'dashboard'];
+  for (const toolName of toolsWithPreWarning) {
+    const resp = await rpc('tools/call', {
+      name: toolName,
+      arguments: { path: tmpDir },
+    });
+    await test(`${toolName} response contains _activePreWarning when warning exists`, () => {
+      const content = resp.result.content[0].text;
+      const data = JSON.parse(content);
+      if (!data._activePreWarning) throw new Error(`_activePreWarning missing from ${toolName}`);
+      if (data._activePreWarning.count !== 1) throw new Error(`unexpected warning count: ${data._activePreWarning.count}`);
+      if (data._activePreWarning.latest?.file !== 'src/app.js') {
+        throw new Error(`unexpected warning file: ${data._activePreWarning.latest?.file}`);
+      }
+    });
+  }
+
+  const snapshotPreWarningResp = await rpc('tools/call', {
+    name: 'snapshot_now',
+    arguments: { path: tmpDir, strategy: 'git' },
+  });
+  await test('snapshot_now response contains _activePreWarning', () => {
+    const content = snapshotPreWarningResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (!data._activePreWarning) throw new Error('_activePreWarning missing from snapshot_now');
+  });
+
+  try { fs.unlinkSync(preWarningFile); } catch { /* ignore */ }
+
   // Cleanup
   serverProcess.kill();
   fs.rmSync(tmpDir, { recursive: true, force: true });

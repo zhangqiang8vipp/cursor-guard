@@ -14,6 +14,7 @@ const { runFixes } = require('./doctor-fix');
 const { getBackupStatus } = require('./status');
 const { createChangeTracker, recordChange, checkAnomaly, getAlertStatus, saveAlert, loadActiveAlert, clearExpiredAlert, clearAlert, alertFilePath } = require('./anomaly');
 const { getDashboard, dirSizeBytes, formatBytes, relativeTime } = require('./dashboard');
+const { assessDeletionRisk, recordPreWarning, loadActivePreWarnings, listPreWarningHistory, clearPreWarning } = require('./pre-warning');
 
 let passed = 0;
 let failed = 0;
@@ -369,7 +370,7 @@ test('createGitSnapshot drops files when protect scope narrows', () => {
   }
 });
 
-test('createGitSnapshot with basename-only protect matches nested files', () => {
+test('createGitSnapshot with basename-only protect does not match nested files in strict mode', () => {
   const tmpDir = createTempGitRepo();
   try {
     const { loadConfig } = require('../utils');
@@ -380,7 +381,7 @@ test('createGitSnapshot with basename-only protect matches nested files', () => 
     const treeFiles = execFileSync('git', ['ls-tree', '--name-only', '-r', result.commitHash], {
       cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8',
     }).trim().split('\n');
-    assert.ok(treeFiles.includes('src/app.js'), 'basename "app.js" should match nested src/app.js');
+    assert.ok(!treeFiles.includes('src/app.js'), 'basename-only protect should NOT match nested src/app.js');
     assert.ok(!treeFiles.includes('hello.txt'), 'unprotected files should be excluded');
   } finally {
     cleanupDir(tmpDir);
@@ -1368,6 +1369,84 @@ test('clearExpiredAlert removes expired file but leaves active ones', () => {
 });
 
 // ── core/dashboard.js ───────────────────────────────────────────
+
+console.log('\ncore/pre-warning:');
+
+test('assessDeletionRisk flags removed methods', () => {
+  const prevText = [
+    'function keepMe() {',
+    '  return true;',
+    '}',
+    '',
+    'function removeMe() {',
+    '  return false;',
+    '}',
+  ].join('\n');
+  const nextText = [
+    'function keepMe() {',
+    '  return true;',
+    '}',
+  ].join('\n');
+
+  const result = assessDeletionRisk(prevText, nextText, { threshold: 30 });
+  assert.strictEqual(result.triggered, true);
+  assert.strictEqual(result.removedMethodCount, 1);
+  assert.ok(result.removedMethods.some(method => method.name === 'removeMe'));
+  assert.ok(result.deletedLines >= 3);
+  assert.ok(result.riskPercent >= 40);
+});
+
+test('recordPreWarning persists active warnings and history', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    recordPreWarning(tmpDir, {
+      file: 'src/app.js',
+      riskPercent: 68,
+      summary: '1 method removed, 5 lines deleted (risk 68%)',
+      removedMethodCount: 1,
+      removedMethods: [{ name: 'login', lineNumber: 12 }],
+      deletedLines: 5,
+    }, { setActive: true });
+
+    const active = loadActivePreWarnings(tmpDir);
+    const history = listPreWarningHistory(tmpDir, 5);
+    assert.strictEqual(active.length, 1);
+    assert.strictEqual(active[0].file, 'src/app.js');
+    assert.ok(active[0].expiresAt, 'active warning should have expiry');
+    assert.strictEqual(history.length, 1);
+
+    clearPreWarning(tmpDir, 'src/app.js');
+    assert.strictEqual(loadActivePreWarnings(tmpDir).length, 0);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('getBackupStatus and getDashboard expose active pre-warning state', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    recordPreWarning(tmpDir, {
+      file: 'src/app.js',
+      riskPercent: 72,
+      summary: '1 method removed, 6 lines deleted (risk 72%)',
+      removedMethodCount: 1,
+      removedMethods: [{ name: 'login', lineNumber: 15 }],
+      deletedLines: 6,
+    }, { setActive: true });
+
+    const status = getBackupStatus(tmpDir);
+    const dashboard = getDashboard(tmpDir);
+
+    assert.strictEqual(status.preWarnings.active, true);
+    assert.strictEqual(status.preWarnings.count, 1);
+    assert.strictEqual(status.preWarnings.latest.file, 'src/app.js');
+    assert.strictEqual(dashboard.preWarnings.active, true);
+    assert.strictEqual(dashboard.preWarnings.count, 1);
+    assert.ok(dashboard.health.issues.some(issue => issue.includes('Pre-warning active')));
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
 
 console.log('\ncore/dashboard:');
 

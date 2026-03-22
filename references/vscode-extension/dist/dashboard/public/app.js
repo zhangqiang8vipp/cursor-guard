@@ -62,6 +62,13 @@ const I18N = {
     'alert.breakdown':       '{added} added, {modified} modified, {deleted} deleted',
     'alert.suggestion':      'Check recent changes and consider creating a manual snapshot',
     'alert.viewFiles':       'View file details ({n} files)',
+    'preWarning.title':      'Pre-Warning',
+    'preWarning.none':       'No destructive edit risk detected',
+    'preWarning.active':     'Delete Risk',
+    'preWarning.file':       'File',
+    'preWarning.risk':       'Risk',
+    'preWarning.methods':    'Methods removed',
+    'preWarning.suggestion': 'Review this deletion before applying or restore from the latest snapshot',
     'modal.alertFiles':      'Alert File Details',
     'modal.col.restore':     'Restore',
     'modal.copyRestore':     'Copy cmd',
@@ -171,6 +178,7 @@ const I18N = {
     'issue.disk_low':                   'Disk space low ({gb} GB free)',
     'issue.git_backup_stale':           'Last git backup is stale ({rel})',
     'issue.active_alert':               'Active alert: {type} — {count} files in {window}s',
+    'issue.pre_warning_active':         'Pre-warning active: {summary}',
     'issue.alert_high_velocity':        'High volume of file changes detected. Consider reviewing recent modifications and creating a manual snapshot.',
 
     'check.Git installed':              'Git installed',
@@ -290,6 +298,13 @@ const I18N = {
     'alert.breakdown':       '新增 {added} · 修改 {modified} · 删除 {deleted}',
     'alert.suggestion':      '建议检查近期变更，并考虑手动创建快照',
     'alert.viewFiles':       '查看文件详情（{n} 个文件）',
+    'preWarning.title':      '事先预警',
+    'preWarning.none':       '未检测到破坏性编辑风险',
+    'preWarning.active':     '删除风险',
+    'preWarning.file':       '文件',
+    'preWarning.risk':       '风险',
+    'preWarning.methods':    '移除的方法数',
+    'preWarning.suggestion': '建议在应用前检查这次删除，或直接从最新快照恢复',
     'modal.alertFiles':      '告警文件详情',
     'modal.col.restore':     '恢复',
     'modal.copyRestore':     '复制命令',
@@ -399,6 +414,7 @@ const I18N = {
     'issue.disk_low':                   '磁盘空间不足（{gb} GB 可用）',
     'issue.git_backup_stale':           '最近 Git 备份已过时（{rel}）',
     'issue.active_alert':               '活跃告警：{type}——{count} 个文件在 {window} 秒内变更',
+    'issue.pre_warning_active':         '事先预警生效：{summary}',
     'issue.alert_high_velocity':        '检测到大量文件变更，建议检查最近修改并手动创建快照。',
 
     'check.Git installed':              'Git 安装状态',
@@ -557,6 +573,7 @@ const ISSUE_PATTERNS = [
   { re: /^Disk space low \((.+?) GB free\)$/,                       key: 'issue.disk_low', extract: ['gb'] },
   { re: /^Last git backup is stale \((.+?)\)$/,                     key: 'issue.git_backup_stale', extract: ['rel'] },
   { re: /^Active alert: (.+?) — (\d+) files in (\d+)s$/,           key: 'issue.active_alert', extract: ['type', 'count', 'window'] },
+  { re: /^Pre-warning active: (.+)$/,                               key: 'issue.pre_warning_active', extract: ['summary'] },
   { re: /^High volume of file changes/,                             key: 'issue.alert_high_velocity' },
 ];
 
@@ -854,6 +871,7 @@ function renderOverview(d) {
   renderHealthCard(d.health);
   renderGitBackupCard(d.lastBackup);
   renderShadowBackupCard(d.lastBackup);
+  renderPreWarningCard(d.preWarnings);
   renderWatcherCard(d.watcher);
   renderAlertCard(d.alerts);
 }
@@ -900,6 +918,34 @@ function renderShadowBackupCard(lastBackup) {
     <div class="card-label">${t('shadowBackup.title')}</div>
     <div class="card-value">${esc(relativeTime(s.timestamp))}</div>
     <div class="card-detail text-muted text-sm">${esc(formatTime(s.timestamp))}</div>
+  `;
+}
+
+function renderPreWarningCard(preWarnings) {
+  const el = $('#card-prewarning');
+  if (!preWarnings?.active) {
+    el.innerHTML = `
+      <div class="card-label">${t('preWarning.title')}</div>
+      <div class="card-status"><span class="status-dot status-healthy"></span><span>${t('preWarning.none')}</span></div>
+    `;
+    return;
+  }
+
+  const warning = preWarnings.latest || {};
+  const file = warning.file || '-';
+  const risk = warning.riskPercent !== undefined ? `${warning.riskPercent}%` : '-';
+  const methods = warning.removedMethodCount || 0;
+
+  el.innerHTML = `
+    <div class="card-label">${t('preWarning.title')}</div>
+    <div class="card-status"><span class="status-dot status-warning"></span><span class="status-text status-warning">${t('preWarning.active')}</span></div>
+    <div class="alert-details">
+      <div class="alert-detail-row"><span class="alert-detail-label">${t('preWarning.file')}</span><span class="text-mono">${esc(file)}</span></div>
+      <div class="alert-detail-row"><span class="alert-detail-label">${t('preWarning.risk')}</span><span>${esc(risk)}</span></div>
+      ${methods > 0 ? `<div class="alert-detail-row"><span class="alert-detail-label">${t('preWarning.methods')}</span><span>${methods}</span></div>` : ''}
+      <div class="alert-detail-row alert-breakdown text-sm">${esc(warning.summary || t('preWarning.suggestion'))}</div>
+      <div class="alert-detail-row alert-suggestion text-sm text-muted">${t('preWarning.suggestion')}</div>
+    </div>
   `;
 }
 
