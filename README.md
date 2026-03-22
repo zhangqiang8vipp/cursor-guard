@@ -296,16 +296,32 @@ Features:
 - **Security** — binds to `127.0.0.1` only (not exposed to LAN), API uses project IDs instead of raw file paths, static file serving restricted to `public/` directory
 - **Zero extra dependencies** — uses Node.js built-in `http` module + existing cursor-guard core modules
 
-### IDE Extension (VSCode / Cursor)
+### IDE Extension (VSCode / Cursor / Windsurf)
 
 Embed the full dashboard directly inside your IDE — no browser needed.
 
-The extension is located at `references/vscode-extension/`. To install:
+#### Method A: VSIX standalone (recommended, no npm needed)
 
 ```bash
-# From the cursor-guard skill directory
+# Build the self-contained VSIX package
 cd references/vscode-extension
-# Install as a development extension in your IDE
+node build-vsix.js
+cd dist
+npx vsce package
+
+# Install the generated .vsix file
+code --install-extension cursor-guard-ide-4.7.5.vsix
+```
+
+On first activation, the extension automatically:
+- Installs `SKILL.md` to your IDE's skills directory
+- Registers the MCP Server in your IDE's `mcp.json`
+- Creates a default `.cursor-guard.json` if missing
+
+#### Method B: From source (development)
+
+```bash
+cd references/vscode-extension
 code --install-extension .
 ```
 
@@ -314,10 +330,11 @@ Features:
 - **WebView Dashboard** — full dashboard embedded as an editor tab, identical to the browser version
 - **Status Bar Indicator** — shows `Guard: OK` (green) or `Guard: 22 files!` (yellow) in real-time
 - **Sidebar TreeView** — activity bar icon with project list, watcher status, backup stats, alerts, health
+- **Visual Sidebar** — graphical dashboard with progress bars, status badges, backup timeline in sidebar
 - **Command Palette** — `Cursor Guard: Open Dashboard`, `Snapshot Now`, `Start Watcher`, `Refresh`
-- **Auto-activation** — detects `.cursor-guard.json` in workspace, starts dashboard server automatically
+- **Auto-setup (V4.7.5)** — auto-detects IDE type, installs Skill, registers MCP, creates config on first run
 - **Multi-project** — hot-loads all workspace folders with `.cursor-guard.json`
-- **Compatible** — works with VSCode ^1.74.0, Cursor, Windsurf, and all VSCode-based IDEs
+- **Compatible** — works with VSCode ^1.74.0, Cursor, Windsurf, Trae, and all VSCode-based IDEs
 
 ---
 
@@ -410,10 +427,20 @@ The skill activates on these signals:
 
 ## Changelog
 
-### v4.7.0 — IDE Extension
+### v4.7.5 — VSIX Self-Contained Build + Auto-Setup
+
+- **Feature**: `build-vsix.js` packages all runtime dependencies into a self-contained VSIX — no npm installation needed
+- **Feature**: `auto-setup.js` auto-detects IDE type (Cursor/Windsurf/Trae/VSCode), installs SKILL.md, registers MCP Server, creates default config on first activation
+- **Fix**: `dashboard/server.js` PKG_PATH now dynamically resolved (supports skill dir, VSIX flat, `guard-version.json` fallback)
+- **Enhancement**: Added `onStartupFinished` activation event so auto-setup runs even without `.cursor-guard.json`
+
+### v4.7.0–v4.7.4 — IDE Extension + Bug Fixes
 
 - **Feature**: VSCode/Cursor/Windsurf extension — full dashboard as WebView tab, status bar alert indicator, sidebar TreeView with project status, Command Palette integration
 - **Feature**: Auto-activation on `.cursor-guard.json` detection, dashboard server runs in extension host process (zero subprocess overhead)
+- **Feature**: Visual sidebar dashboard with charts, progress bars, status badges (v4.7.3)
+- **Fix**: Smart path resolver (`paths.js`) for VSIX/skill/npm installation contexts (v4.7.4)
+- **Fix**: WebView CSP, watcher infinite restart, snapshot status handling (v4.7.1–v4.7.4)
 - **Adapt**: `fetchJson()` supports `__GUARD_BASE_URL__` for WebView; `copyText()` bridges to `vscode.env.clipboard` when in IDE
 
 ### v4.6.x — Alert UX Overhaul

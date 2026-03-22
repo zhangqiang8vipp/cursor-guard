@@ -7,10 +7,13 @@ const { StatusBarController } = require('./lib/status-bar');
 const { GuardTreeView } = require('./lib/tree-view');
 const { Poller } = require('./lib/poller');
 const { SidebarDashboardProvider } = require('./lib/sidebar-webview');
+const { autoSetup } = require('./lib/auto-setup');
 
 let dashMgr, poller, statusBar, treeView, webviewProvider, sidebarProvider;
 
 async function activate(context) {
+  await autoSetup(context, vscode);
+
   dashMgr = new DashboardManager();
   poller = new Poller(dashMgr);
   statusBar = new StatusBarController(poller);

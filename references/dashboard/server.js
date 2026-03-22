@@ -24,8 +24,25 @@ function clearGuardCache() {
 }
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const PKG_PATH = path.resolve(__dirname, '..', '..', 'package.json');
-let SERVER_VERSION = require('../../package.json').version;
+const PKG_PATH = _findPackageJson(__dirname);
+let SERVER_VERSION = _readVersion(PKG_PATH);
+
+function _findPackageJson(from) {
+  const candidates = [
+    path.resolve(from, '..', '..', 'package.json'),
+    path.resolve(from, '..', 'package.json'),
+    path.resolve(from, '..', 'guard-version.json'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidates[0];
+}
+
+function _readVersion(pkgPath) {
+  try { return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version || '0.0.0'; }
+  catch { return '0.0.0'; }
+}
 const DEFAULT_PORT = 3120;
 const MAX_PORT_RETRIES = 10;
 const ALLOWED_HOSTS = /^(127\.0\.0\.1|localhost)(:\d+)?$/;

@@ -296,16 +296,32 @@ node references\dashboard\server.js --path "D:\MyProject"
 - **安全性** — 仅绑定 `127.0.0.1`（不暴露到局域网）、API 使用项目 ID 而非原始路径、静态文件服务严格限制在 `public/` 目录
 - **零额外依赖** — 使用 Node.js 内置 `http` 模块 + cursor-guard 已有核心模块
 
-### IDE 扩展（VSCode / Cursor）
+### IDE 扩展（VSCode / Cursor / Windsurf）
 
 将完整仪表盘直接嵌入 IDE 内部，无需打开浏览器。
 
-扩展位于 `references/vscode-extension/`。安装方式：
+#### 方式 A：VSIX 独立安装（推荐，无需 npm）
 
 ```bash
-# 从 cursor-guard skill 目录
+# 构建独立 VSIX 包
 cd references/vscode-extension
-# 作为开发扩展安装到 IDE
+node build-vsix.js
+cd dist
+npx vsce package
+
+# 安装生成的 .vsix 文件
+code --install-extension cursor-guard-ide-4.7.5.vsix
+```
+
+首次激活时，扩展自动：
+- 将 `SKILL.md` 安装到 IDE 的 skills 目录
+- 将 MCP Server 注册到 IDE 的 `mcp.json`
+- 创建默认 `.cursor-guard.json` 配置（如不存在）
+
+#### 方式 B：从源码安装（开发模式）
+
+```bash
+cd references/vscode-extension
 code --install-extension .
 ```
 
@@ -314,10 +330,11 @@ code --install-extension .
 - **WebView 仪表盘** — 完整仪表盘作为编辑器标签页嵌入，与浏览器版本完全一致
 - **状态栏指示器** — 实时显示 `Guard: OK`（绿色）或 `Guard: 22 files!`（黄色告警）
 - **侧边栏 TreeView** — Activity Bar 图标，树形展示项目列表、Watcher 状态、备份统计、告警、健康评估
+- **可视化图表侧边栏** — 进度条、状态徽章、备份时间线等图形化展示
 - **命令面板** — `Cursor Guard: Open Dashboard`、`Snapshot Now`、`Start Watcher`、`Refresh`
-- **自动激活** — 检测到工作区有 `.cursor-guard.json` 时自动启动 Dashboard 服务
+- **自动配置（V4.7.5）** — 首次运行自动检测 IDE 类型、安装 Skill、注册 MCP、创建配置
 - **多项目** — 热加载所有包含 `.cursor-guard.json` 的工作区文件夹
-- **兼容性** — 支持 VSCode ^1.74.0、Cursor、Windsurf 及所有基于 VSCode 的 IDE
+- **兼容性** — 支持 VSCode ^1.74.0、Cursor、Windsurf、Trae 及所有基于 VSCode 的 IDE
 
 ---
 
@@ -410,10 +427,19 @@ code --install-extension .
 
 ## 更新日志
 
-### v4.7.0 — IDE 扩展
+### v4.7.5 — VSIX 独立打包 + 自动配置
+
+- **功能**：`build-vsix.js` 将所有运行时依赖打包为独立 VSIX —— 无需 npm 安装
+- **功能**：`auto-setup.js` 首次激活自动检测 IDE 类型（Cursor/Windsurf/Trae/VSCode），安装 SKILL.md，注册 MCP Server，创建默认配置
+- **修复**：`dashboard/server.js` PKG_PATH 改为动态查找（支持 skill 目录、VSIX 扁平、guard-version.json 回退）
+- **增强**：新增 `onStartupFinished` 激活事件，确保无 `.cursor-guard.json` 的项目也能触发自动配置
+
+### v4.7.0–v4.7.4 — IDE 扩展 + Bug 修复
 
 - **功能**：VSCode/Cursor/Windsurf 扩展 — 完整仪表盘作为 WebView 标签页嵌入，状态栏告警指示器，侧边栏 TreeView 项目状态，命令面板集成
-- **功能**：检测到 `.cursor-guard.json` 自动激活，Dashboard 服务在扩展宿主进程内运行（零额外进程开销）
+- **功能**：可视化图表侧边栏 — 进度条、状态徽章、备份时间线（v4.7.3）
+- **修复**：智能路径解析器 `paths.js` 支持 VSIX/skill/npm 多种安装环境（v4.7.4）
+- **修复**：WebView CSP、Watcher 无限重启、快照状态处理（v4.7.1–v4.7.4）
 - **适配**：`fetchJson()` 支持 `__GUARD_BASE_URL__` 用于 WebView；`copyText()` 在 IDE 中通过 `postMessage` 桥接到 `vscode.env.clipboard`
 
 ### v4.6.x — 告警 UX 大优化

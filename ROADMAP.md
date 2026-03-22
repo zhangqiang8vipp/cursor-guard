@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.4`  
-> **文档状态**：`V2` ~ `V4.7.4` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.5`  
+> **文档状态**：`V2` ~ `V4.7.5` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -732,6 +732,22 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
     "cooldown_seconds": 60
   }
 }
+```
+
+### V4.7.5：VSIX 独立打包 + 自动配置 Skill/MCP ✅
+
+| 组件 | 说明 |
+|------|------|
+| **`build-vsix.js` 打包脚本** | 将所有运行时依赖（dashboard、lib/core、bin、mcp、skill 文件）复制到 `dist/` 扁平结构，自动同步版本号，生成可独立安装的 `.vsix` 包。无需 npm 安装 |
+| **`auto-setup.js` 自动配置** | 插件激活时自动检测 IDE 类型（Cursor/Windsurf/VSCode），将 SKILL.md 安装到对应 skills 目录，将 MCP Server 注册到 mcp.json，创建默认 `.cursor-guard.json` 配置。所有操作不覆盖已有配置 |
+| **IDE 类型检测** | 通过 `vscode.env.appName` 和目录存在性检测 IDE 类型：Cursor → `.cursor/`、Windsurf → `.windsurf/`、Trae → `.trae/`、VSCode → `.vscode/`（预留） |
+| **dashboard/server.js PKG_PATH 修复** | `PKG_PATH` 从硬编码 `../../package.json` 改为动态查找（支持 skill 目录、VSIX 扁平、`guard-version.json` 回退），版本读取失败时安全降级为 `0.0.0` |
+| **激活事件扩展** | 新增 `onStartupFinished` 激活事件，确保在没有 `.cursor-guard.json` 的项目中也能触发自动配置 |
+| **VSIX 独立分发** | 用户只需安装 `.vsix` 文件（或从 Marketplace 安装），无需 npm。打开项目后 Dashboard/Watcher/Skill/MCP 全部自动就绪 |
+
+用户体验流程：
+```
+安装 .vsix → 打开项目 → activate() → 检测 IDE → 安装 SKILL.md → 注册 MCP → 创建配置 → Dashboard 启动 → 就绪
 ```
 
 ### V4.7.4：路径解析器 + 4 Bug 修复 ✅
