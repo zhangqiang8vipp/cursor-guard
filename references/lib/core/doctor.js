@@ -197,7 +197,7 @@ function runDiagnostics(projectDir) {
     const allFiles = walkDir(projectDir, projectDir);
     let protectedCount = 0;
     for (const f of allFiles) {
-      if (matchesAny(cfg.protect, f.rel)) protectedCount++;
+      if (matchesAny(cfg.protect, f.rel, { strict: true })) protectedCount++;
     }
     check('Protect patterns', 'PASS', `${protectedCount} / ${allFiles.length} files matched by protect patterns`);
   }

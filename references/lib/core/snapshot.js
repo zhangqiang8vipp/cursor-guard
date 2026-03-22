@@ -110,12 +110,10 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     const parentHash = git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
 
     if (cfg.protect.length > 0) {
-      // Add everything then prune — 'git add -- <pattern>' treats bare names as
-      // root-relative pathspecs, but matchesAny() also checks basenames (e.g.
-      // "settings.json" matches "src/settings.json").  Pruning via matchesAny
-      // keeps the semantics consistent with filterFiles().
+      // protect uses strict matching (full path only, no basename fallback)
+      // so *.js only matches root-level js files, not nested ones
       execFileSync('git', ['add', '-A'], { cwd, env, stdio: 'pipe' });
-      pruneIndexFiles(cwd, env, f => !matchesAny(cfg.protect, f));
+      pruneIndexFiles(cwd, env, f => !matchesAny(cfg.protect, f, { strict: true }));
     } else {
       if (parentHash) {
         execFileSync('git', ['read-tree', branchRef], { cwd, env, stdio: 'pipe' });

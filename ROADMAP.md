@@ -744,6 +744,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | **Open Dashboard 启动容错** | Server 未运行时提供 "Start Server" 按钮自动启动，不再直接报错退出。`DashboardManager` 新增 `ensureRunning()` 方法 |
 | **WebView Fetch 错误降级** | 前端 `fetchJson` 连续 3 次失败后通过 `postMessage({ type: 'fetchError' })` 通知 host，自动关闭 WebView 面板并 fallback 到浏览器打开 |
 | **侧边栏 Protection Scope 卡片** | 新增独立保护范围卡片：顶部三 chip 显示 🛡️ N protected / 🚫 N excluded / N total；下方按 Protect/Ignore 分组展示匹配模式标签（绿色/红色），最多 6 个，超出显示 "+N more"。后端 `getDashboard` 新增 `totalFiles`、`excludedCount` 字段 |
+| **protect 匹配语义修正（破坏性修复）** | `matchesAny` 新增 `{ strict: true }` 模式。**protect 规则不再匹配 basename**（仅匹配完整相对路径），`*.js` 只保护根目录 js 文件，要保护所有深度需写 `**/*.js`。**ignore 保留 basename 匹配**（宽松排除更安全）。修复了 `*.json` / `*.js` 意外保护 `node_modules/`、`.cursor/` 等无关目录的问题。`filterFiles`、`pruneIndexFiles`（snapshot.js）、`doctor.js` 统一使用 strict 模式。新增 4 组 strict 模式单元测试 |
 
 ### V4.7.7：右键菜单动态 Protect/Ignore ✅
 

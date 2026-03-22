@@ -90,9 +90,27 @@ test('matches when any pattern hits', () => {
   assert.strictEqual(matchesAny(['*.js', '*.ts'], 'foo.py'), false);
 });
 
-test('checks leaf filename for deep paths', () => {
+test('checks leaf filename for deep paths (default/loose mode)', () => {
   assert.strictEqual(matchesAny(['*.key'], 'secrets/server.key'), true);
   assert.strictEqual(matchesAny(['.env'], 'config/.env'), true);
+});
+
+test('strict mode: *.js only matches root-level, not nested', () => {
+  assert.strictEqual(matchesAny(['*.js'], 'app.js', { strict: true }), true);
+  assert.strictEqual(matchesAny(['*.js'], 'src/app.js', { strict: true }), false);
+  assert.strictEqual(matchesAny(['*.js'], '.cursor/skills/extension.js', { strict: true }), false);
+  assert.strictEqual(matchesAny(['*.js'], 'node_modules/express/index.js', { strict: true }), false);
+});
+
+test('strict mode: src/** still matches nested files', () => {
+  assert.strictEqual(matchesAny(['src/**'], 'src/app.js', { strict: true }), true);
+  assert.strictEqual(matchesAny(['src/**'], 'src/utils/helper.js', { strict: true }), true);
+  assert.strictEqual(matchesAny(['src/**'], 'lib/other.js', { strict: true }), false);
+});
+
+test('strict mode: **/*.js explicitly matches all depths', () => {
+  assert.strictEqual(matchesAny(['**/*.js'], 'src/app.js', { strict: true }), true);
+  assert.strictEqual(matchesAny(['**/*.js'], 'a/b/c.js', { strict: true }), true);
 });
 
 test('empty patterns matches nothing', () => {

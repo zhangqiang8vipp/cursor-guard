@@ -36,12 +36,19 @@ function globMatch(pattern, relPath) {
 
 /**
  * Check if a relative file path matches any pattern in a list.
- * Also checks leaf filename for patterns like "*.log".
+ *
+ * @param {string[]} patterns
+ * @param {string}   relPath
+ * @param {{ strict?: boolean }} [opts]
+ *   strict = true  → only match against full relPath (for `protect`)
+ *   strict = false → also match against basename   (for `ignore` / `secrets`)
  */
-function matchesAny(patterns, relPath) {
-  const leaf = path.basename(relPath);
+function matchesAny(patterns, relPath, opts) {
+  const strict = opts?.strict === true;
+  const leaf = strict ? null : path.basename(relPath);
   for (const pat of patterns) {
-    if (globMatch(pat, relPath) || globMatch(pat, leaf)) return true;
+    if (globMatch(pat, relPath)) return true;
+    if (!strict && globMatch(pat, leaf)) return true;
   }
   return false;
 }
@@ -427,7 +434,7 @@ function parseArgs(argv) {
 function filterFiles(files, cfg) {
   let result = files;
   if (cfg.protect.length > 0) {
-    result = result.filter(f => matchesAny(cfg.protect, f.rel));
+    result = result.filter(f => matchesAny(cfg.protect, f.rel, { strict: true }));
   }
   result = result.filter(f => {
     if (cfg.ignore.length > 0 && matchesAny(cfg.ignore, f.rel)) return false;
