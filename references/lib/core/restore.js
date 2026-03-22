@@ -170,7 +170,7 @@ function restoreFile(projectDir, file, source, opts = {}) {
  *
  * @param {string} projectDir
  * @param {string} source - Commit hash or ref
- * @returns {{ status: 'ok'|'error', files?: Array<{path: string, change: 'modified'|'added'|'deleted'}>, totalChanged?: number, error?: string }}
+ * @returns {{ status: 'ok'|'error', files?: Array<{path: string, change: string}>, protectedPaths?: {count: number, note?: string}, totalChanged?: number, error?: string }}
  */
 function previewProjectRestore(projectDir, source) {
   if (!isGitRepo(projectDir)) {
@@ -218,13 +218,27 @@ function previewProjectRestore(projectDir, source) {
       }
     }
 
+    const protectedFiles = [];
+    const projectFiles = [];
     for (const f of files) {
       if (isToolPath(f.path)) {
-        f.warning = 'protected path — will be preserved from HEAD to prevent tool/config downgrade';
+        protectedFiles.push(f);
+      } else {
+        projectFiles.push(f);
       }
     }
 
-    return { status: 'ok', files, totalChanged: files.length };
+    return {
+      status: 'ok',
+      files: projectFiles,
+      protectedPaths: {
+        count: protectedFiles.length,
+        note: protectedFiles.length > 0
+          ? 'these paths (.cursor/, .cursor-guard.json, .gitignore) will be preserved from HEAD'
+          : undefined,
+      },
+      totalChanged: files.length,
+    };
   } catch (e) {
     return { status: 'error', error: e.message };
   }

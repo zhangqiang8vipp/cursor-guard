@@ -377,6 +377,13 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.3.4
+
+- **Improve**: Log rotation — `backup.log` now rotates at 1MB, keeping up to 3 old files (`backup.log.1`, `.2`, `.3`). Rotation runs on watcher startup and every 100 writes
+- **Improve**: Watcher single-instance protection — lock file now includes startup timestamp; locks older than 24h are auto-cleaned even if PID check is unreliable on Windows
+- **Improve**: `previewProjectRestore` output grouped — protected paths (`.cursor/`, `.gitignore`, `.cursor-guard.json`) summarized as `protectedPaths: { count: N }` instead of listing thousands of individual files, drastically reducing token cost
+- **Improve**: SKILL.md Hard Rule #15 — agents must commit skill files after upgrade to ensure `restore_project` HEAD protection works correctly
+
 ### v4.3.3
 
 - **Feature**: Intent context for snapshots — `snapshot_now` now accepts `intent`, `agent`, and `session` parameters, stored as Git commit trailers to form an audit trail per operation

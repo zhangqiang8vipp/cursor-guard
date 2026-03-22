@@ -377,6 +377,13 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ## 更新日志
 
+### v4.3.4
+
+- **改进**：日志轮转——`backup.log` 超过 1MB 自动轮转，保留最近 3 个旧文件。watcher 启动时和每 100 次写入时检查
+- **改进**：Watcher 单实例保护——锁文件新增启动时间戳；超过 24 小时的锁即使 PID 检查不可靠（Windows）也自动清理
+- **改进**：`previewProjectRestore` 分组输出——受保护路径（`.cursor/`、`.gitignore`、`.cursor-guard.json`）汇总为 `protectedPaths: { count: N }`，不再逐一列出数千个文件，大幅降低 token 消耗
+- **改进**：SKILL.md 硬规则 #15——升级后 Agent 必须提交 skill 文件，确保 `restore_project` 的 HEAD 保护机制生效
+
 ### v4.3.3
 
 - **功能**：快照意图上下文——`snapshot_now` 新增 `intent`（操作意图）、`agent`（AI 模型）、`session`（会话 ID）参数，作为 Git commit trailer 存储，形成按操作事件的审计链

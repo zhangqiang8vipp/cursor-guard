@@ -583,6 +583,7 @@ Skip the block for unrelated turns.
 12. **Concurrent agents**: if multiple Agent threads are active, warn the user to avoid simultaneous writes to the same file. Snapshots cannot prevent race conditions between parallel agents.
 13. **Preservation must not pollute** — all pre-restore backups use temp index + dedicated ref (`refs/guard/pre-restore`). The user's staging area, working tree, and commit history on their branch are never modified by the preservation process.
 14. **Do not restore `.cursor/` directory** — `.cursor/skills/`, `.cursor/rules/`, and `.cursor/mcp.json` are tool infrastructure, not project code. `restore_project` automatically protects this directory. Never include `.cursor/` in manual restore commands unless the user explicitly requests it. Restoring `.cursor/skills/cursor-guard/` would downgrade the protection tool itself.
+15. **Commit skill files after upgrade** — after running `cursor-guard-init` or upgrading the skill, immediately commit `.cursor/skills/cursor-guard/` and `.cursor-guard.json` to HEAD (`git add .cursor/ .cursor-guard.json && git commit -m "chore: upgrade cursor-guard"`). This ensures `restore_project`'s HEAD protection mechanism can preserve the current skill version. Without this commit, a restore could revert the skill to an older version.
 
 ---
 

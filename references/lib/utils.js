@@ -354,19 +354,31 @@ function timestamp() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function createLogger(logFilePath, maxSizeMB = 10) {
+function createLogger(logFilePath, { maxSizeMB = 1, maxFiles = 3 } = {}) {
   let writeCount = 0;
-  function rotateIfNeeded() {
-    if (++writeCount % 100 !== 0) return;
+  const maxBytes = maxSizeMB * 1024 * 1024;
+
+  function rotate() {
     try {
       const stat = fs.statSync(logFilePath);
-      if (stat.size > maxSizeMB * 1024 * 1024) {
-        const old = logFilePath + '.old';
-        try { fs.unlinkSync(old); } catch { /* ignore */ }
-        fs.renameSync(logFilePath, old);
-      }
-    } catch { /* ignore */ }
+      if (stat.size <= maxBytes) return;
+    } catch { return; }
+    for (let i = maxFiles - 1; i >= 1; i--) {
+      const from = i === 1 ? logFilePath + '.1' : logFilePath + '.' + i;
+      const to = logFilePath + '.' + (i + 1);
+      try { fs.renameSync(from, to); } catch { /* ignore */ }
+    }
+    try { fs.renameSync(logFilePath, logFilePath + '.1'); } catch { /* ignore */ }
+    try { fs.unlinkSync(logFilePath + '.' + (maxFiles + 1)); } catch { /* ignore */ }
   }
+
+  rotate();
+
+  function rotateIfNeeded() {
+    if (++writeCount % 100 !== 0) return;
+    rotate();
+  }
+
   return {
     log(msg, c = 'green') {
       const line = `${timestamp()}  ${msg}`;

@@ -72,24 +72,39 @@ async function runBackup(projectDir, intervalOverride) {
   // Ensure backup dir
   fs.mkdirSync(backupDir, { recursive: true });
 
-  // Lock file with stale detection
+  // Lock file with stale detection (PID + age)
+  const LOCK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
   if (fs.existsSync(lockFile)) {
     let stale = false;
+    let reason = '';
     try {
       const content = fs.readFileSync(lockFile, 'utf-8');
       const pidMatch = content.match(/pid=(\d+)/);
-      if (pidMatch) {
-        const oldPid = parseInt(pidMatch[1], 10);
-        if (!isProcessAlive(oldPid)) {
+      const startedMatch = content.match(/started=(.+)/);
+      const oldPid = pidMatch ? parseInt(pidMatch[1], 10) : null;
+      const startedAt = startedMatch ? Date.parse(startedMatch[1]) : NaN;
+
+      if (oldPid && !isProcessAlive(oldPid)) {
+        stale = true;
+        reason = `pid ${oldPid} not running`;
+      } else if (!isNaN(startedAt) && Date.now() - startedAt > LOCK_MAX_AGE_MS) {
+        stale = true;
+        reason = `lock age > 24h (started ${startedMatch[1]})`;
+      } else if (!oldPid) {
+        const stat = fs.statSync(lockFile);
+        if (Date.now() - stat.mtimeMs > LOCK_MAX_AGE_MS) {
           stale = true;
-          console.log(color.yellow(`[guard] Stale lock detected (pid ${oldPid} not running). Cleaning up.`));
-          fs.unlinkSync(lockFile);
+          reason = 'lock file too old (no PID, mtime > 24h)';
         }
       }
     } catch { /* ignore */ }
-    if (!stale) {
+    if (stale) {
+      console.log(color.yellow(`[guard] Stale lock detected (${reason}). Cleaning up.`));
+      try { fs.unlinkSync(lockFile); } catch { /* ignore */ }
+    } else {
       console.log(color.red(`[guard] ERROR: Lock file exists (${lockFile}).`));
-      console.log(color.red('  If no other instance is running, delete it and retry.'));
+      console.log(color.red('  Another watcher instance may be running.'));
+      console.log(color.red('  If no other instance is running, delete the lock file and retry.'));
       process.exit(1);
     }
   }
