@@ -497,7 +497,7 @@ The skill activates on these signals:
 - **Feature**: Dashboard version detection + one-click hot restart (`/api/restart` endpoint)
 - **Feature**: File detail modal with per-file restore command copy buttons
 - **Feature**: `cursor-guard-init` auto-creates `.cursor-guard.json`; `backup_interval_seconds` alias supported
-- **License**: Changed from MIT to BSL 1.1 (source available, commercial use requires author authorization)
+- **License**: Changed to BSL 1.1
 
 ### v4.4.0 — V4 Final
 
@@ -600,4 +600,4 @@ This is an independent open-source project maintained by a solo developer. If Cu
 
 ## License
 
-[BSL 1.1 (Business Source License)](LICENSE) — Source code is freely available for viewing, modification, and non-commercial use. Commercial use requires authorization from the author. Auto-converts to Apache 2.0 on 2056-03-22.
+[BSL 1.1](LICENSE)

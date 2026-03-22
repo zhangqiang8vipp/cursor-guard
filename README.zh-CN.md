@@ -496,7 +496,7 @@ code --install-extension .
 - **功能**：Dashboard 版本检测 + 一键热重启（`/api/restart` 端点）
 - **功能**：文件详情弹窗 + 每文件恢复命令复制按钮
 - **功能**：`cursor-guard-init` 自动创建 `.cursor-guard.json`；支持 `backup_interval_seconds` 别名
-- **许可证**：从 MIT 变更为 BSL 1.1（源码可见，商业使用需作者授权）
+- **许可证**：变更为 BSL 1.1
 
 ### v4.4.0 — V4 收官版
 
@@ -599,4 +599,4 @@ code --install-extension .
 
 ## 许可证
 
-[BSL 1.1（商业源代码许可证）](LICENSE) — 源代码自由查看、修改和非商业使用。商业使用需获得作者授权。2056-03-22 之后自动转为 Apache 2.0。
+[BSL 1.1](LICENSE)
