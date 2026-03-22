@@ -83,7 +83,9 @@ if (fs.existsSync(ignoreFile)) {
 fs.writeFileSync(path.join(DIST, 'guard-version.json'), JSON.stringify({ version: rootPkg.version }));
 
 console.log(`\n  dist/ ready at: ${DIST}`);
-console.log(`  To build VSIX: cd dist && npx vsce package\n`);
+console.log(`  VSIX file name (after vsce package): cursor-guard-ide-${rootPkg.version}.vsix`);
+console.log(`  To build VSIX: cd dist && npx @vscode/vsce package --no-dependencies`);
+console.log(`  Release checklist: cd ${ROOT} && npm run release:checklist\n`);
 
 function copyDir(src, dst) {
   fs.mkdirSync(dst, { recursive: true });

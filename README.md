@@ -329,15 +329,25 @@ Embed the full dashboard directly inside your IDE — no browser needed.
 #### Method A: VSIX standalone (recommended, no npm needed)
 
 ```bash
-# Build the self-contained VSIX package
+# Build the self-contained VSIX (version = root package.json "version")
 cd references/vscode-extension
 node build-vsix.js
 cd dist
-npx vsce package
+npx --yes @vscode/vsce package --no-dependencies
 
-# Install the generated .vsix file (or download from GitHub Releases)
-code --install-extension cursor-guard-ide-4.9.7.vsix
+# Install the generated .vsix (VERSION always matches package.json)
+V=$(node -p "require('../../../package.json').version")
+code --install-extension "cursor-guard-ide-${V}.vsix"
 ```
+
+PowerShell (from `references\vscode-extension\dist`):
+
+```powershell
+$V = node -p "require('../../../package.json').version"
+code --install-extension "cursor-guard-ide-$V.vsix"
+```
+
+Print the full release checklist from the repo root: `npm run release:checklist`.
 
 On first activation, the extension automatically:
 - Installs `SKILL.md` to your IDE's skills directory
@@ -456,6 +466,12 @@ The skill activates on these signals:
 ---
 
 ## Changelog
+
+### v4.9.8 — Release docs, checklist script, sidebar brand asset
+
+- **Docs**: Bilingual **Release checklist** sections in README / README.zh-CN; steps tied to root `package.json` `version` so VSIX file name, Git tag, and npm stay consistent
+- **Tooling**: `npm run release:checklist` (`scripts/print-release-checklist.js`) prints a ready-to-paste table; `build-vsix.js` logs the expected VSIX file name after build
+- **IDE**: Sidebar header can show packaged brand artwork via `media/brand-placeholder.png` and `asWebviewUri` (fallback gradient if the file is absent)
 
 ### v4.9.7 — Softer Pre-Warning UX, Sidebar Locale Sync, and Watcher Singleton Guard
 
@@ -605,6 +621,36 @@ The skill activates on these signals:
 - **Feature**: Web dashboard — local read-only UI with health overview, backup table, restore-point drawers, diagnostics, protection scope
 - **Feature**: Dual-language (zh-CN / en-US) with full i18n coverage including doctor checks, health issues, alert messages
 - **Feature**: Multi-project support via CLI `--path` args and frontend project selector
+
+---
+
+## Release checklist
+
+**Single source of truth**: the `version` field in the **repository root** `package.json`. Running `references/vscode-extension/build-vsix.js` copies that value into the extension `package.json` and `guard-version.json`, so the VSIX and npm tarball stay aligned.
+
+### Generate a filled-in table (recommended)
+
+From the repository root:
+
+```bash
+npm run release:checklist
+```
+
+Copy the terminal output into your own release tracker. It always reflects the current `package.json` version.
+
+### Reference checklist
+
+| Step | What to do |
+|------|------------|
+| **1. Version** | Bump root `package.json` `version`, then rebuild. Do not keep stale numbers (e.g. 4.9.5) in notes while the repo is already newer. |
+| **2. VSIX** | `cd references/vscode-extension && node build-vsix.js && cd dist && npx --yes @vscode/vsce package --no-dependencies` |
+| **3. Artifact** | `cursor-guard-ide-<version>.vsix` in `references/vscode-extension/dist/` (file name matches `version`). |
+| **4. Git** | Commit and push your default branch; create and push tag `v<version>` (example: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`). Record the actual commit hash in your notes. |
+| **5. GitHub Release** | [Create a release](https://github.com/zhangqiang8vipp/cursor-guard/releases/new), select tag `v<version>`, attach the VSIX. |
+| **6. Release branches** | Fast-forward maintenance branches such as `release/v4.8.x` / `release/v4.7.x` to the current `master` when your branching policy requires it. |
+| **7. npm** | From the repo root: `npm publish`. If npm asks for OTP, complete verification in the browser, then run `npm publish` again. |
+
+Skipping the Marketplace is fine; GitHub Release + VSIX is enough for many users.
 
 ---
 

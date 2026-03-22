@@ -329,15 +329,25 @@ node references\dashboard\server.js --path "D:\MyProject"
 #### 方式 A：VSIX 独立安装（推荐，无需 npm）
 
 ```bash
-# 构建独立 VSIX 包
+# 构建独立 VSIX 包（版本号 = 仓库根目录 package.json 的 version）
 cd references/vscode-extension
 node build-vsix.js
 cd dist
-npx vsce package
+npx --yes @vscode/vsce package --no-dependencies
 
-# 安装生成的 .vsix 文件（或从 GitHub Releases 下载）
-code --install-extension cursor-guard-ide-4.9.7.vsix
+# 安装生成的 .vsix（VERSION 与 package.json 一致；勿手写旧版本号）
+V=$(node -p "require('../../../package.json').version")
+code --install-extension "cursor-guard-ide-${V}.vsix"
 ```
+
+PowerShell（在 `references\vscode-extension\dist` 下）：
+
+```powershell
+$V = node -p "require('../../../package.json').version"
+code --install-extension "cursor-guard-ide-$V.vsix"
+```
+
+发版前打印完整检查清单：`npm run release:checklist`（在仓库根目录）。
 
 首次激活时，扩展自动：
 - 将 `SKILL.md` 安装到 IDE 的 skills 目录
@@ -456,6 +466,12 @@ code --install-extension .
 ---
 
 ## 更新日志
+
+### v4.9.8 — 发版文档、清单脚本、侧边栏品牌资源
+
+- **文档**：在 README / README.zh-CN 增加双语**发版检查清单**，步骤与根目录 `package.json` 的 `version` 绑定，避免 VSIX 名、Git 标签、npm 版本各写各的
+- **工具**：`npm run release:checklist`（`scripts/print-release-checklist.js`）一键输出可粘贴的表格；`build-vsix.js` 构建结束后提示对应 VSIX 文件名
+- **IDE**：侧边栏顶栏可通过扩展内 `media/brand-placeholder.png` + webview `asWebviewUri` 展示品牌图（无文件时仍用渐变占位）
 
 ### v4.9.7 — 更柔和的事先预警、侧边栏语言同步与 Watcher 单例保护
 
@@ -604,6 +620,36 @@ code --install-extension .
 - **功能**：Web 仪表盘——本地只读 UI，健康总览、备份表格、恢复点抽屉、诊断、保护范围
 - **功能**：中英双语（zh-CN / en-US），完整 i18n 覆盖含 doctor 检查项、健康问题、告警消息
 - **功能**：多项目支持——CLI `--path` 参数 + 前端项目选择器
+
+---
+
+## 发版检查清单
+
+**唯一版本源**：仓库**根目录** `package.json` 里的 **`version`**。执行 `references/vscode-extension/build-vsix.js` 时，会把同一版本写入扩展内的 `package.json` 与 `guard-version.json`，因此 VSIX 与 npm 包版本一致。
+
+### 生成已填好版本号的表格（推荐）
+
+在仓库根目录执行：
+
+```bash
+npm run release:checklist
+```
+
+将终端完整输出复制到你的发版记录即可；其中版本号始终与当前 `package.json` 一致。
+
+### 步骤对照表
+
+| 步骤 | 内容 |
+|------|------|
+| **1. 版本号** | 先修改根目录 `package.json` 的 `version`，再执行构建。记录表里不要写已过期的版本号（例如仓库已是 4.9.8 却仍写 4.9.5）。 |
+| **2. VSIX** | `cd references/vscode-extension && node build-vsix.js && cd dist && npx --yes @vscode/vsce package --no-dependencies` |
+| **3. 产物** | `references/vscode-extension/dist/cursor-guard-ide-<version>.vsix`（文件名与 `version` 一致） |
+| **4. Git** | 提交并推送默认分支；打标签 **`v<version>`** 并推送（示例：`git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`）。提交 hash 以实际为准记入你的表格。 |
+| **5. GitHub Release** | 在 [Releases](https://github.com/zhangqiang8vipp/cursor-guard/releases/new) 新建 Release，选择对应 **`v<version>`** 标签，上传上述 VSIX。 |
+| **6. release 分支** | 按分支策略将 **`release/v4.8.x`**、**`release/v4.7.x`** 等维护分支快进到当前 **`master`**（如需）。 |
+| **7. npm** | 在仓库根目录执行 **`npm publish`**；若提示 OTP，先在浏览器完成 npm 的二次验证，再重新执行一次 **`npm publish`**。 |
+
+暂不发布 VS Code Marketplace 也可以；仅靠 GitHub Release + VSIX 已能满足很多安装场景。
 
 ---
 

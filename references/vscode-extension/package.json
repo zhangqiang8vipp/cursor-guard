@@ -2,7 +2,7 @@
   "name": "cursor-guard-ide",
   "displayName": "Cursor Guard",
   "description": "AI code protection dashboard embedded in your IDE — real-time alerts, backup history, one-click snapshots",
-  "version": "4.9.7",
+  "version": "4.9.8",
   "publisher": "zhangqiang8vipp",
   "license": "BUSL-1.1",
   "engines": {
