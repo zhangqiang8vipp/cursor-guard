@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.0`  
-> **文档状态**：`V2` ~ `V4.7.0` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.1`  
+> **文档状态**：`V2` ~ `V4.7.1` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,16 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.1：IDE 插件 Bug 修复 + UX 增强 ✅
+
+| 修复/增强 | 说明 |
+|----------|------|
+| **P1 Bug 修复** | `snapshotNow` 中 `loadConfig` 返回 `{cfg, loaded, error, warnings}`，但代码直接传了整个对象。修复为解构 `const { cfg } = loadConfig()` |
+| **WebView CSP** | WebView 缺少 Content-Security-Policy meta 标签，导致 `fetch` 请求被浏览器安全策略阻止（failed to fetch）。添加 CSP 允许 `connect-src` 到 Dashboard Server |
+| **一键启动/停止 Watcher** | `Start Watcher` / `Stop Watcher` 命令从提示文字改为实际 `spawn` 子进程启动和 `SIGTERM` 停止 |
+| **TreeView 彩色化** | 所有图标使用 `ThemeColor`（绿色=正常、红色=告警/停止、蓝色=备份、紫色=统计）。项目节点根据状态显示 Protected/Unprotected/ALERT。新增 Quick Actions 折叠区（Open Dashboard / Snapshot Now / Start/Stop Watcher / Refresh） |
+| **StatusBar 增强** | Watcher 未运行时显示 `$(eye-closed) Guard: Unprotected`；告警时图标动画 `$(bell~spin)` |
 
 ### V4.7.0：IDE 集成（VSCode/Cursor Extension） ✅
 

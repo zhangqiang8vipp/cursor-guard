@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const { spawn } = require('child_process');
 
 const CONFIG_FILE = '.cursor-guard.json';
 
@@ -71,11 +72,51 @@ class DashboardManager {
     try {
       const { createGitSnapshot } = require('../../lib/core/snapshot');
       const { loadConfig } = require('../../lib/utils');
-      const cfg = loadConfig(projectPath);
+      const { cfg } = loadConfig(projectPath);
       return createGitSnapshot(projectPath, cfg, { message: 'guard: manual snapshot via IDE extension' });
     } catch (e) {
       return { status: 'error', error: e.message };
     }
+  }
+
+  startWatcher(projectPath) {
+    if (!projectPath) return null;
+    const backupScript = path.resolve(__dirname, '..', '..', 'lib', 'auto-backup.js');
+    const child = spawn(process.execPath, [backupScript, '--path', projectPath], {
+      cwd: projectPath,
+      stdio: 'ignore',
+      detached: true,
+    });
+    child.unref();
+    return child.pid;
+  }
+
+  stopWatcher(projectPath) {
+    if (!projectPath) return false;
+    try {
+      const lockPath = path.join(projectPath, '.cursor-guard-backup.lock');
+      if (!fs.existsSync(lockPath)) return false;
+      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      if (lockData.pid) {
+        process.kill(lockData.pid, 'SIGTERM');
+        try { fs.unlinkSync(lockPath); } catch { /* ok */ }
+        return true;
+      }
+    } catch { /* ok */ }
+    return false;
+  }
+
+  getWatcherPid(projectPath) {
+    try {
+      const lockPath = path.join(projectPath, '.cursor-guard-backup.lock');
+      if (!fs.existsSync(lockPath)) return null;
+      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      if (lockData.pid) {
+        process.kill(lockData.pid, 0);
+        return lockData.pid;
+      }
+    } catch { /* not running */ }
+    return null;
   }
 
   dispose() {

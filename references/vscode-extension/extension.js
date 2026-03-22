@@ -40,16 +40,38 @@ async function activate(context) {
       poller.forceRefresh();
     }),
 
-    vscode.commands.registerCommand('cursorGuard.startWatcher', () => {
-      vscode.window.showInformationMessage(
-        'Cursor Guard: run `cursor-guard-backup --path <dir> --dashboard` in terminal to start the watcher.'
-      );
+    vscode.commands.registerCommand('cursorGuard.startWatcher', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) {
+        vscode.window.showWarningMessage('Cursor Guard: no workspace folder open.');
+        return;
+      }
+      const projectPath = folders[0].uri.fsPath;
+      const existingPid = dashMgr.getWatcherPid(projectPath);
+      if (existingPid) {
+        vscode.window.showInformationMessage(`Cursor Guard: watcher already running (PID ${existingPid})`);
+        return;
+      }
+      const pid = dashMgr.startWatcher(projectPath);
+      if (pid) {
+        vscode.window.showInformationMessage(`Cursor Guard: watcher started (PID ${pid})`);
+        setTimeout(() => poller.forceRefresh(), 2000);
+      } else {
+        vscode.window.showWarningMessage('Cursor Guard: failed to start watcher');
+      }
     }),
 
-    vscode.commands.registerCommand('cursorGuard.stopWatcher', () => {
-      vscode.window.showInformationMessage(
-        'Cursor Guard: stop the watcher by terminating its terminal process (Ctrl+C).'
-      );
+    vscode.commands.registerCommand('cursorGuard.stopWatcher', async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return;
+      const projectPath = folders[0].uri.fsPath;
+      const stopped = dashMgr.stopWatcher(projectPath);
+      if (stopped) {
+        vscode.window.showInformationMessage('Cursor Guard: watcher stopped');
+        setTimeout(() => poller.forceRefresh(), 1000);
+      } else {
+        vscode.window.showWarningMessage('Cursor Guard: no running watcher found');
+      }
     }),
 
     vscode.commands.registerCommand('cursorGuard.refreshTree', () => {

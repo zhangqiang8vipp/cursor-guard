@@ -57,9 +57,19 @@ class WebViewProvider {
     const token = this._dashMgr.token || '';
     const nonce = _getNonce();
 
+    const csp = [
+      `default-src 'none'`,
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
+      `font-src ${webview.cspSource}`,
+      `img-src ${webview.cspSource} data:`,
+      `connect-src ${baseUrl}`,
+    ].join('; ');
+
     html = html.replace(
       '</head>',
-      `<script nonce="${nonce}">
+      `<meta http-equiv="Content-Security-Policy" content="${csp}">
+<script nonce="${nonce}">
   window.__GUARD_TOKEN__ = "${token}";
   window.__GUARD_BASE_URL__ = "${baseUrl}";
   window.__IN_VSCODE__ = true;
