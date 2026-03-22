@@ -856,9 +856,10 @@ function translateSummary(raw) {
 }
 
 function formatSummaryCell(b) {
-  const line1 = [];
-  if (b.filesChanged != null) line1.push(`<span class="summary-files">${b.filesChanged} ${t('summary.files')}</span>`);
-  if (b.trigger) line1.push(`<span class="badge badge-trigger">${t('trigger.' + b.trigger)}</span>`);
+  let line1 = '';
+  if (b.filesChanged != null) {
+    line1 = `<div class="summary-meta"><span class="summary-files">${b.filesChanged} ${t('summary.files')}</span></div>`;
+  }
 
   let line2 = '';
   if (b.intent) {
@@ -875,8 +876,8 @@ function formatSummaryCell(b) {
     line3 = categories.map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
   }
 
-  if (!line1.length && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
-  return `<div class="summary-stack">${line1.length ? '<div class="summary-meta">' + line1.join(' ') + '</div>' : ''}${line2}${line3}</div>`;
+  if (!line1 && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
+  return `<div class="summary-stack">${line1}${line2}${line3}</div>`;
 }
 
 function renderBackupTable(backups) {
