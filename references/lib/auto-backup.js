@@ -171,48 +171,24 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     console.log(color.cyan(`[guard] Proactive alert: ON  (threshold: ${cfg.alert_thresholds.files_per_window} files / ${cfg.alert_thresholds.window_seconds}s)`));
   }
 
-  // Banner
-  console.log('');
-  console.log(color.cyan(`[guard] Watching '${projectDir}' every ${interval}s  (Ctrl+C to stop)`));
-  console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Ref: ${branchRef}  |  Retention: ${cfg.retention.mode}`));
-  console.log(color.cyan(`[guard] Log: ${logFilePath}`));
+  // ── Extracted cycle functions ──────────────────────────────────
 
-  // Optional embedded dashboard
-  if (opts.dashboardPort) {
+  async function hotReloadConfig() {
     try {
-      const { startDashboardServer } = require('../dashboard/server');
-      const { port } = await startDashboardServer([projectDir], { port: opts.dashboardPort, silent: true });
-      console.log(color.cyan(`[guard] Dashboard: http://127.0.0.1:${port}`));
-    } catch (e) {
-      console.log(color.yellow(`[guard] Dashboard failed to start: ${e.message}`));
-    }
+      const newMtime = fs.statSync(cfgPath).mtimeMs;
+      if (newMtime !== cfgMtime) {
+        const reload = loadConfig(projectDir);
+        if (reload.loaded && !reload.error) {
+          cfg = reload.cfg;
+          cfgMtime = newMtime;
+          tracker = createChangeTracker(cfg);
+          logger.info('Config reloaded (file changed)');
+        }
+      }
+    } catch { /* no config file or read error, keep current */ }
   }
 
-  console.log('');
-
-  // Main loop
-  let cycle = 0;
-  while (true) {
-    await sleep(interval * 1000);
-    cycle++;
-
-    // Hot-reload config every 10 cycles
-    if (cycle % 10 === 0) {
-      try {
-        const newMtime = fs.statSync(cfgPath).mtimeMs;
-        if (newMtime !== cfgMtime) {
-          const reload = loadConfig(projectDir);
-          if (reload.loaded && !reload.error) {
-            cfg = reload.cfg;
-            cfgMtime = newMtime;
-            tracker = createChangeTracker(cfg);
-            logger.info('Config reloaded (file changed)');
-          }
-        }
-      } catch { /* no config file or read error, keep current */ }
-    }
-
-    // Detect changes
+  async function backupCycle() {
     let hasChanges = false;
     let pendingManifest = null;
     let lastManifest = null;
@@ -230,11 +206,10 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       }
     } catch (e) {
       logger.error(`Change detection failed: ${e.message}`);
-      continue;
+      return;
     }
-    if (!hasChanges) continue;
+    if (!hasChanges) return;
 
-    // Shadow: pre-compute changed file count from manifest diff (already accurate)
     let changedFileCount = 0;
     if (!repo && pendingManifest) {
       if (!lastManifest) {
@@ -253,7 +228,6 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       }
     }
 
-    // Git snapshot via Core — changedFileCount comes from diff-tree (accurate incremental)
     let changedFiles;
     if ((cfg.backup_strategy === 'git' || cfg.backup_strategy === 'both') && repo) {
       const context = { trigger: 'auto' };
@@ -273,7 +247,6 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       }
     }
 
-    // V4: Record change event and check for anomalies (after snapshot, using accurate count)
     recordChange(tracker, changedFileCount, changedFiles);
     const anomalyResult = checkAnomaly(tracker);
     if (anomalyResult.anomaly && anomalyResult.alert && !anomalyResult.suppressed) {
@@ -281,7 +254,6 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
       logger.warn(`ALERT: ${anomalyResult.alert.fileCount} files changed in ${anomalyResult.alert.windowSeconds}s (threshold: ${anomalyResult.alert.threshold})`);
     }
 
-    // Shadow copy via Core
     if (cfg.backup_strategy === 'shadow' || cfg.backup_strategy === 'both') {
       const shadowResult = createShadowCopy(projectDir, cfg, { backupDir });
       if (shadowResult.status === 'created') {
@@ -295,27 +267,124 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
         logger.error(`Shadow copy failed: ${shadowResult.error}`);
       }
     }
+  }
 
-    // Periodic retention every 10 cycles via Core
-    if (cycle % 10 === 0) {
-      const retResult = cleanShadowRetention(backupDir, cfg);
-      if (retResult.removed > 0) {
-        logger.log(`Retention (${retResult.mode}): cleaned ${retResult.removed} old snapshot(s)`, 'gray');
-      }
-      if (retResult.diskWarning === 'critically low') {
-        logger.error(`WARNING: disk critically low — ${retResult.diskFreeGB} GB free`);
-      } else if (retResult.diskWarning === 'low') {
-        logger.warn(`Disk note: ${retResult.diskFreeGB} GB free`);
-      }
+  async function maintenanceCycle() {
+    const retResult = cleanShadowRetention(backupDir, cfg);
+    if (retResult.removed > 0) {
+      logger.log(`Retention (${retResult.mode}): cleaned ${retResult.removed} old snapshot(s)`, 'gray');
+    }
+    if (retResult.diskWarning === 'critically low') {
+      logger.error(`WARNING: disk critically low — ${retResult.diskFreeGB} GB free`);
+    } else if (retResult.diskWarning === 'low') {
+      logger.warn(`Disk note: ${retResult.diskFreeGB} GB free`);
+    }
 
-      if (repo) {
-        const gitRetResult = cleanGitRetention(branchRef, gDir, cfg, projectDir);
-        if (gitRetResult.rebuilt) {
-          logger.log(`Git retention (${gitRetResult.mode}): rebuilt branch with ${gitRetResult.kept} newest snapshots, pruned ${gitRetResult.pruned}. Run 'git gc' to reclaim space.`, 'gray');
-        }
+    if (repo) {
+      const gitRetResult = cleanGitRetention(branchRef, gDir, cfg, projectDir);
+      if (gitRetResult.rebuilt) {
+        logger.log(`Git retention (${gitRetResult.mode}): rebuilt branch with ${gitRetResult.kept} newest snapshots, pruned ${gitRetResult.pruned}. Run 'git gc' to reclaim space.`, 'gray');
       }
+    }
 
+    clearExpiredAlert(projectDir);
+  }
+
+  // ── Optional embedded dashboard ────────────────────────────────
+
+  if (opts.dashboardPort) {
+    try {
+      const { startDashboardServer } = require('../dashboard/server');
+      const { port } = await startDashboardServer([projectDir], { port: opts.dashboardPort, silent: true });
+      console.log(color.cyan(`[guard] Dashboard: http://127.0.0.1:${port}`));
+    } catch (e) {
+      console.log(color.yellow(`[guard] Dashboard failed to start: ${e.message}`));
+    }
+  }
+
+  // ── Try event-driven mode (fs.watch) ───────────────────────────
+
+  let eventDriven = false;
+
+  try {
+    const watcher = fs.watch(projectDir, { recursive: true });
+    let debounceTimer = null;
+    let backupRunning = false;
+
+    function scheduleBackup() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        if (backupRunning) return;
+        backupRunning = true;
+        try { await backupCycle(); } catch (e) { logger.error(`Backup cycle error: ${e.message}`); }
+        backupRunning = false;
+      }, 500);
+    }
+
+    watcher.on('change', (_eventType, filename) => {
+      if (!filename) return;
+      const f = filename.replace(/\\/g, '/');
+      if (f.startsWith('.git/') || f.startsWith('.git\\')) return;
+      if (f.startsWith('.cursor-guard-backup')) return;
+      if (f === '.cursor-guard.json') {
+        hotReloadConfig();
+        return;
+      }
+      scheduleBackup();
+    });
+
+    watcher.on('error', (e) => {
+      logger.error(`fs.watch error: ${e.message}`);
+    });
+
+    const origCleanup = cleanup;
+    cleanup = function() { try { watcher.close(); } catch {} origCleanup(); };
+
+    eventDriven = true;
+
+    console.log('');
+    console.log(color.cyan(`[guard] Watching '${projectDir}' — event-driven (fs.watch + 30s heartbeat)`));
+    console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Ref: ${branchRef}  |  Retention: ${cfg.retention.mode}`));
+    console.log(color.cyan(`[guard] Log: ${logFilePath}`));
+    console.log('');
+
+    let hbCycle = 0;
+    while (true) {
+      await sleep(30000);
+      hbCycle++;
+      if (hbCycle % 2 === 0) await hotReloadConfig();
+      if (hbCycle % 4 === 0) {
+        try { await maintenanceCycle(); } catch (e) { logger.error(`Maintenance error: ${e.message}`); }
+      }
       clearExpiredAlert(projectDir);
+    }
+  } catch (watchErr) {
+    if (!eventDriven) {
+      console.log(color.yellow(`[guard] fs.watch not available (${watchErr.message}), using ${interval}s polling fallback`));
+    }
+  }
+
+  // ── Polling fallback ───────────────────────────────────────────
+
+  if (!eventDriven) {
+    console.log('');
+    console.log(color.cyan(`[guard] Watching '${projectDir}' every ${interval}s  (Ctrl+C to stop)`));
+    console.log(color.cyan(`[guard] Strategy: ${cfg.backup_strategy}  |  Ref: ${branchRef}  |  Retention: ${cfg.retention.mode}`));
+    console.log(color.cyan(`[guard] Log: ${logFilePath}`));
+    console.log('');
+
+    let cycle = 0;
+    while (true) {
+      await sleep(interval * 1000);
+      cycle++;
+
+      if (cycle % 10 === 0) await hotReloadConfig();
+
+      try { await backupCycle(); } catch (e) { logger.error(`Backup cycle error: ${e.message}`); }
+
+      if (cycle % 10 === 0) {
+        try { await maintenanceCycle(); } catch (e) { logger.error(`Maintenance error: ${e.message}`); }
+      }
     }
   }
 }

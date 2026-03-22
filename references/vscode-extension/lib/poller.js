@@ -2,7 +2,7 @@
 
 const vscode = require('vscode');
 
-const POLL_INTERVAL = 5000;
+const HEARTBEAT_INTERVAL = 30000;
 
 class Poller {
   constructor(dashMgr) {
@@ -10,6 +10,7 @@ class Poller {
     this._timer = null;
     this._listeners = [];
     this._data = new Map();
+    this._pollRunning = false;
   }
 
   get data() { return this._data; }
@@ -28,7 +29,7 @@ class Poller {
   start() {
     if (this._timer) return;
     this._poll();
-    this._timer = setInterval(() => this._poll(), POLL_INTERVAL);
+    this._timer = setInterval(() => this._poll(), HEARTBEAT_INTERVAL);
   }
 
   stop() {
@@ -36,8 +37,10 @@ class Poller {
   }
 
   async _poll() {
-    if (!this._dashMgr.running) return;
+    if (this._pollRunning) return;
+    this._pollRunning = true;
     try {
+      if (!this._dashMgr.running) return;
       const projects = await this._dashMgr.getProjects();
       if (!Array.isArray(projects)) return;
       for (const p of projects) {
@@ -52,6 +55,7 @@ class Poller {
       }
       this._emit();
     } catch { /* non-critical */ }
+    finally { this._pollRunning = false; }
   }
 
   async forceRefresh() {

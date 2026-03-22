@@ -35568,7 +35568,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.8.5",
+      version: "4.9.0",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",

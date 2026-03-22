@@ -189,6 +189,18 @@ async function activate(context) {
     vscode.window.showInformationMessage(`Cursor Guard: dashboard started on port ${dashMgr.port}`);
   }
 
+  // Event-driven UI refresh: FileSystemWatcher triggers immediate poller refresh
+  let _fsRefreshTimer = null;
+  const _scheduleRefresh = () => {
+    if (_fsRefreshTimer) clearTimeout(_fsRefreshTimer);
+    _fsRefreshTimer = setTimeout(() => poller.forceRefresh(), 1500);
+  };
+  const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*', false, false, false);
+  fileWatcher.onDidChange(_scheduleRefresh);
+  fileWatcher.onDidCreate(_scheduleRefresh);
+  fileWatcher.onDidDelete(_scheduleRefresh);
+  context.subscriptions.push(fileWatcher);
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       const restarted = await dashMgr.autoStart(vscode.workspace.workspaceFolders);
