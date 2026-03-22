@@ -29,6 +29,13 @@ class DashboardManager {
     return this.start(paths);
   }
 
+  async ensureRunning(paths) {
+    if (this._instance) return true;
+    const configPaths = paths.filter(p => fs.existsSync(path.join(p, CONFIG_FILE)));
+    if (configPaths.length === 0) return false;
+    return this.start(configPaths);
+  }
+
   async start(paths) {
     if (!this._serverModule) {
       this._serverModule = require(guardPath('dashboard', 'server'));

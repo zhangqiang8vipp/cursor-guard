@@ -673,13 +673,26 @@ function relativeTime(ts) {
 
 /* ── Data fetching ────────────────────────────────────────── */
 
+let _fetchFailCount = 0;
 async function fetchJson(url) {
   const base = window.__GUARD_BASE_URL__ || '';
   const sep = url.includes('?') ? '&' : '?';
   const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${window.__GUARD_TOKEN__}` : '';
-  const r = await fetch(base + url + tokenParam);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  try {
+    const r = await fetch(base + url + tokenParam);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _fetchFailCount = 0;
+    return r.json();
+  } catch (err) {
+    _fetchFailCount++;
+    if (window.__IN_VSCODE__ && _fetchFailCount >= 3) {
+      try {
+        const api = window.__vscodeApi || (window.__vscodeApi = acquireVsCodeApi());
+        api.postMessage({ type: 'fetchError', detail: err.message });
+      } catch { /* ignore */ }
+    }
+    throw err;
+  }
 }
 
 async function loadProjects() {

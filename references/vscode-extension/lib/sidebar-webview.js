@@ -170,6 +170,73 @@ body {
 .action-btn.full { grid-column: 1 / -1; }
 .action-btn .icon { margin-right: 3px; }
 
+/* ── Scope display ── */
+.scope-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.scope-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+.scope-chip.protected {
+  background: rgba(166,227,161,0.12);
+  color: var(--green);
+}
+.scope-chip.excluded {
+  background: rgba(243,139,168,0.12);
+  color: var(--red);
+}
+.scope-chip.total {
+  background: rgba(108,112,134,0.15);
+  color: var(--dim);
+}
+.scope-block { margin-bottom: 6px; }
+.scope-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 4px;
+}
+.scope-label.green { color: var(--green); }
+.scope-label.red { color: var(--red); }
+.scope-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.scope-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-tag.green {
+  background: rgba(166,227,161,0.1);
+  color: var(--green);
+  border: 1px solid rgba(166,227,161,0.2);
+}
+.scope-tag.red {
+  background: rgba(243,139,168,0.08);
+  color: var(--red);
+  border: 1px solid rgba(243,139,168,0.2);
+}
+.scope-tag.dim {
+  background: rgba(108,112,134,0.1);
+  color: var(--dim);
+  border: 1px solid var(--border);
+}
+
 .empty-state {
   text-align: center; padding: 24px 10px;
   color: var(--dim); font-size: 12px;
@@ -182,10 +249,25 @@ body {
 </div>
 <script>
 const vscode = acquireVsCodeApi();
+let _alertExpiresAt = 0;
+
 window.addEventListener('message', e => {
   if (e.data.type === 'update') render(e.data.data);
 });
 vscode.postMessage({ cmd: 'ready' });
+
+setInterval(() => {
+  if (!_alertExpiresAt) return;
+  const el = document.querySelector('.alert-countdown');
+  if (!el) return;
+  const remain = Math.max(0, Math.ceil((_alertExpiresAt - Date.now()) / 1000));
+  if (remain <= 0) {
+    el.textContent = '0s';
+    _alertExpiresAt = 0;
+    return;
+  }
+  el.textContent = remain > 60 ? Math.floor(remain / 60) + 'm ' + (remain % 60) + 's' : remain + 's';
+}, 1000);
 
 function render(projects) {
   const ids = Object.keys(projects);
@@ -202,6 +284,10 @@ function render(projects) {
   }
   html += renderActions(projects);
   root.innerHTML = html;
+
+  const alertCard = root.querySelector('.alert-card[data-expires]');
+  _alertExpiresAt = alertCard ? parseInt(alertCard.dataset.expires, 10) || 0 : 0;
+
   root.querySelectorAll('[data-cmd]').forEach(btn => {
     btn.addEventListener('click', () => vscode.postMessage({ cmd: 'exec', command: btn.dataset.cmd }));
   });
@@ -245,11 +331,12 @@ function renderProject(d) {
   // ── Alert detail card (only when active) ──
   if (hasAlert) {
     const a = d.alerts.latest;
-    const remain = a.expiresAt ? Math.max(0, Math.ceil((new Date(a.expiresAt).getTime() - Date.now()) / 1000)) : 0;
+    const expiresTs = a.expiresAt ? new Date(a.expiresAt).getTime() : 0;
+    const remain = expiresTs ? Math.max(0, Math.ceil((expiresTs - Date.now()) / 1000)) : 0;
     const display = remain > 60 ? Math.floor(remain/60) + 'm ' + (remain%60) + 's' : remain + 's';
-    h += '<div class="alert-card">';
-    h += '<div class="title">⚠ ' + (a.fileCount||'?') + ' files in ' + (a.windowSeconds||'?') + 's</div>';
-    h += '<div class="detail">Threshold: ' + (a.threshold||'?') + ' · Expires: ' + display + '</div>';
+    h += '<div class="alert-card" data-expires="' + expiresTs + '">';
+    h += '<div class="title">\u26a0 ' + (a.fileCount||'?') + ' files in ' + (a.windowSeconds||'?') + 's</div>';
+    h += '<div class="detail">Threshold: ' + (a.threshold||'?') + ' \xb7 Expires: <span class="alert-countdown">' + display + '</span></div>';
     h += '<div class="actions">';
     h += '<button class="btn-sm" data-cmd="cursorGuard.openDashboard">View Details</button>';
     h += '</div>';
@@ -270,7 +357,44 @@ function renderProject(d) {
   h += statRow('Git backups', gitC, 'blue');
   if (shadowC > 0) h += statRow('Shadow copies', shadowC, 'blue');
   h += statRow('Disk free', freeDisplay, diskWarn ? 'yellow' : 'green');
-  h += statRow('Protected files', d.protectionScope?.fileCount || 0, '');
+  h += '</div>';
+
+  // ── Protection Scope ──
+  const scope = d.protectionScope || {};
+  const pCount = scope.fileCount || 0;
+  const exCount = scope.excludedCount || 0;
+  const totalF = scope.totalFiles || 0;
+  const protectPats = scope.protect || [];
+  const ignorePats = scope.ignore || [];
+
+  h += '<div class="stats-card">';
+  h += '<div class="label-sm">Protection Scope</div>';
+  h += '<div class="scope-summary">';
+  h += '<span class="scope-chip protected">\u{1f6e1}\ufe0f ' + pCount + ' protected</span>';
+  if (exCount > 0) h += '<span class="scope-chip excluded">\u{1f6ab} ' + exCount + ' excluded</span>';
+  h += '<span class="scope-chip total">' + totalF + ' total</span>';
+  h += '</div>';
+
+  if (protectPats.length > 0) {
+    h += '<div class="scope-block">';
+    h += '<span class="scope-label green">Protect (' + protectPats.length + ')</span>';
+    h += '<div class="scope-tags">';
+    const showP = protectPats.slice(0, 6);
+    for (const p of showP) h += '<span class="scope-tag green">' + esc(p) + '</span>';
+    if (protectPats.length > 6) h += '<span class="scope-tag dim">+' + (protectPats.length - 6) + ' more</span>';
+    h += '</div></div>';
+  }
+
+  if (ignorePats.length > 0) {
+    h += '<div class="scope-block">';
+    h += '<span class="scope-label red">Ignore (' + ignorePats.length + ')</span>';
+    h += '<div class="scope-tags">';
+    const showI = ignorePats.slice(0, 6);
+    for (const ig of showI) h += '<span class="scope-tag red">' + esc(ig) + '</span>';
+    if (ignorePats.length > 6) h += '<span class="scope-tag dim">+' + (ignorePats.length - 6) + ' more</span>';
+    h += '</div></div>';
+  }
+
   h += '</div>';
 
   return h;

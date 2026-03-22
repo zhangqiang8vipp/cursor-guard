@@ -32,41 +32,59 @@ class WebViewProvider {
 
     const publicDir = getPublicDirLazy();
     const htmlPath = path.join(publicDir, 'index.html');
+    const baseUrl = this._dashMgr.baseUrl || '';
+    const token = this._dashMgr.token || '';
 
     if (!fs.existsSync(htmlPath)) {
-      const baseUrl = this._dashMgr.baseUrl;
-      if (baseUrl) {
-        vscode.env.openExternal(vscode.Uri.parse(baseUrl + '?token=' + (this._dashMgr.token || '')));
-        return;
-      }
-      vscode.window.showErrorMessage(
-        `Cursor Guard: dashboard files not found at ${publicDir}. Try reinstalling the extension.`
-      );
+      this._openInBrowser(baseUrl, token, `Dashboard files not found at ${publicDir}`);
       return;
     }
 
-    this._panel = vscode.window.createWebviewPanel(
-      'cursorGuardDashboard',
-      'Cursor Guard Dashboard',
-      vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.file(publicDir)],
+    try {
+      this._panel = vscode.window.createWebviewPanel(
+        'cursorGuardDashboard',
+        'Cursor Guard Dashboard',
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [vscode.Uri.file(publicDir)],
+        }
+      );
+
+      this._panel.webview.html = this._buildHtml(this._panel.webview, publicDir);
+      this._panel.iconPath = new vscode.ThemeIcon('shield');
+
+      this._panel.onDidDispose(() => { this._panel = null; });
+
+      this._panel.webview.onDidReceiveMessage(msg => {
+        if (msg.type === 'copy') {
+          vscode.env.clipboard.writeText(msg.text);
+          vscode.window.showInformationMessage('Copied to clipboard');
+        }
+        if (msg.type === 'fetchError') {
+          this._panel?.dispose();
+          this._panel = null;
+          this._openInBrowser(baseUrl, token, 'WebView fetch failed, opening in browser');
+        }
+      });
+    } catch (err) {
+      this._openInBrowser(baseUrl, token, `WebView creation failed: ${err.message}`);
+    }
+  }
+
+  _openInBrowser(baseUrl, token, reason) {
+    if (baseUrl) {
+      const url = baseUrl + (token ? '?token=' + token : '');
+      vscode.env.openExternal(vscode.Uri.parse(url));
+      if (reason) {
+        vscode.window.showInformationMessage(`Cursor Guard: ${reason}. Opened in browser.`);
       }
-    );
-
-    this._panel.webview.html = this._buildHtml(this._panel.webview, publicDir);
-    this._panel.iconPath = new vscode.ThemeIcon('shield');
-
-    this._panel.onDidDispose(() => { this._panel = null; });
-
-    this._panel.webview.onDidReceiveMessage(msg => {
-      if (msg.type === 'copy') {
-        vscode.env.clipboard.writeText(msg.text);
-        vscode.window.showInformationMessage('Copied to clipboard');
-      }
-    });
+    } else {
+      vscode.window.showErrorMessage(
+        `Cursor Guard: Dashboard server not running. Try starting the watcher first.`
+      );
+    }
   }
 
   _buildHtml(webview, publicDir) {
@@ -86,10 +104,10 @@ class WebViewProvider {
     const csp = [
       `default-src 'none'`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
+      `script-src 'nonce-${nonce}' ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource}`,
-      `img-src ${webview.cspSource} data:`,
-      `connect-src ${baseUrl || 'http://127.0.0.1:*'}`,
+      `img-src ${webview.cspSource} data: http://127.0.0.1:*`,
+      `connect-src http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*`,
     ].join('; ');
 
     html = html.replace(

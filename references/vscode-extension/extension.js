@@ -27,10 +27,24 @@ async function activate(context) {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('cursorGuardDashboard', sidebarProvider),
 
-    vscode.commands.registerCommand('cursorGuard.openDashboard', () => {
+    vscode.commands.registerCommand('cursorGuard.openDashboard', async () => {
       if (!dashMgr.running) {
-        vscode.window.showWarningMessage('Cursor Guard: no projects detected. Add .cursor-guard.json to your workspace.');
-        return;
+        const action = await vscode.window.showWarningMessage(
+          'Cursor Guard: Dashboard server not running.',
+          'Start Server', 'Cancel'
+        );
+        if (action === 'Start Server') {
+          const folders = vscode.workspace.workspaceFolders;
+          if (folders) {
+            await dashMgr.ensureRunning(folders.map(f => f.uri.fsPath));
+          }
+          if (!dashMgr.running) {
+            vscode.window.showErrorMessage('Cursor Guard: failed to start dashboard server.');
+            return;
+          }
+        } else {
+          return;
+        }
       }
       webviewProvider.show();
     }),

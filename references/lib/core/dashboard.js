@@ -139,11 +139,18 @@ function getDashboard(projectDir) {
     protect: cfg.protect.length > 0 ? cfg.protect : ['**'],
     ignore: cfg.ignore,
     fileCount: 0,
+    totalFiles: 0,
+    excludedCount: 0,
+    protectPatterns: cfg.protect.length > 0 ? cfg.protect.length : 1,
+    ignorePatterns: cfg.ignore.length,
   };
 
   try {
     const allFiles = walkDir(projectDir, projectDir);
-    protectionScope.fileCount = filterFiles(allFiles, cfg).length;
+    const protectedFiles = filterFiles(allFiles, cfg);
+    protectionScope.totalFiles = allFiles.length;
+    protectionScope.fileCount = protectedFiles.length;
+    protectionScope.excludedCount = allFiles.length - protectedFiles.length;
   } catch { /* ignore */ }
 
   // ── Health assessment ───────────────────────────────────────

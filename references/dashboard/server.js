@@ -103,6 +103,7 @@ function json(res, data, status = 200) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
   });
   res.end(body);
 }
@@ -299,6 +300,16 @@ function startDashboardServer(paths, opts = {}) {
       if (!ALLOWED_HOSTS.test(host)) {
         res.writeHead(403);
         return res.end('Forbidden: invalid host');
+      }
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
+        });
+        return res.end();
       }
 
       if (req.method !== 'GET' && req.method !== 'POST') {
