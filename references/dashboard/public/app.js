@@ -670,21 +670,18 @@ function renderStrategyBadge(strategy) {
 
 /* ── Rendering: Global states ─────────────────────────────── */
 
-function showLoading() {
-  show($('#loading-state'));
+function showSkeleton() {
   hide($('#error-state'));
-  $$('.screen').forEach(s => hide(s));
+  $$('.screen').forEach(s => show(s));
 }
 
 function showGlobalError(msg) {
-  hide($('#loading-state'));
   show($('#error-state'));
   $$('.screen').forEach(s => hide(s));
   $('#error-message').textContent = msg || t('error.fetchFailed');
 }
 
 function showContent() {
-  hide($('#loading-state'));
   hide($('#error-state'));
   $$('.screen').forEach(s => show(s));
 }
@@ -1166,7 +1163,7 @@ async function init() {
   document.documentElement.lang = state.locale === 'zh-CN' ? 'zh-CN' : 'en';
   document.title = t('app.title');
   updateStaticI18n();
-  showLoading();
+  showSkeleton();
 
   try {
     await loadProjects();

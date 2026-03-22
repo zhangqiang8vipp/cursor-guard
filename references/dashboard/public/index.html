@@ -33,12 +33,6 @@
 
   <main id="content">
 
-    <!-- Loading -->
-    <div id="loading-state" class="state-panel">
-      <div class="spinner"></div>
-      <p data-i18n="state.loading">Loading…</p>
-    </div>
-
     <!-- Global Error -->
     <div id="error-state" class="state-panel hidden">
       <div class="error-icon">⚠</div>
@@ -47,35 +41,35 @@
     </div>
 
     <!-- Screen 1: Overview ───────────────────────────────── -->
-    <section id="screen-overview" class="screen hidden">
+    <section id="screen-overview" class="screen">
       <h2 class="section-title" data-i18n="overview.title">Overview</h2>
       <div id="overview-grid" class="card-grid">
-        <div id="card-health" class="card card-health"></div>
-        <div id="card-git-backup" class="card"></div>
-        <div id="card-shadow-backup" class="card"></div>
-        <div id="card-watcher" class="card"></div>
-        <div id="card-alert" class="card"></div>
+        <div id="card-health" class="card card-health"><div class="skeleton-block"></div></div>
+        <div id="card-git-backup" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-shadow-backup" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-watcher" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-alert" class="card"><div class="skeleton-block"></div></div>
       </div>
     </section>
 
     <!-- Screen 2: Backups & Recovery ─────────────────────── -->
-    <section id="screen-backups" class="screen hidden">
+    <section id="screen-backups" class="screen">
       <h2 class="section-title" data-i18n="backups.title">Backups &amp; Recovery</h2>
-      <div id="backup-stats" class="stats-row"></div>
+      <div id="backup-stats" class="stats-row"><div class="skeleton-row"></div></div>
       <div id="backup-filters" class="filter-bar"></div>
-      <div id="backup-table-wrap" class="table-wrap"></div>
+      <div id="backup-table-wrap" class="table-wrap"><div class="skeleton-table"></div></div>
     </section>
 
     <!-- Screen 3: Protection Scope ───────────────────────── -->
-    <section id="screen-protection" class="screen hidden">
+    <section id="screen-protection" class="screen">
       <h2 class="section-title" data-i18n="protection.title">Protection Scope</h2>
-      <div id="protection-content"></div>
+      <div id="protection-content"><div class="skeleton-block"></div></div>
     </section>
 
     <!-- Screen 4: Diagnostics ────────────────────────────── -->
-    <section id="screen-diagnostics" class="screen hidden">
+    <section id="screen-diagnostics" class="screen">
       <h2 class="section-title" data-i18n="diagnostics.title">Diagnostics</h2>
-      <div id="diagnostics-summary"></div>
+      <div id="diagnostics-summary"><div class="skeleton-block"></div></div>
     </section>
 
   </main>
