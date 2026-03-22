@@ -266,7 +266,7 @@ function runDiagnostics(projectDir) {
     const memPkg = require('../../../package.json');
     if (diskPkg.version !== memPkg.version) {
       check('MCP version', 'WARN',
-        `running v${memPkg.version} but disk has v${diskPkg.version} — restart Cursor to load the new version`);
+        `running v${memPkg.version} but disk has v${diskPkg.version} — restart Cursor (Ctrl+Shift+P -> "Developer: Reload Window") to load the new version`);
     } else {
       check('MCP version', 'PASS', `v${memPkg.version}`);
     }

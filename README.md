@@ -377,6 +377,11 @@ The skill activates on these signals:
 
 ## Changelog
 
+### v4.3.2
+
+- **Fix**: `cursor-guard-init` now adds `node_modules/` (root-level) to `.gitignore` — prevents `git add -A` from scanning thousands of npm dependency files after `npm install cursor-guard --save-dev`
+- **Improve**: Doctor "MCP version" mismatch warning now includes the reload keybinding (`Ctrl+Shift+P -> "Developer: Reload Window"`) for faster action
+
 ### v4.3.1
 
 - **Fix**: `restore_project` now protects `.gitignore` — added to `GUARD_CONFIGS` so it is restored from HEAD after recovery, preventing post-restore full-tree scans (2500+ files)

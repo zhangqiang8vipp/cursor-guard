@@ -81,7 +81,7 @@ try {
 // Step 3: Add .gitignore entries for skill node_modules
 console.log('  [3/4] Updating .gitignore...');
 const gitignorePath = path.join(projectDir, '.gitignore');
-const entries = ['.cursor/skills/**/node_modules/'];
+const entries = ['node_modules/', '.cursor/skills/**/node_modules/'];
 let gitignoreUpdated = false;
 if (!isGlobal) {
   let existing = '';

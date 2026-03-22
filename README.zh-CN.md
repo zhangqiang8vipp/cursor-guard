@@ -377,6 +377,11 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ## 更新日志
 
+### v4.3.2
+
+- **修复**：`cursor-guard-init` 现在会将根目录 `node_modules/` 加入 `.gitignore`——防止 `npm install cursor-guard --save-dev` 后 `git add -A` 扫描数千个依赖文件导致极度缓慢
+- **改进**：Doctor "MCP version" 版本不一致警告现在包含重载快捷键提示（`Ctrl+Shift+P -> "Developer: Reload Window"`），方便快速操作
+
 ### v4.3.1
 
 - **修复**：`restore_project` 现在保护 `.gitignore`——加入 `GUARD_CONFIGS`，恢复后从 HEAD 还原，防止 `.gitignore` 丢失导致全量扫描（2500+ 文件）
