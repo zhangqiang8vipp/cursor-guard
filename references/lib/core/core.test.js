@@ -621,6 +621,46 @@ test('restoreFile respects pre_restore_backup=never from config', () => {
   }
 });
 
+test('restoreFile rejects directory pathspec (git tree)', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    const result = restoreFile(tmpDir, 'src', headHash, { preserveCurrent: false });
+    assert.strictEqual(result.status, 'error');
+    assert.ok(result.error.includes('tree') || result.error.includes('directory'), `expected tree/directory error, got: ${result.error}`);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('restoreFile rejects protected .cursor directory', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    fs.mkdirSync(path.join(tmpDir, '.cursor'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.cursor', 'mcp.json'), '{}');
+    execFileSync('git', ['add', '-A'], { cwd: tmpDir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'add .cursor'], { cwd: tmpDir, stdio: 'pipe' });
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    const result = restoreFile(tmpDir, '.cursor', headHash, { preserveCurrent: false });
+    assert.strictEqual(result.status, 'error');
+    assert.ok(result.error.includes('protected'), `expected protected path error, got: ${result.error}`);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('restoreFile rejects project root "."', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const headHash = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: tmpDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    const result = restoreFile(tmpDir, '.', headHash, { preserveCurrent: false });
+    assert.strictEqual(result.status, 'error');
+    assert.ok(result.error.includes('project root') || result.error.includes('specific file'), `expected root rejection, got: ${result.error}`);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 test('createPreRestoreSnapshot creates ref under refs/guard/pre-restore/', () => {
   const tmpDir = createTempGitRepo();
   try {
