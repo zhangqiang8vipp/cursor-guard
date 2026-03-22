@@ -48,6 +48,9 @@ const TRAILER_MAP = {
   'Intent':        { key: 'intent' },
   'Agent':         { key: 'agent' },
   'Session':       { key: 'session' },
+  'From':          { key: 'from' },
+  'Restore-To':   { key: 'restoreTo' },
+  'File':          { key: 'restoreFile' },
 };
 
 function parseCommitTrailers(body) {

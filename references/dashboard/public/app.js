@@ -103,6 +103,9 @@ const I18N = {
     'drawer.field.intent':  'Intent',
     'drawer.field.agent':   'Agent',
     'drawer.field.session': 'Session',
+    'drawer.field.from':    'From (current)',
+    'drawer.field.restoreTo':'Restore to',
+    'drawer.field.restoreFile':'Restored file',
 
     'error.fetchFailed':    'Failed to fetch data',
     'error.sectionFailed':  'This section failed to load',
@@ -284,6 +287,9 @@ const I18N = {
     'drawer.field.intent':  '操作意图',
     'drawer.field.agent':   'AI 模型',
     'drawer.field.session': '会话 ID',
+    'drawer.field.from':    '恢复前版本',
+    'drawer.field.restoreTo':'恢复目标',
+    'drawer.field.restoreFile':'恢复文件',
 
     'error.fetchFailed':    '数据拉取失败',
     'error.sectionFailed':  '此区块加载失败',
@@ -859,7 +865,10 @@ function formatSummaryCell(b) {
   }
 
   let line2 = '';
-  if (b.intent) {
+  if (b.from && b.restoreTo) {
+    const label = b.restoreFile ? `${esc(b.restoreFile)}: ` : '';
+    line2 = `<div class="summary-restore-ctx">${label}<span class="text-mono">${esc(b.from)}</span> → <span class="text-mono">${esc(b.restoreTo)}</span></div>`;
+  } else if (b.intent) {
     const intentShort = b.intent.length > 70 ? b.intent.substring(0, 67) + '...' : b.intent;
     line2 = `<div class="summary-intent">${esc(intentShort)}</div>`;
   } else if (b.message && !b.message.startsWith('guard:')) {
@@ -1004,6 +1013,9 @@ function openRestoreDrawer(backup) {
   if (backup.intent) fields.push({ key: 'drawer.field.intent', val: backup.intent });
   if (backup.agent) fields.push({ key: 'drawer.field.agent', val: backup.agent });
   if (backup.session) fields.push({ key: 'drawer.field.session', val: backup.session });
+  if (backup.from) fields.push({ key: 'drawer.field.from', val: backup.from });
+  if (backup.restoreTo) fields.push({ key: 'drawer.field.restoreTo', val: backup.restoreTo });
+  if (backup.restoreFile) fields.push({ key: 'drawer.field.restoreFile', val: backup.restoreFile });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
   if (backup.summary) {
     const translated = backup.summary.split('; ').map(s => translateSummary(s)).join('\n');

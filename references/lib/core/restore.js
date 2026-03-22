@@ -93,7 +93,7 @@ function restoreFile(projectDir, file, source, opts = {}) {
 
   // Pre-restore snapshot (git path)
   if (preserveCurrent && repo) {
-    const preRestoreResult = createPreRestoreSnapshot(projectDir, file);
+    const preRestoreResult = createPreRestoreSnapshot(projectDir, file, { source, file: pathCheck.normalized });
     if (preRestoreResult.status === 'created') {
       result.preRestoreRef = preRestoreResult.ref;
       result.preRestoreShortHash = preRestoreResult.shortHash;
@@ -296,7 +296,7 @@ function executeProjectRestore(projectDir, source, opts = {}) {
   const result = { filesRestored: 0, files: effectiveFiles };
 
   if (preserveCurrent) {
-    const snap = createPreRestoreSnapshot(projectDir, null);
+    const snap = createPreRestoreSnapshot(projectDir, null, { source });
     if (snap.status === 'created') {
       result.preRestoreRef = snap.ref;
       result.preRestoreShortHash = snap.shortHash;
@@ -371,9 +371,12 @@ function executeProjectRestore(projectDir, source, opts = {}) {
  *
  * @param {string} projectDir
  * @param {string} [scope] - Specific file to check for changes, or null for all
+ * @param {object} [opts]
+ * @param {string} [opts.source] - Target restore source (commit hash or ref)
+ * @param {string} [opts.file] - File being restored (single-file restore only)
  * @returns {{ status: 'created'|'skipped'|'error', ref?: string, shortHash?: string, error?: string }}
  */
-function createPreRestoreSnapshot(projectDir, scope) {
+function createPreRestoreSnapshot(projectDir, scope, opts = {}) {
   const gDir = getGitDir(projectDir);
   if (!gDir) return { status: 'error', error: 'not a git repository' };
 
@@ -411,6 +414,12 @@ function createPreRestoreSnapshot(projectDir, scope) {
 
     let msg = `guard: pre-restore snapshot ${ts}`;
     msg += '\n\nTrigger: pre-restore';
+    msg += `\nFrom: ${head.substring(0, 7)}`;
+    if (opts.source) {
+      const targetShort = git(['rev-parse', '--short', opts.source], { cwd, allowFail: true }) || opts.source;
+      msg += `\nRestore-To: ${targetShort}`;
+    }
+    if (opts.file) msg += `\nFile: ${opts.file}`;
     const commitHash = execFileSync('git', [
       'commit-tree', tree, '-p', head, '-m', msg,
     ], { cwd, stdio: 'pipe', encoding: 'utf-8' }).trim();

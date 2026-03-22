@@ -349,6 +349,19 @@ main {
   max-width: 400px;
   line-height: 1.4;
 }
+.summary-restore-ctx {
+  font-size: 12px;
+  color: var(--amber);
+  background: var(--amber-bg);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--amber);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+  line-height: 1.4;
+}
 .summary-message {
   font-size: 12px;
   color: var(--text-primary);
