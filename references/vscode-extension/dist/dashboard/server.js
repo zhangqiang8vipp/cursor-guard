@@ -1,0 +1,397 @@
+#!/usr/bin/env node
+'use strict';
+
+const http = require('http');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const GUARD_ROOT = path.resolve(__dirname, '..');
+
+function coreDeps() {
+  return {
+    getDashboard: require('../lib/core/dashboard').getDashboard,
+    runDiagnostics: require('../lib/core/doctor').runDiagnostics,
+    listBackups: require('../lib/core/backups').listBackups,
+    getBackupFiles: require('../lib/core/backups').getBackupFiles,
+  };
+}
+
+function clearGuardCache() {
+  Object.keys(require.cache).forEach(key => {
+    if (key.startsWith(GUARD_ROOT)) delete require.cache[key];
+  });
+}
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const PKG_PATH = _findPackageJson(__dirname);
+let SERVER_VERSION = _readVersion(PKG_PATH);
+
+function _findPackageJson(from) {
+  const candidates = [
+    path.resolve(from, '..', '..', 'package.json'),
+    path.resolve(from, '..', 'package.json'),
+    path.resolve(from, '..', 'guard-version.json'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidates[0];
+}
+
+function _readVersion(pkgPath) {
+  try { return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version || '0.0.0'; }
+  catch { return '0.0.0'; }
+}
+const DEFAULT_PORT = 3120;
+const MAX_PORT_RETRIES = 10;
+const ALLOWED_HOSTS = /^(127\.0\.0\.1|localhost)(:\d+)?$/;
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
+
+/* ── CLI ────────────────────────────────────────────────────── */
+
+function parseCliArgs() {
+  const result = { paths: [], port: DEFAULT_PORT };
+  const argv = process.argv;
+  for (let i = 2; i < argv.length; i++) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+    if (arg === '--path' && next && !next.startsWith('--')) {
+      result.paths.push(path.resolve(next));
+      i++;
+    } else if (arg === '--port' && next) {
+      result.port = parseInt(next, 10) || DEFAULT_PORT;
+      i++;
+    }
+  }
+  if (result.paths.length === 0) result.paths.push(process.cwd());
+  return result;
+}
+
+/* ── Project Registry ───────────────────────────────────────── */
+
+function buildRegistry(paths) {
+  const map = new Map();
+  const seen = new Set();
+  let idx = 0;
+  for (const raw of paths) {
+    const resolved = path.resolve(raw);
+    if (seen.has(resolved.toLowerCase())) continue;
+    seen.add(resolved.toLowerCase());
+    const id = `p${idx++}`;
+    const name = path.basename(resolved) || resolved;
+    const label = resolved.length > 50 ? '...' + resolved.slice(-47) : resolved;
+    map.set(id, { id, name, pathLabel: label, _path: resolved });
+  }
+  return map;
+}
+
+/* ── HTTP helpers ───────────────────────────────────────────── */
+
+function json(res, data, status = 200) {
+  const body = JSON.stringify(data);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(body);
+}
+
+function notFound(res) { res.writeHead(404); res.end('Not Found'); }
+function forbidden(res) { res.writeHead(403); res.end('Forbidden'); }
+
+/* ── Static file server (strict) ────────────────────────────── */
+
+function serveStatic(reqUrl, res, serverToken) {
+  let pathname;
+  try { pathname = decodeURIComponent(new URL(reqUrl, 'http://x').pathname); }
+  catch { return notFound(res); }
+
+  if (pathname === '/') pathname = '/index.html';
+  if (pathname.indexOf('\0') !== -1) return forbidden(res);
+
+  const resolved = path.resolve(path.join(PUBLIC_DIR, pathname));
+  if (resolved !== PUBLIC_DIR && !resolved.startsWith(PUBLIC_DIR + path.sep)) {
+    return forbidden(res);
+  }
+
+  fs.readFile(resolved, (err, data) => {
+    if (err) return notFound(res);
+    const ext = path.extname(resolved).toLowerCase();
+
+    // Inject per-process token into index.html so the frontend can authenticate API calls
+    if (pathname === '/index.html' && serverToken) {
+      const html = data.toString('utf-8').replace(
+        '</head>',
+        `<script>window.__GUARD_TOKEN__="${serverToken}";</script></head>`
+      );
+      const buf = Buffer.from(html, 'utf-8');
+      res.writeHead(200, {
+        'Content-Type': MIME[ext] || 'text/html; charset=utf-8',
+        'Content-Length': buf.length,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store',
+      });
+      return res.end(buf);
+    }
+
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Content-Length': data.length,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(data);
+  });
+}
+
+/* ── API routes ─────────────────────────────────────────────── */
+
+function handleApi(pathname, query, registry, res, req) {
+  if (pathname === '/api/version') {
+    let installedVersion = SERVER_VERSION;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8'));
+      installedVersion = pkg.version;
+    } catch { /* fallback to server version */ }
+    return json(res, {
+      serverVersion: SERVER_VERSION,
+      installedVersion,
+      updateAvailable: SERVER_VERSION !== installedVersion,
+    });
+  }
+
+  if (pathname === '/api/restart') {
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      return res.end('Method Not Allowed');
+    }
+    if (!_instance) return json(res, { error: 'No running instance' }, 500);
+    json(res, { restarting: true });
+    setTimeout(() => restartDashboard(), 300);
+    return;
+  }
+
+  if (pathname === '/api/projects') {
+    const list = [...registry.values()].map(({ id, name, pathLabel }) => ({ id, name, pathLabel }));
+    return json(res, list);
+  }
+
+  const id = query.get('id');
+  const project = id ? registry.get(id) : null;
+  if (!project) return json(res, { error: 'Invalid or missing project id' }, 400);
+  const pp = project._path;
+
+  if (!fs.existsSync(pp)) {
+    return json(res, { error: `Project directory not accessible: ${project.pathLabel}` }, 500);
+  }
+
+  const { getDashboard, runDiagnostics, listBackups, getBackupFiles } = coreDeps();
+
+  if (pathname === '/api/page-data') {
+    const scope = query.get('scope');
+    const result = { timestamp: new Date().toISOString() };
+
+    if (!scope || scope === 'dashboard') {
+      try { result.dashboard = getDashboard(pp); }
+      catch (e) { result.dashboard = { error: e.message }; }
+    }
+    if (!scope || scope === 'doctor') {
+      try { result.doctor = runDiagnostics(pp); }
+      catch (e) { result.doctor = { error: e.message }; }
+    }
+    if (!scope || scope === 'backups') {
+      try { result.backups = listBackups(pp, { limit: 50 }).sources || []; }
+      catch (e) { result.backups = { error: e.message }; }
+    }
+    return json(res, result);
+  }
+
+  if (pathname === '/api/backups') {
+    try {
+      const type = query.get('type') || undefined;
+      const limit = Math.min(parseInt(query.get('limit')) || 50, 200);
+      const raw = listBackups(pp, { limit });
+      let sources = raw.sources || [];
+      if (type) sources = sources.filter(s => s.type === type);
+      return json(res, { sources });
+    } catch (e) {
+      return json(res, { error: e.message }, 500);
+    }
+  }
+
+  if (pathname === '/api/backup-files') {
+    const hash = query.get('hash');
+    if (!hash) return json(res, { error: 'Missing hash parameter' }, 400);
+    try { return json(res, getBackupFiles(pp, hash)); }
+    catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (pathname === '/api/doctor') {
+    try { return json(res, runDiagnostics(pp)); }
+    catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  return notFound(res);
+}
+
+/* ── Server (singleton) ─────────────────────────────────────── */
+
+let _instance = null;
+
+function _mergeProjects(registry, paths) {
+  const seen = new Set([...registry.values()].map(p => p._path.toLowerCase()));
+  let maxIdx = registry.size;
+  let added = 0;
+  for (const raw of paths) {
+    const resolved = path.resolve(raw);
+    if (seen.has(resolved.toLowerCase())) continue;
+    seen.add(resolved.toLowerCase());
+    const id = `p${maxIdx++}`;
+    const name = path.basename(resolved) || resolved;
+    const label = resolved.length > 50 ? '...' + resolved.slice(-47) : resolved;
+    registry.set(id, { id, name, pathLabel: label, _path: resolved });
+    added++;
+  }
+  return added;
+}
+
+/**
+ * Start the dashboard HTTP server, or hot-add projects to an existing instance.
+ * Uses a module-level singleton: subsequent calls reuse the same port and server,
+ * merging new project paths into the live registry.
+ *
+ * @param {string[]} paths - Project directories to serve
+ * @param {object} [opts]
+ * @param {number} [opts.port=3120] - Starting port (ignored if server already running)
+ * @param {boolean} [opts.silent=false] - Suppress banner output
+ * @returns {Promise<{server: http.Server, port: number, registry: Map}>}
+ */
+function startDashboardServer(paths, opts = {}) {
+  if (_instance) {
+    const added = _mergeProjects(_instance.registry, paths);
+    if (added > 0 && !opts.silent) {
+      console.log(`  [dashboard] Hot-added ${added} project(s) — total: ${_instance.registry.size} on port ${_instance.port}`);
+    }
+    return Promise.resolve(_instance);
+  }
+
+  const port = opts.port || DEFAULT_PORT;
+  const silent = opts.silent || false;
+  const registry = buildRegistry(paths);
+  const token = crypto.randomBytes(16).toString('hex');
+
+  return new Promise((resolve, reject) => {
+    let currentPort = port;
+    let retries = 0;
+
+    const server = http.createServer((req, res) => {
+      const host = req.headers.host || '';
+      if (!ALLOWED_HOSTS.test(host)) {
+        res.writeHead(403);
+        return res.end('Forbidden: invalid host');
+      }
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
+        });
+        return res.end();
+      }
+
+      if (req.method !== 'GET' && req.method !== 'POST') {
+        res.writeHead(405);
+        return res.end('Method Not Allowed');
+      }
+      let parsed;
+      try { parsed = new URL(req.url, `http://${host}`); }
+      catch { return notFound(res); }
+
+      if (parsed.pathname.startsWith('/api/')) {
+        const reqToken = parsed.searchParams.get('token');
+        if (reqToken !== token) {
+          res.writeHead(403);
+          return res.end('Forbidden: invalid token');
+        }
+        handleApi(parsed.pathname, parsed.searchParams, registry, res, req);
+      } else {
+        if (req.method !== 'GET') { res.writeHead(405); return res.end('Method Not Allowed'); }
+        serveStatic(req.url, res, token);
+      }
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE' && retries < MAX_PORT_RETRIES) {
+        retries++;
+        currentPort++;
+        server.listen(currentPort, '127.0.0.1');
+      } else {
+        reject(err);
+      }
+    });
+
+    server.on('listening', () => {
+      const addr = server.address();
+      _instance = { server, port: addr.port, registry, token };
+      if (!silent) {
+        console.log('');
+        console.log('  Cursor Guard Dashboard');
+        console.log('  ─────────────────────────');
+        console.log(`  URL:      http://127.0.0.1:${addr.port}`);
+        console.log(`  Projects: ${registry.size}`);
+        for (const p of registry.values()) {
+          console.log(`    [${p.id}] ${p.name} → ${p._path}`);
+        }
+        console.log('');
+      }
+      resolve(_instance);
+    });
+
+    server.listen(currentPort, '127.0.0.1');
+  });
+}
+
+/* ── Hot Restart ───────────────────────────────────────────── */
+
+async function restartDashboard() {
+  if (!_instance) return;
+  const paths = [..._instance.registry.values()].map(p => p._path);
+  const port = _instance.port;
+
+  _instance.server.close();
+  _instance = null;
+
+  clearGuardCache();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8'));
+    SERVER_VERSION = pkg.version;
+  } catch { /* keep old version */ }
+
+  console.log(`  [dashboard] Restarting on port ${port}...`);
+  await startDashboardServer(paths, { port, silent: false });
+}
+
+/* ── CLI entry ─────────────────────────────────────────────── */
+
+if (require.main === module) {
+  const args = parseCliArgs();
+  startDashboardServer(args.paths, { port: args.port }).catch(err => {
+    console.error('Failed to start:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { startDashboardServer, getInstance: () => _instance };

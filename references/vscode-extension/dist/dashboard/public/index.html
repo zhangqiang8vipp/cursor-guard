@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cursor Guard Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Top Bar ──────────────────────────────────────────── -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <svg class="logo-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <span class="logo-text" data-i18n="app.title">Cursor Guard</span>
+      <select id="project-select"></select>
+      <span id="strategy-badge" class="badge"></span>
+    </div>
+    <div class="topbar-right">
+      <span id="last-refresh" class="text-muted"></span>
+      <button id="refresh-btn" class="btn btn-ghost" title="Refresh">
+        <svg class="icon-spin" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        <span data-i18n="topbar.refresh">Refresh</span>
+      </button>
+      <button id="lang-toggle" class="btn btn-ghost">EN / 中</button>
+    </div>
+  </header>
+
+  <main id="content">
+
+    <!-- Global Error -->
+    <div id="error-state" class="state-panel hidden">
+      <div class="error-icon">⚠</div>
+      <p id="error-message"></p>
+      <button id="error-retry" class="btn" data-i18n="state.retry">Retry</button>
+    </div>
+
+    <!-- Screen 1: Overview ───────────────────────────────── -->
+    <section id="screen-overview" class="screen">
+      <h2 class="section-title" data-i18n="overview.title">Overview</h2>
+      <div id="overview-grid" class="card-grid">
+        <div id="card-health" class="card card-health"><div class="skeleton-block"></div></div>
+        <div id="card-git-backup" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-shadow-backup" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-watcher" class="card"><div class="skeleton-block"></div></div>
+        <div id="card-alert" class="card"><div class="skeleton-block"></div></div>
+      </div>
+    </section>
+
+    <!-- Screen 2: Backups & Recovery ─────────────────────── -->
+    <section id="screen-backups" class="screen">
+      <h2 class="section-title" data-i18n="backups.title">Backups &amp; Recovery</h2>
+      <div id="backup-stats" class="stats-row"><div class="skeleton-row"></div></div>
+      <div id="backup-filters" class="filter-bar"></div>
+      <div id="file-search-wrap" class="file-search-wrap"></div>
+      <div id="backup-table-wrap" class="table-wrap"><div class="skeleton-table"></div></div>
+    </section>
+
+    <!-- Screen 3: Protection Scope ───────────────────────── -->
+    <section id="screen-protection" class="screen">
+      <h2 class="section-title" data-i18n="protection.title">Protection Scope</h2>
+      <div id="protection-content"><div class="skeleton-block"></div></div>
+    </section>
+
+    <!-- Screen 4: Diagnostics ────────────────────────────── -->
+    <section id="screen-diagnostics" class="screen">
+      <h2 class="section-title" data-i18n="diagnostics.title">Diagnostics</h2>
+      <div id="diagnostics-summary"><div class="skeleton-block"></div></div>
+    </section>
+
+  </main>
+
+  <!-- ── File Detail Modal ──────────────────────────────────── -->
+  <div id="file-modal-overlay" class="modal-overlay">
+    <div id="file-modal" class="file-modal">
+      <div class="file-modal-header">
+        <h3 id="file-modal-title"></h3>
+        <button class="drawer-close" data-action="close-modal">&times;</button>
+      </div>
+      <div id="file-modal-body" class="file-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Drawer Overlay ───────────────────────────────────── -->
+  <div id="drawer-overlay" class="drawer-overlay"></div>
+
+  <!-- ── Restore Point Drawer ─────────────────────────────── -->
+  <aside id="restore-drawer" class="drawer">
+    <div class="drawer-header">
+      <h3 data-i18n="drawer.restorePoint">Restore Point Details</h3>
+      <button class="drawer-close" data-action="close-drawer">&times;</button>
+    </div>
+    <div id="restore-drawer-body" class="drawer-body"></div>
+  </aside>
+
+  <!-- ── Doctor Drawer ────────────────────────────────────── -->
+  <aside id="doctor-drawer" class="drawer">
+    <div class="drawer-header">
+      <h3 data-i18n="drawer.doctorTitle">Diagnostic Details</h3>
+      <button class="drawer-close" data-action="close-drawer">&times;</button>
+    </div>
+    <div id="doctor-drawer-body" class="drawer-body"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

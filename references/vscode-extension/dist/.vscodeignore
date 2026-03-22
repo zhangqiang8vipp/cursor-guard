@@ -1,0 +1,9 @@
+.vscode/**
+.gitignore
+build-vsix.js
+dist/**
+*.test.js
+**/*.test.js
+CHANGELOG.md
+!node_modules/@modelcontextprotocol/**
+!node_modules/zod/**

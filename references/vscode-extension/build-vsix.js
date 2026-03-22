@@ -17,21 +17,17 @@ if (fs.existsSync(DIST)) fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
 const copyMap = [
-  // Extension core
   { src: 'extension.js' },
   { src: 'lib', type: 'dir' },
   { src: 'media', type: 'dir' },
 
-  // Cursor-guard runtime deps (from references/)
   { src: path.join(REFS, 'dashboard'), dst: 'dashboard', type: 'dir' },
   { src: path.join(REFS, 'lib', 'core'), dst: path.join('lib', 'core'), type: 'dir' },
   { src: path.join(REFS, 'lib', 'utils.js'), dst: path.join('lib', 'utils.js') },
   { src: path.join(REFS, 'lib', 'auto-backup.js'), dst: path.join('lib', 'auto-backup.js') },
   { src: path.join(REFS, 'lib', 'guard-doctor.js'), dst: path.join('lib', 'guard-doctor.js') },
   { src: path.join(REFS, 'bin'), dst: 'bin', type: 'dir' },
-  { src: path.join(REFS, 'mcp'), dst: 'mcp', type: 'dir' },
 
-  // Skill files
   { src: path.join(ROOT, 'SKILL.md'), dst: path.join('skill', 'SKILL.md') },
   { src: path.join(ROOT, 'ROADMAP.md'), dst: path.join('skill', 'ROADMAP.md') },
   { src: path.join(REFS, 'cursor-guard.example.json'), dst: path.join('skill', 'cursor-guard.example.json') },
@@ -54,20 +50,21 @@ for (const entry of copyMap) {
   console.log(`  COPY: ${path.relative(DIST, dst)}`);
 }
 
-// Copy MCP SDK dependencies to vendor/ (not node_modules/ — vsce excludes that)
-const sdkSrc = path.join(ROOT, 'node_modules', '@modelcontextprotocol');
-if (fs.existsSync(sdkSrc)) {
-  const sdkDst = path.join(DIST, 'vendor', '@modelcontextprotocol');
-  copyDir(sdkSrc, sdkDst);
-  console.log('  COPY: vendor/@modelcontextprotocol/');
-}
-const vendorDeps = ['zod', 'zod-to-json-schema'];
-for (const dep of vendorDeps) {
-  const depSrc = path.join(ROOT, 'node_modules', dep);
-  if (fs.existsSync(depSrc)) {
-    copyDir(depSrc, path.join(DIST, 'vendor', dep));
-    console.log(`  COPY: vendor/${dep}/`);
-  }
+// ── Bundle MCP server with esbuild (all deps inlined, no vendor/ needed) ──
+const mcpEntry = path.join(REFS, 'mcp', 'server.js');
+const mcpOut = path.join(DIST, 'mcp', 'server.js');
+fs.mkdirSync(path.join(DIST, 'mcp'), { recursive: true });
+
+try {
+  const { execSync } = require('child_process');
+  const cmd = `npx esbuild "${mcpEntry}" --bundle --platform=node --target=node18 --format=cjs --outfile="${mcpOut}" --log-level=warning`;
+  execSync(cmd, { cwd: ROOT, stdio: 'pipe' });
+  const size = (fs.statSync(mcpOut).size / 1024).toFixed(0);
+  console.log(`  BUNDLE: mcp/server.js (${size} KB, self-contained)`);
+} catch (err) {
+  console.error(`  ERROR: esbuild bundle failed:\n${err.stderr?.toString() || err.message}`);
+  console.error('  Falling back to source copy...');
+  fs.copyFileSync(mcpEntry, mcpOut);
 }
 
 // Generate merged package.json

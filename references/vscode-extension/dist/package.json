@@ -8,8 +8,17 @@
   "engines": {
     "vscode": "^1.74.0"
   },
-  "categories": ["Other", "Visualization"],
-  "keywords": ["cursor", "ai-safety", "code-protection", "git-backup", "dashboard"],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "cursor",
+    "ai-safety",
+    "code-protection",
+    "git-backup",
+    "dashboard"
+  ],
   "icon": "media/icon.png",
   "repository": {
     "type": "git",

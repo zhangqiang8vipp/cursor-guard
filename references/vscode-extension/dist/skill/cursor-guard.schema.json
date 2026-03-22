@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cursor Guard Configuration",
+  "description": "Controls which files are protected, backup strategy, secrets filtering, and retention policy for the cursor-guard skill.",
+  "type": "object",
+  "properties": {
+    "protect": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Whitelist glob patterns relative to workspace root. Only matching files get backup protection. If empty or missing, all files are protected."
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Blacklist glob patterns. Matching files are excluded even if they match 'protect'. Applied on top of .gitignore."
+    },
+    "backup_strategy": {
+      "type": "string",
+      "enum": ["git", "shadow", "both"],
+      "default": "git",
+      "description": "Primary backup method: 'git' (local commits), 'shadow' (.cursor-guard-backup/ copies), or 'both'."
+    },
+    "auto_backup_interval_seconds": {
+      "type": "integer",
+      "minimum": 5,
+      "default": 60,
+      "description": "Interval in seconds for auto-backup script to check for changes."
+    },
+    "secrets_patterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Glob patterns for sensitive files auto-excluded from backups. Overrides built-in defaults: .env, .env.*, *.key, *.pem, *.p12, *.pfx, credentials*. Use secrets_patterns_extra to add without replacing."
+    },
+    "secrets_patterns_extra": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Additional glob patterns appended to secrets_patterns (including defaults). Use this to add patterns without losing built-in protection."
+    },
+    "pre_restore_backup": {
+      "type": "string",
+      "enum": ["always", "ask", "never"],
+      "default": "always",
+      "description": "'always' (default): automatically preserve current version before every restore. 'ask': prompt the user each time to choose whether to preserve. 'never': skip preservation entirely (not recommended)."
+    },
+    "retention": {
+      "type": "object",
+      "description": "Controls automatic cleanup of old shadow-copy snapshots.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["days", "count", "size"],
+          "default": "days",
+          "description": "'days': keep snapshots from the last N days. 'count': keep N newest snapshots. 'size': keep total size under N MB."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Number of days to retain snapshots (when mode='days')."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100,
+          "description": "Maximum number of snapshots to keep (when mode='count')."
+        },
+        "max_size_mb": {
+          "type": "integer",
+          "minimum": 10,
+          "default": 500,
+          "description": "Maximum total size in MB for shadow copies (when mode='size')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "git_retention": {
+      "type": "object",
+      "description": "Controls automatic cleanup of old commits on refs/guard/auto-backup.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic pruning of old auto-backup commits. Default false (manual cleanup)."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["days", "count"],
+          "default": "count",
+          "description": "'days': keep commits from the last N days. 'count': keep N newest commits."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Number of days to keep auto-backup commits (when mode='days')."
+        },
+        "max_count": {
+          "type": "integer",
+          "minimum": 10,
+          "default": 200,
+          "description": "Maximum number of auto-backup commits to keep (when mode='count')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "proactive_alert": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable V4 proactive change-velocity detection. When true, the auto-backup watcher monitors file change frequency and raises alerts when abnormal patterns are detected."
+    },
+    "alert_thresholds": {
+      "type": "object",
+      "description": "Thresholds for proactive change-velocity alerts (V4). Only effective when proactive_alert is true.",
+      "properties": {
+        "files_per_window": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20,
+          "description": "Number of file changes within the time window that triggers an alert."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Sliding time window in seconds for counting file changes."
+        },
+        "cooldown_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60,
+          "description": "Minimum seconds between consecutive alerts to avoid noise."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
