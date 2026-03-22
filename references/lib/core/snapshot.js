@@ -156,6 +156,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
             : 'M';
           const fileName = filePart.split('\t').pop();
           if (matchesAny(cfg.ignore, fileName) || matchesAny(cfg.ignore, path.basename(fileName))) continue;
+          if (cfg.protect.length > 0 && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
           groups[key].push(fileName);
         }
         changedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
@@ -199,7 +200,8 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       const lsInitial = git(['ls-tree', '--name-only', '-r', newTree], { cwd, allowFail: true });
       if (lsInitial) {
         const files = lsInitial.split('\n').filter(Boolean)
-          .filter(f => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path.basename(f)));
+          .filter(f => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path.basename(f)))
+          .filter(f => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
         changedCount = files.length;
         const sample = files.slice(0, 5).join(', ');
         incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ', ...' : ''}`;

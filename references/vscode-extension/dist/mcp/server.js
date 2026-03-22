@@ -35568,7 +35568,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.8.4",
+      version: "4.8.5",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -36096,6 +36096,7 @@ var require_snapshot = __commonJS({
               const key = code.startsWith("R") ? "R" : code === "D" ? "D" : code === "A" ? "A" : "M";
               const fileName = filePart.split("	").pop();
               if (matchesAny(cfg.ignore, fileName) || matchesAny(cfg.ignore, path2.basename(fileName))) continue;
+              if (cfg.protect.length > 0 && !matchesAny(cfg.protect, fileName, { strict: true })) continue;
               groups[key].push(fileName);
             }
             changedCount = Object.values(groups).reduce((sum, arr) => sum + arr.length, 0);
@@ -36127,7 +36128,7 @@ var require_snapshot = __commonJS({
         } else {
           const lsInitial = git(["ls-tree", "--name-only", "-r", newTree], { cwd, allowFail: true });
           if (lsInitial) {
-            const files = lsInitial.split("\n").filter(Boolean).filter((f) => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path2.basename(f)));
+            const files = lsInitial.split("\n").filter(Boolean).filter((f) => !matchesAny(cfg.ignore, f) && !matchesAny(cfg.ignore, path2.basename(f))).filter((f) => cfg.protect.length === 0 || matchesAny(cfg.protect, f, { strict: true }));
             changedCount = files.length;
             const sample = files.slice(0, 5).join(", ");
             incrementalSummary = `Added ${files.length}: ${sample}${files.length > 5 ? ", ..." : ""}`;
