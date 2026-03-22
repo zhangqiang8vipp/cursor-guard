@@ -375,6 +375,45 @@ The skill activates on these signals:
 
 ---
 
+## Changelog
+
+### v4.3.1
+
+- **Fix**: `restore_project` now protects `.gitignore` — added to `GUARD_CONFIGS` so it is restored from HEAD after recovery, preventing post-restore full-tree scans (2500+ files)
+- **Fix**: `cursor-guard-index.lock` cleanup — `createGitSnapshot` now removes stale `.lock` files on entry and in the `finally` block, preventing lock file remnants from blocking subsequent operations
+- **Improve**: Auto-backup summary now filtered by `protect`/`ignore` patterns, excluding `.cursor/skills/` and other non-protected files
+- **Improve**: Summary format changed from flat `M file1, A file2` to categorized `Modified 3: a.js; Added 1: b.js` with i18n support
+- **Improve**: Manual snapshot `message` (from `snapshot_now`) now displayed in dashboard backup table and restore-point drawer
+- **Improve**: SKILL.md adds best-practice guidance for AI agents to provide descriptive `message` when calling `snapshot_now`
+
+### v4.3.0
+
+- **Feature**: Backup context metadata — structured Git commit messages with `Files-Changed`, `Summary`, and `Trigger` trailers
+- **Feature**: `listBackups` parses commit trailers and returns `filesChanged`, `summary`, `trigger` fields
+- **Feature**: Dashboard backup table adds "Changes" column; restore-point drawer shows trigger, files changed, and summary
+
+### v4.2.2
+
+- **Fix**: `restore_project` now protects `.cursor-guard.json` during restore (prevents config loss)
+- **Fix**: Post-restore HEAD recovery loop extended to restore both `.cursor/` and `.cursor-guard.json`
+- **Improve**: `cursor-guard-init` now reminds users to `git commit` after installation in Git repos
+
+### v4.2.1
+
+- **Fix**: `t()` function uses `replaceAll` for i18n placeholder substitution
+- **Fix**: Removed unused `loadActiveAlert` import from dashboard server
+- **Fix**: Added `git-snapshot` type to dashboard filter bar
+- **Fix**: Replaced `&&` with `;` in `detail.mcp_no_sdk` i18n string for cross-platform compatibility
+- **Fix**: Deduplicated `sdkCandidates` in `doctor.js`
+
+### v4.2.0
+
+- **Feature**: Web dashboard — local read-only UI with health overview, backup table, restore-point drawers, diagnostics, protection scope
+- **Feature**: Dual-language (zh-CN / en-US) with full i18n coverage including doctor checks, health issues, alert messages
+- **Feature**: Multi-project support via CLI `--path` args and frontend project selector
+
+---
+
 ## Known Limitations
 
 - **Binary files**: Git diffs and snapshots work on text files. Binary files (images, compiled assets) are stored but cannot be meaningfully diffed or partially restored.

@@ -375,6 +375,45 @@ node references\dashboard\server.js --path "D:\MyProject"
 
 ---
 
+## 更新日志
+
+### v4.3.1
+
+- **修复**：`restore_project` 现在保护 `.gitignore`——加入 `GUARD_CONFIGS`，恢复后从 HEAD 还原，防止 `.gitignore` 丢失导致全量扫描（2500+ 文件）
+- **修复**：`cursor-guard-index.lock` 清理——`createGitSnapshot` 在入口和 `finally` 块中清除过期 `.lock` 文件，防止锁文件残留阻塞后续操作
+- **改进**：自动备份 summary 现按 `protect`/`ignore` 模式过滤，排除 `.cursor/skills/` 等非保护文件
+- **改进**：summary 格式从扁平的 `M file1, A file2` 改为分类格式 `修改 3: a.js; 新增 1: b.js`，支持中英双语
+- **改进**：手动快照的 `message`（来自 `snapshot_now`）现显示在仪表盘备份表格和恢复点抽屉中
+- **改进**：SKILL.md 新增最佳实践指引，建议 AI agent 在调用 `snapshot_now` 时传入描述性 `message`
+
+### v4.3.0
+
+- **功能**：备份上下文元数据——Git commit 消息使用结构化 trailer（`Files-Changed`、`Summary`、`Trigger`）
+- **功能**：`listBackups` 解析 commit trailer，返回 `filesChanged`、`summary`、`trigger` 字段
+- **功能**：仪表盘备份表格新增"变更"列；恢复点抽屉展示触发方式、变更文件数、变更摘要
+
+### v4.2.2
+
+- **修复**：`restore_project` 恢复时保护 `.cursor-guard.json`（防止配置丢失）
+- **修复**：恢复后 HEAD 恢复循环扩展为同时还原 `.cursor/` 和 `.cursor-guard.json`
+- **改进**：`cursor-guard-init` 在 Git 仓库中安装后提醒用户执行 `git commit`
+
+### v4.2.1
+
+- **修复**：`t()` 函数改用 `replaceAll` 替换 i18n 占位符
+- **修复**：移除仪表盘 server 中未使用的 `loadActiveAlert` 导入
+- **修复**：仪表盘过滤栏补充 `git-snapshot` 类型选项
+- **修复**：`detail.mcp_no_sdk` i18n 字符串中 `&&` 替换为 `;`，确保跨平台兼容
+- **修复**：`doctor.js` 中 `sdkCandidates` 去重
+
+### v4.2.0
+
+- **功能**：Web 仪表盘——本地只读 UI，健康总览、备份表格、恢复点抽屉、诊断、保护范围
+- **功能**：中英双语（zh-CN / en-US），完整 i18n 覆盖含 doctor 检查项、健康问题、告警消息
+- **功能**：多项目支持——CLI `--path` 参数 + 前端项目选择器
+
+---
+
 ## 已知限制
 
 - **二进制文件**：Git 快照可以存储二进制文件（图片、编译产物），但无法进行有意义的 diff 或部分恢复。
