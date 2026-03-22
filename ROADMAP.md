@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.6`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.6` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.5.7`（V4 最终版）  
+> **文档状态**：`V2` ~ `V4.5.7` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -463,6 +463,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.5.3 | **告警历史 UX 优化 + 备份结构化文件表格**：见下方详细说明 | ✅ |
 | V4.5.4 | **Shadow 硬链接增量优化 + always_watch 强保护模式**：见下方详细说明 | ✅ |
 | V4.5.6 | **Bug 修复 + 告警 UX + init 优化**：见下方详细说明 | ✅ |
+| V4.5.7 | **文件详情 Modal 修复 + Dashboard 端口复用**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -651,6 +652,24 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 |------|------|
 | `cursor-guard-init` 自动创建配置 | init 流程新增 Step 4/5：若 `.cursor-guard.json` 不存在，自动从 `cursor-guard.example.json` 复制为项目根默认配置。升级场景下保留现有配置 |
 | `backup_interval_seconds` 兼容别名 | `loadConfig` 支持 `backup_interval_seconds` 作为 `auto_backup_interval_seconds` 的别名（带 deprecation 警告） |
+
+#### V4.5.7 详细内容
+
+**Bug 修复**：
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| 告警"查看文件详情"Modal 点不开 | 事件处理中 `state.pageData?.alerts` 路径错误，告警数据实际存储在 `state.pageData.dashboard.alerts` | 修正为 `state.pageData?.dashboard?.alerts`，同时修正 projectPath 取值路径 |
+
+**Dashboard 服务端口复用（单例模式）**：
+
+| 改进 | 说明 |
+|------|------|
+| 模块级单例 `_instance` | `startDashboardServer` 首次调用时创建 HTTP 服务并缓存到 `_instance`（含 server/port/registry/token） |
+| 热加载新项目 | 后续调用检测到 `_instance` 已存在时，不创建新服务，而是调用 `_mergeProjects` 将新路径合并到已有 registry 中 |
+| 去重机制 | `_mergeProjects` 按 `_path.toLowerCase()` 去重，相同项目不重复注册 |
+| 透明生效 | registry 是引用传递，已运行的 HTTP handler 闭包自动读取最新 registry，无需重启服务 |
+| 导出 `getInstance()` | 外部可通过 `getInstance()` 获取当前运行实例的 server/port/registry 信息 |
 
 #### V4.5.x 新增配置参考
 

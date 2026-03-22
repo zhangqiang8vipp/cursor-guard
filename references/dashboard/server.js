@@ -186,19 +186,47 @@ function handleApi(pathname, query, registry, res) {
   return notFound(res);
 }
 
-/* ── Server ─────────────────────────────────────────────────── */
+/* ── Server (singleton) ─────────────────────────────────────── */
+
+let _instance = null;
+
+function _mergeProjects(registry, paths) {
+  const seen = new Set([...registry.values()].map(p => p._path.toLowerCase()));
+  let maxIdx = registry.size;
+  let added = 0;
+  for (const raw of paths) {
+    const resolved = path.resolve(raw);
+    if (seen.has(resolved.toLowerCase())) continue;
+    seen.add(resolved.toLowerCase());
+    const id = `p${maxIdx++}`;
+    const name = path.basename(resolved) || resolved;
+    const label = resolved.length > 50 ? '...' + resolved.slice(-47) : resolved;
+    registry.set(id, { id, name, pathLabel: label, _path: resolved });
+    added++;
+  }
+  return added;
+}
 
 /**
- * Start the dashboard HTTP server.
- * Can be called standalone (CLI) or embedded (from watcher).
+ * Start the dashboard HTTP server, or hot-add projects to an existing instance.
+ * Uses a module-level singleton: subsequent calls reuse the same port and server,
+ * merging new project paths into the live registry.
  *
  * @param {string[]} paths - Project directories to serve
  * @param {object} [opts]
- * @param {number} [opts.port=3120] - Starting port
+ * @param {number} [opts.port=3120] - Starting port (ignored if server already running)
  * @param {boolean} [opts.silent=false] - Suppress banner output
  * @returns {Promise<{server: http.Server, port: number, registry: Map}>}
  */
 function startDashboardServer(paths, opts = {}) {
+  if (_instance) {
+    const added = _mergeProjects(_instance.registry, paths);
+    if (added > 0 && !opts.silent) {
+      console.log(`  [dashboard] Hot-added ${added} project(s) — total: ${_instance.registry.size} on port ${_instance.port}`);
+    }
+    return Promise.resolve(_instance);
+  }
+
   const port = opts.port || DEFAULT_PORT;
   const silent = opts.silent || false;
   const registry = buildRegistry(paths);
@@ -209,7 +237,6 @@ function startDashboardServer(paths, opts = {}) {
     let retries = 0;
 
     const server = http.createServer((req, res) => {
-      // DNS rebinding protection: reject unexpected Host headers
       const host = req.headers.host || '';
       if (!ALLOWED_HOSTS.test(host)) {
         res.writeHead(403);
@@ -224,7 +251,6 @@ function startDashboardServer(paths, opts = {}) {
       try { parsed = new URL(req.url, `http://${host}`); }
       catch { return notFound(res); }
 
-      // API endpoints require per-process token
       if (parsed.pathname.startsWith('/api/')) {
         const reqToken = parsed.searchParams.get('token');
         if (reqToken !== token) {
@@ -249,6 +275,7 @@ function startDashboardServer(paths, opts = {}) {
 
     server.on('listening', () => {
       const addr = server.address();
+      _instance = { server, port: addr.port, registry, token };
       if (!silent) {
         console.log('');
         console.log('  Cursor Guard Dashboard');
@@ -260,7 +287,7 @@ function startDashboardServer(paths, opts = {}) {
         }
         console.log('');
       }
-      resolve({ server, port: addr.port, registry });
+      resolve(_instance);
     });
 
     server.listen(currentPort, '127.0.0.1');
@@ -277,4 +304,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { startDashboardServer };
+module.exports = { startDashboardServer, getInstance: () => _instance };

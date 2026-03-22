@@ -1540,10 +1540,10 @@ function setupEvents() {
     }
     const modalBtn = e.target.closest('[data-alert-files-modal]');
     if (modalBtn) {
-      const alerts = state.pageData?.alerts;
+      const alerts = state.pageData?.dashboard?.alerts;
       const files = alerts?.latest?.files || [];
       if (files.length > 0) {
-        const proj = state.pageData?.status?.config?.path || '';
+        const proj = state.pageData?.dashboard?.watcher?.path || '';
         openFileModal(t('modal.alertFiles'), files, proj, '');
       }
       return;
