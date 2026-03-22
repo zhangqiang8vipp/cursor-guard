@@ -52,6 +52,9 @@ const I18N = {
     'alert.col.file':   'File',
     'alert.col.action': 'Action',
     'alert.col.changes':'Changes',
+    'alert.col.detail': 'Detail',
+    'alert.col.breakdown': 'Breakdown',
+    'alert.col.files': 'Files',
     'alert.action.modified': 'Modified',
     'alert.action.added':    'Added',
     'alert.action.deleted':  'Deleted',
@@ -276,6 +279,9 @@ const I18N = {
     'alert.col.file':   '文件',
     'alert.col.action': '操作',
     'alert.col.changes':'变化量',
+    'alert.col.detail': '详情',
+    'alert.col.breakdown': '文件类型',
+    'alert.col.files': '文件列表',
     'alert.action.modified': '修改',
     'alert.action.added':    '新增',
     'alert.action.deleted':  '删除',
@@ -913,22 +919,53 @@ function alertFileBreakdown(files) {
 function buildAlertHistoryHtml() {
   if (state.alertHistory.length === 0) return '';
   const count = state.alertHistory.length;
-  const rows = state.alertHistory.slice(-5).reverse().map(h => {
-    const breakdown = alertFileBreakdown(h.files);
-    return `<div class="alert-history-row text-sm text-muted">
-      <span class="alert-history-time">${esc(formatTime(h.timestamp))}</span>
-      <span>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</span>
-      ${breakdown ? `<span class="alert-history-breakdown">${esc(breakdown)}</span>` : ''}
-      <span class="badge badge-expired">${t('alert.expired')}</span>
-    </div>`;
-  }).join('');
   return `
     <div class="alert-history-toggle-wrap">
-      <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-toggle>${t('alert.historyCount', { n: count })}</button>
-    </div>
-    <div class="alert-history alert-history-collapsed">
-      <div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}
+      <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-modal>${t('alert.historyCount', { n: count })}</button>
     </div>`;
+}
+
+function openAlertHistoryModal() {
+  const list = [...state.alertHistory].reverse();
+  if (list.length === 0) return;
+  $('#file-modal-title').textContent = t('alert.history');
+  const body = $('#file-modal-body');
+
+  const rows = list.map((h, i) => {
+    const breakdown = alertFileBreakdown(h.files);
+    const fileCount = Array.isArray(h.files) ? h.files.length : 0;
+    return `<tr>
+      <td class="text-mono">${esc(formatTime(h.timestamp))}</td>
+      <td>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</td>
+      <td>${breakdown ? esc(breakdown) : '-'}</td>
+      <td>${fileCount > 0 ? `<button class="modal-restore-btn" data-history-files="${i}">${t('alert.viewFiles', { n: fileCount })}</button>` : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `<table>
+    <thead><tr>
+      <th>${t('alert.triggered')}</th>
+      <th>${t('alert.col.detail')}</th>
+      <th>${t('alert.col.breakdown')}</th>
+      <th>${t('alert.col.files')}</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  body.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-history-files]');
+    if (btn) {
+      const idx = parseInt(btn.dataset.historyFiles);
+      const h = list[idx];
+      if (h?.files?.length > 0) {
+        const proj = state.pageData?.dashboard?.watcher?.path || '';
+        openFileModal(t('modal.alertFiles'), h.files, proj, '');
+      }
+    }
+  });
+
+  $('#file-modal-overlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
 }
 
 function renderAlertCard(alerts) {
@@ -1573,13 +1610,11 @@ function setupEvents() {
     if (backup) openRestoreDrawer(backup);
   });
 
-  // Alert history toggle + file modal (event delegation)
+  // Alert history modal + file modal (event delegation)
   $('#card-alert').addEventListener('click', (e) => {
-    const historyToggle = e.target.closest('[data-alert-history-toggle]');
-    if (historyToggle) {
-      const card = historyToggle.closest('#card-alert');
-      const history = card?.querySelector('.alert-history');
-      if (history) history.classList.toggle('alert-history-collapsed');
+    const historyBtn = e.target.closest('[data-alert-history-modal]');
+    if (historyBtn) {
+      openAlertHistoryModal();
       return;
     }
     const modalBtn = e.target.closest('[data-alert-files-modal]');
