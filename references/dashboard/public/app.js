@@ -470,10 +470,23 @@ const state = {
   tickTimer: null,
   lastRefreshAt: null,
   drawerOpen: null,
-  alertHistory: [],
+  alertHistory: loadAlertHistory(),
+  alertExpiresAt: null,
 };
 
 const REFRESH_MS = 15000;
+const ALERT_HISTORY_KEY = 'cursorGuard_alertHistory';
+
+function loadAlertHistory() {
+  try {
+    const raw = localStorage.getItem(ALERT_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveAlertHistory() {
+  try { localStorage.setItem(ALERT_HISTORY_KEY, JSON.stringify(state.alertHistory)); } catch { /* quota */ }
+}
 
 /* ── DOM helpers ──────────────────────────────────────────── */
 
@@ -737,9 +750,17 @@ async function manualRefresh() {
 
 function updateRefreshDisplay() {
   const el = $('#last-refresh');
-  if (!el || !state.lastRefreshAt) return;
-  const sec = Math.floor((Date.now() - state.lastRefreshAt) / 1000);
-  el.textContent = `${t('topbar.lastRefresh')}: ${sec}s`;
+  if (el && state.lastRefreshAt) {
+    const sec = Math.floor((Date.now() - state.lastRefreshAt) / 1000);
+    el.textContent = `${t('topbar.lastRefresh')}: ${sec}s`;
+  }
+
+  const cdEl = document.querySelector('.alert-countdown');
+  if (cdEl && state.alertExpiresAt) {
+    const remain = Math.max(0, state.alertExpiresAt - Date.now());
+    const s = Math.ceil(remain / 1000);
+    cdEl.textContent = s > 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  }
 }
 
 /* ── Rendering: Top bar ───────────────────────────────────── */
@@ -889,33 +910,35 @@ function alertFileBreakdown(files) {
   return t('alert.breakdown', { added, modified, deleted });
 }
 
+function buildAlertHistoryHtml() {
+  if (state.alertHistory.length === 0) return '';
+  const count = state.alertHistory.length;
+  const rows = state.alertHistory.slice(-5).reverse().map(h => {
+    const breakdown = alertFileBreakdown(h.files);
+    return `<div class="alert-history-row text-sm text-muted">
+      <span class="alert-history-time">${esc(formatTime(h.timestamp))}</span>
+      <span>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</span>
+      ${breakdown ? `<span class="alert-history-breakdown">${esc(breakdown)}</span>` : ''}
+      <span class="badge badge-expired">${t('alert.expired')}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div class="alert-history-toggle-wrap">
+      <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-toggle>${t('alert.historyCount', { n: count })}</button>
+    </div>
+    <div class="alert-history alert-history-collapsed">
+      <div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}
+    </div>`;
+}
+
 function renderAlertCard(alerts) {
   const el = $('#card-alert');
   if (!alerts?.active) {
-    let historyHtml = '';
-    if (state.alertHistory.length > 0) {
-      const count = state.alertHistory.length;
-      const rows = state.alertHistory.slice(-5).reverse().map(h => {
-        const breakdown = alertFileBreakdown(h.files);
-        return `<div class="alert-history-row text-sm text-muted">
-          <span class="alert-history-time">${esc(formatTime(h.timestamp))}</span>
-          <span>${t('alert.detail', { count: h.fileCount, window: h.windowSeconds, threshold: h.threshold })}</span>
-          ${breakdown ? `<span class="alert-history-breakdown">${esc(breakdown)}</span>` : ''}
-          <span class="badge badge-expired">${t('alert.expired')}</span>
-        </div>`;
-      }).join('');
-      historyHtml = `
-        <div class="alert-history-toggle-wrap">
-          <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-toggle>${t('alert.historyCount', { n: count })}</button>
-        </div>
-        <div class="alert-history alert-history-collapsed">
-          <div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}
-        </div>`;
-    }
+    state.alertExpiresAt = null;
     el.innerHTML = `
       <div class="card-label">${t('alert.title')}</div>
       <div class="card-status"><span class="status-dot status-healthy"></span><span>${t('alert.none')}</span></div>
-      ${historyHtml}
+      ${buildAlertHistoryHtml()}
     `;
     return;
   }
@@ -925,10 +948,12 @@ function renderAlertCard(alerts) {
   if (a.timestamp && !state.alertHistory.some(h => h.timestamp === a.timestamp)) {
     state.alertHistory.push({ timestamp: a.timestamp, fileCount: a.fileCount, windowSeconds: a.windowSeconds, threshold: a.threshold, expiresAt: a.expiresAt, files: a.files });
     if (state.alertHistory.length > 20) state.alertHistory = state.alertHistory.slice(-20);
+    saveAlertHistory();
   }
 
   const triggeredAt = a.timestamp ? formatTime(a.timestamp) : '-';
   const expiresAt = a.expiresAt ? new Date(a.expiresAt) : null;
+  state.alertExpiresAt = expiresAt ? expiresAt.getTime() : null;
   const remainMs = expiresAt ? expiresAt.getTime() - Date.now() : 0;
   const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
   const remainMin = Math.floor(remainSec / 60);
@@ -956,6 +981,7 @@ function renderAlertCard(alerts) {
       <div class="alert-detail-row alert-suggestion text-sm text-muted">${t('alert.suggestion')}</div>
     </div>
     ${filesHtml}
+    ${buildAlertHistoryHtml()}
   `;
 }
 
@@ -1562,7 +1588,8 @@ function setupEvents() {
       const files = alerts?.latest?.files || [];
       if (files.length > 0) {
         const proj = state.pageData?.dashboard?.watcher?.path || '';
-        openFileModal(t('modal.alertFiles'), files, proj, '');
+        const hash = alerts?.latest?.commitHash || 'HEAD';
+        openFileModal(t('modal.alertFiles'), files, proj, hash);
       }
       return;
     }

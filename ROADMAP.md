@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.9`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.9` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.6.0`  
+> **文档状态**：`V2` ~ `V4.6.0` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -465,6 +465,7 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.5.6 | **Bug 修复 + 告警 UX + init 优化**：见下方详细说明 | ✅ |
 | V4.5.7 | **文件详情 Modal 修复 + Dashboard 端口复用**：见下方详细说明 | ✅ |
 | V4.5.8 | **Dashboard 版本更新检测 + 一键重启**：见下方详细说明 | ✅ |
+| V4.6.0 | **告警 UX 全面升级**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -685,6 +686,18 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | 重启流程 | 前端发 POST `/api/restart` → 显示"正在重启..." → 每 500ms 轮询 `/api/version`（最多 10s）→ 服务就绪后 `location.reload()` 自动刷新页面 |
 | 双语支持 | 新增 `upgrade.*` 共 8 组 i18n key（banner/dismiss/restartNow/restart/hint/restarting/waiting/failed） |
 
+#### V4.6.0 详细内容
+
+**告警 UX 全面升级**：
+
+| 修复项 | 说明 |
+|------|------|
+| 倒计时秒级实时更新 | `state.alertExpiresAt` 在 `renderAlertCard` 时记录过期时间；已有的 1 秒定时器 `updateRefreshDisplay` 中实时更新 `.alert-countdown` 元素，无需额外 `setInterval` |
+| 告警文件详情复制/恢复操作 | 告警详情弹窗现在传入 `commitHash`（从 `alerts.latest.commitHash` 或 `'HEAD'` 回退），使每行文件的"复制恢复命令"按钮正常显示和工作 |
+| 备份过时阈值修正 | 阈值从 `interval * 5 / 60` 分钟改为 `max(interval * 10, 300)` 秒（至少 5 分钟）；仅在 watcher 正在运行时才检查过时状态；文案从"stale"改为中性的"Last git backup: X ago" |
+| 告警历史常驻入口 | `buildAlertHistoryHtml()` 提取为独立函数，在活跃告警和无告警两种状态下都渲染"历史 N 条"折叠按钮，告警激活时也能查看历史 |
+| 告警历史 localStorage 持久化 | 新增 `loadAlertHistory()` / `saveAlertHistory()`，使用 `localStorage` key `cursorGuard_alertHistory` 持久化最近 20 条告警历史，刷新页面不丢失 |
+
 #### V4.5.x 新增配置参考
 
 | 字段 | 类型 | 默认值 | 引入版本 | 说明 |
@@ -708,6 +721,15 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7 规划：IDE 集成（VSCode/Cursor Extension）
+
+| 项目 | 说明 |
+|------|------|
+| 定位 | 将 Dashboard 从浏览器迁移到 IDE 内置 WebView，减少上下文切换 |
+| 实现方式 | VSCode Extension + WebView Panel，复用现有 `dashboard/public/` 前端代码 |
+| 核心能力 | IDE 侧边栏入口、状态栏告警指示器、WebView 内嵌 Dashboard、一键快照按钮 |
+| 状态 | 🔮 规划中 |
 
 ### V4 不做的事
 

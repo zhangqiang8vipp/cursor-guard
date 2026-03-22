@@ -168,12 +168,12 @@ function getDashboard(projectDir) {
     issues.push(`Disk space low (${status.disk.freeGB} GB free)`);
   }
 
-  if (status.lastBackup.git) {
+  if (status.lastBackup.git && status.watcher.running) {
     const lastTs = new Date(status.lastBackup.git.timestamp).getTime();
-    const staleMinutes = (Date.now() - lastTs) / 60000;
-    const staleThreshold = Math.min(cfg.auto_backup_interval_seconds * 5 / 60, 30);
-    if (staleMinutes > staleThreshold) {
-      issues.push(`Last git backup is stale (${relativeTime(status.lastBackup.git.timestamp)})`);
+    const staleSec = (Date.now() - lastTs) / 1000;
+    const staleThreshold = Math.max(cfg.auto_backup_interval_seconds * 10, 300);
+    if (staleSec > staleThreshold) {
+      issues.push(`Last git backup: ${relativeTime(status.lastBackup.git.timestamp)}`);
     }
   }
 
