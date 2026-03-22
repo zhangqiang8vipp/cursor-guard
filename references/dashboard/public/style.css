@@ -388,6 +388,25 @@ main {
 }
 .summary-detail-line:first-child { padding-top: 2px; }
 
+.summary-collapsed {
+  display: none;
+}
+.summary-expanded .summary-collapsed {
+  display: block;
+}
+.summary-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color var(--transition);
+}
+.summary-toggle-btn:hover { color: var(--text-heading); }
+.summary-expanded .summary-toggle-btn { display: none; }
+
 .summary-pre {
   font-size: 12px;
   line-height: 1.6;

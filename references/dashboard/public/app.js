@@ -190,6 +190,8 @@ const I18N = {
     'detail.disk_critical':             '{gb} GB free — critically low',
     'detail.disk_free':                 '{gb} GB free',
     'detail.disk_unknown':              'could not determine free space',
+    'detail.lock_running':              'watcher running (pid={pid}, since {since})',
+    'detail.lock_stale':                'stale lock file (pid={pid} is dead) — safe to delete or run doctor_fix',
     'detail.lock_exists':               'lock file exists — another instance may be running. {info}',
     'detail.lock_none':                 'no lock file (no running instance)',
     'detail.node_ok':                   '{v}',
@@ -385,6 +387,8 @@ const I18N = {
     'detail.disk_critical':             '{gb} GB 可用——严重不足',
     'detail.disk_free':                 '{gb} GB 可用',
     'detail.disk_unknown':              '无法检测可用空间',
+    'detail.lock_running':              '守护进程运行中（pid={pid}，启动于 {since}）',
+    'detail.lock_stale':                '残留锁文件（pid={pid} 已终止）——可安全删除或运行 doctor_fix',
     'detail.lock_exists':               '锁文件存在——可能有其他实例正在运行。{info}',
     'detail.lock_none':                 '无锁文件（无运行中的实例）',
     'detail.node_ok':                   '{v}',
@@ -528,6 +532,8 @@ const DETAIL_PATTERNS = [
   { re: /^(.+?) GB free — critically low$/,                            key: 'detail.disk_critical', extract: ['gb'] },
   { re: /^could not determine free space$/,                            key: 'detail.disk_unknown' },
   { re: /^(.+?) GB free$/,                                             key: 'detail.disk_free', extract: ['gb'] },
+  { re: /^watcher running \(pid=(\d+), since (.+)\)$/,                  key: 'detail.lock_running', extract: ['pid', 'since'] },
+  { re: /^stale lock file \(pid=(\d+) is dead\)/,                      key: 'detail.lock_stale', extract: ['pid'] },
   { re: /^lock file exists — another instance may be running\. ?(.*)$/,key: 'detail.lock_exists', extract: ['info'] },
   { re: /^no lock file/,                                               key: 'detail.lock_none' },
   { re: /^(v\d+\.\d+\.\d+\S*) — recommended >=18$/,                   key: 'detail.node_old', extract: ['v'] },
@@ -950,7 +956,15 @@ function formatSummaryCell(b) {
   let line3 = '';
   if (b.summary) {
     const categories = b.summary.split('; ').map(s => translateSummary(s));
-    line3 = categories.map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
+    const MAX_VISIBLE = 2;
+    if (categories.length <= MAX_VISIBLE) {
+      line3 = categories.map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
+    } else {
+      const visible = categories.slice(0, MAX_VISIBLE).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
+      const hidden = categories.slice(MAX_VISIBLE).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
+      const more = categories.length - MAX_VISIBLE;
+      line3 = `${visible}<div class="summary-collapsed" data-summary-toggle>${hidden}</div><button class="summary-toggle-btn" data-summary-toggle>+${more} more</button>`;
+    }
   }
 
   if (!line1 && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
@@ -1251,8 +1265,15 @@ function setupEvents() {
     }
   });
 
-  // Backup table row click (event delegation)
+  // Summary expand toggle (must come before row click to prevent drawer open)
   $('#backup-table-wrap').addEventListener('click', (e) => {
+    const toggleBtn = e.target.closest('[data-summary-toggle]');
+    if (toggleBtn) {
+      e.stopPropagation();
+      const cell = toggleBtn.closest('.summary-stack');
+      if (cell) cell.classList.toggle('summary-expanded');
+      return;
+    }
     const row = e.target.closest('tr[data-bi]');
     if (!row) return;
     const idx = parseInt(row.dataset.bi, 10);

@@ -217,14 +217,28 @@ function runDiagnostics(projectDir) {
     check('Disk space', 'WARN', 'could not determine free space');
   }
 
-  // 12. Lock file
+  // 12. Lock file — distinguish running watcher from stale lock
   const lockFile = gDir
     ? path.join(gDir, 'cursor-guard.lock')
     : path.join(backupDir, 'cursor-guard.lock');
   if (fs.existsSync(lockFile)) {
     let content = '';
     try { content = fs.readFileSync(lockFile, 'utf-8').trim(); } catch { /* ignore */ }
-    check('Lock file', 'WARN', `lock file exists — another instance may be running. ${content}`);
+    const pidMatch = content.match(/pid=(\d+)/);
+    const startedMatch = content.match(/started=(.+)/);
+    const lockPid = pidMatch ? parseInt(pidMatch[1], 10) : null;
+    let pidAlive = false;
+    if (lockPid) {
+      try { process.kill(lockPid, 0); pidAlive = true; } catch { /* not running */ }
+    }
+    if (lockPid && pidAlive) {
+      const since = startedMatch ? startedMatch[1] : 'unknown';
+      check('Lock file', 'PASS', `watcher running (pid=${lockPid}, since ${since})`);
+    } else if (lockPid && !pidAlive) {
+      check('Lock file', 'WARN', `stale lock file (pid=${lockPid} is dead) — safe to delete or run doctor_fix`);
+    } else {
+      check('Lock file', 'WARN', `lock file exists — another instance may be running. ${content}`);
+    }
   } else {
     check('Lock file', 'PASS', 'no lock file (no running instance)');
   }
