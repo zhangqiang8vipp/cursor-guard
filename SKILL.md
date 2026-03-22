@@ -147,13 +147,7 @@ When the target file of an edit **falls outside the protected scope**, the agent
 
 > **MCP shortcut**: if `snapshot_now` tool is available, call it with `{ "path": "<project>", "strategy": "git" }` instead of the shell commands below. The tool handles temp index, secrets exclusion, and ref creation internally, and returns `{ "git": { "status": "created", "commitHash": "...", "shortHash": "..." } }`. Report the `shortHash` to the user and proceed.
 >
-> **Best practice — declare intent before editing**: Before making ANY code changes, call `set_intent` to record what you are about to do. This writes a context file that the watcher picks up — so even auto-backups carry your intent. **This is the preferred way** (lighter than `snapshot_now`).
->
-> ```json
-> { "path": "/project", "intent": "重构 calculator.js 的所有函数为 class 模式", "agent": "claude-4-opus", "session": "6290c87f" }
-> ```
->
-> The context expires after 10 minutes. If you also call `snapshot_now`, include the same fields there too:
+> **Best practice — intent context**: Before making high-risk changes, call `snapshot_now` with `intent` to directly record what you are about to do. The intent is stored in the Git commit trailer — no intermediary, no file bridge, no concurrency issues. Example:
 > ```json
 > {
 >   "path": "/project",
@@ -164,7 +158,9 @@ When the target file of an edit **falls outside the protected scope**, the agent
 >   "session": "6290c87f"
 > }
 > ```
-> The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer. The watcher reads the context file before each auto-backup and attaches the intent — so users see not just "files changed" but "AI was about to refactor X" in the dashboard.
+> The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer.
+>
+> **Timeline the user sees**: manual snapshot with intent ("AI准备重构 calculator.js") → auto-backup with file changes ("Modified 2: src/app.js (+15 -3)"). The causal relationship is clear from ordering — the manual snapshot explains WHY, the auto-backup shows WHAT changed.
 
 Use a **temporary index and dedicated ref** so the user's staged/unstaged state is never touched:
 
