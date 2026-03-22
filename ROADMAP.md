@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.7.6`  
-> **文档状态**：`V2` ~ `V4.7.6` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.7.7`  
+> **文档状态**：`V2` ~ `V4.7.7` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -733,6 +733,16 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
   }
 }
 ```
+
+### V4.7.7：右键菜单动态 Protect/Ignore ✅
+
+| 组件 | 说明 |
+|------|------|
+| **Explorer 右键菜单** | 文件资源管理器中右键文件或文件夹，出现 "Cursor Guard: Add to Protected" 和 "Cursor Guard: Exclude from Protection" 两个菜单项 |
+| **编辑器标签右键** | 编辑器标签页右键同样支持 Protect/Ignore 操作 |
+| **模式选择 QuickPick** | 点击后弹出 QuickPick，提供 4 种模式选择：精确路径（`src/auth.ts`）、目录 glob（`src/**`）、文件名匹配（`auth.ts`）、扩展名匹配（`*.ts`）、自定义 glob 输入 |
+| **配置自动写入** | 选择后自动写入 `.cursor-guard.json` 的 `protect` 或 `ignore` 数组，不覆盖已有配置，重复检测 |
+| **即时生效** | 修改后自动触发 Poller 刷新，侧边栏实时更新保护范围 |
 
 ### V4.7.6：侧边栏 UX 重构 + Health 修复 + Open Dashboard 修复 ✅
 

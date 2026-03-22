@@ -2,7 +2,7 @@
   "name": "cursor-guard-ide",
   "displayName": "Cursor Guard",
   "description": "AI code protection dashboard embedded in your IDE — real-time alerts, backup history, one-click snapshots",
-  "version": "4.7.6",
+  "version": "4.7.7",
   "publisher": "zhangqiang8vipp",
   "license": "BUSL-1.1",
   "engines": {
@@ -59,6 +59,18 @@
         "icon": "$(search)"
       },
       {
+        "command": "cursorGuard.addToProtect",
+        "title": "Add to Protected",
+        "category": "Cursor Guard",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "cursorGuard.addToIgnore",
+        "title": "Exclude from Protection",
+        "category": "Cursor Guard",
+        "icon": "$(circle-slash)"
+      },
+      {
         "command": "cursorGuard.refreshTree",
         "title": "Refresh",
         "category": "Cursor Guard",
@@ -99,7 +111,30 @@
           "when": "view == cursorGuardProjects",
           "group": "navigation"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "cursorGuard.addToProtect",
+          "group": "cursorGuard@1",
+          "when": "explorerResourceIsFolder || resourceScheme == file"
+        },
+        {
+          "command": "cursorGuard.addToIgnore",
+          "group": "cursorGuard@2",
+          "when": "explorerResourceIsFolder || resourceScheme == file"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "cursorGuard.addToProtect",
+          "group": "cursorGuard@1"
+        },
+        {
+          "command": "cursorGuard.addToIgnore",
+          "group": "cursorGuard@2"
+        }
       ]
-    }
+    },
+    "submenus": []
   }
 }

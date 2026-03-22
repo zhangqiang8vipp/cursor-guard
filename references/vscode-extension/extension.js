@@ -1,6 +1,8 @@
 'use strict';
 
 const vscode = require('vscode');
+const fs = require('fs');
+const path = require('path');
 const { DashboardManager } = require('./lib/dashboard-manager');
 const { WebViewProvider } = require('./lib/webview-provider');
 const { StatusBarController } = require('./lib/status-bar');
@@ -152,6 +154,14 @@ async function activate(context) {
       }
     }),
 
+    vscode.commands.registerCommand('cursorGuard.addToProtect', (uri) => {
+      _modifyGuardConfig(uri, 'protect');
+    }),
+
+    vscode.commands.registerCommand('cursorGuard.addToIgnore', (uri) => {
+      _modifyGuardConfig(uri, 'ignore');
+    }),
+
     statusBar,
     poller,
     treeView,
@@ -172,6 +182,80 @@ async function activate(context) {
       poller.forceRefresh();
     })
   );
+}
+
+async function _modifyGuardConfig(uri, field) {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    vscode.window.showWarningMessage('Cursor Guard: no workspace folder open.');
+    return;
+  }
+
+  let targetUri = uri;
+  if (!targetUri) {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) targetUri = editor.document.uri;
+  }
+  if (!targetUri) {
+    vscode.window.showWarningMessage('Cursor Guard: no file or folder selected.');
+    return;
+  }
+
+  const wsRoot = folders[0].uri.fsPath;
+  const configPath = path.join(wsRoot, '.cursor-guard.json');
+  const targetPath = targetUri.fsPath;
+
+  const relative = path.relative(wsRoot, targetPath).replace(/\\/g, '/');
+  if (!relative || relative.startsWith('..')) {
+    vscode.window.showWarningMessage('Cursor Guard: selected path is outside the workspace.');
+    return;
+  }
+
+  let isDir = false;
+  try { isDir = fs.statSync(targetPath).isDirectory(); } catch { /* file */ }
+  const pattern = isDir ? `${relative}/**` : relative;
+
+  const action = field === 'protect' ? 'Add to Protected' : 'Exclude from Protection';
+  const pick = await vscode.window.showQuickPick(
+    [
+      { label: pattern, description: isDir ? 'directory glob' : 'exact file' },
+      { label: `${path.basename(targetPath)}`, description: 'filename only (matches anywhere)' },
+      ...(isDir ? [] : [{ label: `*.${path.extname(targetPath).slice(1)}`, description: 'file extension' }]),
+      { label: '$(edit) Custom pattern...', description: 'enter your own glob', custom: true },
+    ],
+    { placeHolder: `${action}: choose a pattern`, title: `Cursor Guard: ${action}` }
+  );
+  if (!pick) return;
+
+  let chosenPattern = pick.label;
+  if (pick.custom) {
+    const input = await vscode.window.showInputBox({
+      prompt: `Enter a glob pattern to ${field === 'protect' ? 'protect' : 'exclude'}`,
+      value: pattern,
+    });
+    if (!input) return;
+    chosenPattern = input;
+  }
+
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    try { config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { config = {}; }
+  }
+
+  if (!Array.isArray(config[field])) config[field] = [];
+
+  if (config[field].includes(chosenPattern)) {
+    vscode.window.showInformationMessage(`Cursor Guard: "${chosenPattern}" already in ${field} list.`);
+    return;
+  }
+
+  config[field].push(chosenPattern);
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+  const label = field === 'protect' ? 'Protected' : 'Excluded';
+  vscode.window.showInformationMessage(`Cursor Guard: "${chosenPattern}" added to ${label} list.`);
+
+  if (poller) poller.forceRefresh();
 }
 
 function deactivate() {
