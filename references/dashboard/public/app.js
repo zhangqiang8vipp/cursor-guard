@@ -46,6 +46,7 @@ const I18N = {
     'alert.expired':    'Expired',
     'alert.history':    'Recent Alert History',
     'alert.noHistory':  'No alert history',
+    'alert.historyCount':'History ({n})',
     'alert.showFiles':  'Show file details',
     'alert.hideFiles':  'Hide file details',
     'alert.col.file':   'File',
@@ -116,6 +117,7 @@ const I18N = {
     'summary.deleted':      'Deleted',
     'summary.renamed':      'Renamed',
     'summary.files':        'files',
+    'summary.andMore':      'and {n} more…',
     'drawer.field.intent':  'Intent',
     'drawer.field.agent':   'Agent',
     'drawer.field.session': 'Session',
@@ -252,6 +254,7 @@ const I18N = {
     'alert.expired':    '已过期',
     'alert.history':    '近期告警历史',
     'alert.noHistory':  '暂无告警记录',
+    'alert.historyCount':'历史（{n} 条）',
     'alert.showFiles':  '展开文件详情',
     'alert.hideFiles':  '收起文件详情',
     'alert.col.file':   '文件',
@@ -322,6 +325,7 @@ const I18N = {
     'summary.deleted':      '删除',
     'summary.renamed':      '重命名',
     'summary.files':        '个文件',
+    'summary.andMore':      '等 {n} 个文件…',
     'drawer.field.intent':  '操作意图',
     'drawer.field.agent':   'AI 模型',
     'drawer.field.session': '会话 ID',
@@ -847,6 +851,7 @@ function renderAlertCard(alerts) {
   if (!alerts?.active) {
     let historyHtml = '';
     if (state.alertHistory.length > 0) {
+      const count = state.alertHistory.length;
       const rows = state.alertHistory.slice(-5).reverse().map(h =>
         `<div class="alert-history-row text-sm text-muted">
           <span>${esc(formatTime(h.timestamp))}</span>
@@ -854,7 +859,13 @@ function renderAlertCard(alerts) {
           <span class="badge badge-expired">${t('alert.expired')}</span>
         </div>`
       ).join('');
-      historyHtml = `<div class="alert-history"><div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}</div>`;
+      historyHtml = `
+        <div class="alert-history-toggle-wrap">
+          <button class="alert-history-toggle-btn text-sm text-muted" data-alert-history-toggle>${t('alert.historyCount', { n: count })}</button>
+        </div>
+        <div class="alert-history alert-history-collapsed">
+          <div class="alert-history-label text-sm">${t('alert.history')}</div>${rows}
+        </div>`;
     }
     el.innerHTML = `
       <div class="card-label">${t('alert.title')}</div>
@@ -980,6 +991,49 @@ function translateSummary(raw) {
     .replace(/\bRenamed (\d+)/g, (_, n) => `${t('summary.renamed')} ${n}`);
 }
 
+/**
+ * Parse summary text into structured file array for inline preview.
+ * Format: "Modified 3: a.js (+2 -1), b.js (+0 -5), ...; Added 2: c.js (+10 -0), d.js (+3 -0)"
+ */
+function parseSummaryToFiles(summary) {
+  if (!summary) return [];
+  const ACTION_MAP = { Modified: 'modified', Added: 'added', Deleted: 'deleted', Renamed: 'renamed' };
+  const files = [];
+  for (const segment of summary.split('; ')) {
+    const headerMatch = segment.match(/^(Modified|Added|Deleted|Renamed)\s+\d+:\s*/);
+    if (!headerMatch) continue;
+    const action = ACTION_MAP[headerMatch[1]] || 'modified';
+    const rest = segment.slice(headerMatch[0].length);
+    for (const part of rest.split(/,\s*/)) {
+      if (part === '...') continue;
+      const fileMatch = part.match(/^(.+?)\s*\(\+(\d+)\s+-(\d+)\)$/);
+      if (fileMatch) {
+        files.push({ path: fileMatch[1], action, added: parseInt(fileMatch[2], 10), deleted: parseInt(fileMatch[3], 10) });
+      } else if (part.trim()) {
+        files.push({ path: part.trim(), action, added: 0, deleted: 0 });
+      }
+    }
+  }
+  files.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+  return files;
+}
+
+async function fetchBackupFiles(commitHash) {
+  if (!state.currentProjectId || !commitHash) return [];
+  try {
+    const data = await fetchJson(`/api/backup-files?id=${state.currentProjectId}&hash=${commitHash}`);
+    return Array.isArray(data.files) ? data.files : [];
+  } catch { return []; }
+}
+
+function formatFileActionBadge(action) {
+  const cls = action === 'deleted' ? 'alert-action-deleted'
+    : action === 'added' ? 'alert-action-added'
+    : action === 'renamed' ? 'alert-action-renamed'
+    : 'alert-action-modified';
+  return `<span class="alert-action-badge ${cls}">${t('alert.action.' + action)}</span>`;
+}
+
 function formatSummaryCell(b) {
   let line1 = '';
   if (b.filesChanged != null) {
@@ -1000,15 +1054,20 @@ function formatSummaryCell(b) {
 
   let line3 = '';
   if (b.summary) {
-    const categories = b.summary.split('; ').map(s => translateSummary(s));
-    const MAX_VISIBLE = 2;
-    if (categories.length <= MAX_VISIBLE) {
-      line3 = categories.map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
+    const parsed = parseSummaryToFiles(b.summary);
+    if (parsed.length > 0) {
+      const MAX_INLINE = 3;
+      const visible = parsed.slice(0, MAX_INLINE).map(f =>
+        `<div class="summary-file-row"><span class="text-mono summary-file-path">${esc(f.path)}</span>${formatFileActionBadge(f.action)}<span class="text-mono text-muted">+${f.added} -${f.deleted}</span></div>`
+      ).join('');
+      const remaining = parsed.length > MAX_INLINE ? parsed.length - MAX_INLINE : 0;
+      const truncated = b.summary.includes('...');
+      const moreCount = truncated ? (b.filesChanged || '?') - MAX_INLINE : remaining;
+      const moreHtml = (remaining > 0 || truncated) ? `<div class="summary-file-more text-sm text-muted">${t('summary.andMore', { n: moreCount > 0 ? moreCount : '…' })}</div>` : '';
+      line3 = visible + moreHtml;
     } else {
-      const visible = categories.slice(0, MAX_VISIBLE).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
-      const hidden = categories.slice(MAX_VISIBLE).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
-      const more = categories.length - MAX_VISIBLE;
-      line3 = `${visible}<div class="summary-collapsed" data-summary-toggle>${hidden}</div><button class="summary-toggle-btn" data-summary-toggle>+${more} more</button>`;
+      const categories = b.summary.split('; ').map(s => translateSummary(s));
+      line3 = categories.slice(0, 2).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
     }
   }
 
@@ -1140,6 +1199,24 @@ function closeDrawer() {
   state.drawerOpen = null;
 }
 
+function renderDrawerFilesTable(files, sortKey) {
+  const sorted = [...files];
+  if (sortKey === 'path') sorted.sort((a, b) => a.path.localeCompare(b.path));
+  else if (sortKey === 'action') sorted.sort((a, b) => a.action.localeCompare(b.action));
+  else sorted.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+  const rows = sorted.map(f =>
+    `<tr><td class="text-mono drawer-file-path">${esc(f.path)}</td><td>${formatFileActionBadge(f.action)}</td><td class="text-mono drawer-file-changes">+${f.added} -${f.deleted}</td></tr>`
+  ).join('');
+  return `<table class="drawer-files-table">
+    <thead><tr>
+      <th data-sort="path" class="drawer-sort-header">${t('alert.col.file')} ↕</th>
+      <th data-sort="action" class="drawer-sort-header">${t('alert.col.action')} ↕</th>
+      <th data-sort="changes" class="drawer-sort-header">${t('alert.col.changes')} ↕</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
 function openRestoreDrawer(backup) {
   const body = $('#restore-drawer-body');
   const fields = [
@@ -1158,10 +1235,6 @@ function openRestoreDrawer(backup) {
   if (backup.restoreTo) fields.push({ key: 'drawer.field.restoreTo', val: backup.restoreTo });
   if (backup.restoreFile) fields.push({ key: 'drawer.field.restoreFile', val: backup.restoreFile });
   if (backup.message) fields.push({ key: 'drawer.field.message', val: backup.message });
-  if (backup.summary) {
-    const translated = backup.summary.split('; ').map(s => translateSummary(s)).join('\n');
-    fields.push({ key: 'drawer.field.summary', val: translated, pre: true });
-  }
 
   const refText = backup.ref || backup.shortHash || backup.timestamp || '';
   const jsonText = JSON.stringify(backup, null, 2);
@@ -1175,12 +1248,17 @@ function openRestoreDrawer(backup) {
     ${fields.map(f => `
       <div class="restore-field">
         <div class="restore-field-label">${t(f.key)}</div>
-        ${f.pre
-          ? `<pre class="restore-field-value text-mono summary-pre">${esc(f.val)}</pre>`
-          : `<div class="restore-field-value text-mono">${esc(f.val)}</div>`
-        }
+        <div class="restore-field-value text-mono">${esc(f.val)}</div>
       </div>
     `).join('')}
+    ${backup.summary ? `
+    <div class="restore-field">
+      <div class="restore-field-label">${t('drawer.field.summary')}</div>
+      <div id="drawer-files-container" class="drawer-files-container">
+        <div class="drawer-files-loading text-muted text-sm">${t('state.loading')}</div>
+      </div>
+    </div>
+    ` : ''}
     <div class="restore-actions">
       <button class="btn btn-sm" data-copy="${esc(refText)}">${t('drawer.copyRef')}</button>
       <button class="btn btn-sm" data-copy-json>${t('drawer.copyJson')}</button>
@@ -1213,6 +1291,34 @@ function openRestoreDrawer(backup) {
     const wrap = body.querySelector('#json-preview-wrap');
     wrap.classList.toggle('hidden');
   });
+
+  // Lazy-load full file list for summary section
+  if (backup.summary && isGit && hash) {
+    let currentFiles = [];
+    let currentSort = 'changes';
+    fetchBackupFiles(hash).then(files => {
+      currentFiles = files.length > 0 ? files : parseSummaryToFiles(backup.summary);
+      const container = body.querySelector('#drawer-files-container');
+      if (container) {
+        container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort);
+        container.addEventListener('click', (e) => {
+          const th = e.target.closest('[data-sort]');
+          if (!th) return;
+          currentSort = th.dataset.sort;
+          container.innerHTML = renderDrawerFilesTable(currentFiles, currentSort);
+        });
+      }
+    });
+  } else if (backup.summary) {
+    const fallback = parseSummaryToFiles(backup.summary);
+    const container = body.querySelector('#drawer-files-container');
+    if (container && fallback.length > 0) {
+      container.innerHTML = renderDrawerFilesTable(fallback, 'changes');
+    } else if (container) {
+      const translated = backup.summary.split('; ').map(s => translateSummary(s)).join('\n');
+      container.innerHTML = `<pre class="restore-field-value text-mono summary-pre">${esc(translated)}</pre>`;
+    }
+  }
 
   openDrawer('restore');
 }
@@ -1326,8 +1432,15 @@ function setupEvents() {
     if (backup) openRestoreDrawer(backup);
   });
 
-  // Alert files toggle (event delegation)
+  // Alert history + files toggle (event delegation)
   $('#card-alert').addEventListener('click', (e) => {
+    const historyToggle = e.target.closest('[data-alert-history-toggle]');
+    if (historyToggle) {
+      const card = historyToggle.closest('#card-alert');
+      const history = card?.querySelector('.alert-history');
+      if (history) history.classList.toggle('alert-history-collapsed');
+      return;
+    }
     const toggleBtn = e.target.closest('[data-alert-files-toggle]');
     if (!toggleBtn) return;
     const section = toggleBtn.closest('.alert-files-section');

@@ -137,6 +137,7 @@ const DEFAULT_CONFIG = {
   git_retention: { enabled: false, mode: 'count', days: 30, max_count: 200 },
   proactive_alert: true,
   alert_thresholds: { files_per_window: 20, window_seconds: 10, cooldown_seconds: 60 },
+  always_watch: false,
 };
 
 function loadConfig(projectDir) {
@@ -220,6 +221,11 @@ function loadConfig(projectDir) {
         cfg.alert_thresholds.window_seconds = raw.alert_thresholds.window_seconds;
       if (typeof raw.alert_thresholds.cooldown_seconds === 'number' && raw.alert_thresholds.cooldown_seconds > 0)
         cfg.alert_thresholds.cooldown_seconds = raw.alert_thresholds.cooldown_seconds;
+    }
+    if (raw.always_watch === true) {
+      cfg.always_watch = true;
+    } else if (raw.always_watch !== undefined && raw.always_watch !== false) {
+      warnings.push(`always_watch should be a boolean, got ${JSON.stringify(raw.always_watch)} — using default (false)`);
     }
     return { cfg, loaded: true, error: null, warnings };
   } catch (e) {

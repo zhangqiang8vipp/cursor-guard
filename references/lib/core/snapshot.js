@@ -262,6 +262,20 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
  * @param {string} [opts.backupDir] - Override backup directory (default: projectDir/.cursor-guard-backup)
  * @returns {{ status: 'created'|'empty'|'error', timestamp?: string, fileCount?: number, snapshotDir?: string, error?: string }}
  */
+function findPreviousSnapshot(backupDir) {
+  try {
+    const entries = fs.readdirSync(backupDir)
+      .filter(e => /^\d{8}_\d{6}/.test(e))
+      .sort()
+      .reverse();
+    for (const e of entries) {
+      const full = path.join(backupDir, e);
+      if (fs.statSync(full).isDirectory()) return full;
+    }
+  } catch { /* no previous snapshots */ }
+  return null;
+}
+
 function createShadowCopy(projectDir, cfg, opts = {}) {
   const backupDir = opts.backupDir || path.join(projectDir, '.cursor-guard-backup');
   let ts = formatTimestamp(new Date());
@@ -278,15 +292,37 @@ function createShadowCopy(projectDir, cfg, opts = {}) {
     }
     fs.mkdirSync(snapDir, { recursive: true });
 
+    const prevSnapDir = findPreviousSnapshot(backupDir);
+
     const allFiles = walkDir(projectDir, projectDir);
     const files = filterFiles(allFiles, cfg);
 
     let copied = 0;
+    let linked = 0;
     for (const f of files) {
       const dest = path.join(snapDir, f.rel);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       try {
-        fs.copyFileSync(f.full, dest);
+        let didLink = false;
+        if (prevSnapDir) {
+          const prevFile = path.join(prevSnapDir, f.rel);
+          try {
+            const srcStat = fs.statSync(f.full);
+            const prevStat = fs.statSync(prevFile);
+            if (srcStat.size === prevStat.size && Math.abs(srcStat.mtimeMs - prevStat.mtimeMs) < 1) {
+              fs.linkSync(prevFile, dest);
+              didLink = true;
+              linked++;
+            }
+          } catch { /* prev file missing or stat error — fall through to copy */ }
+        }
+        if (!didLink) {
+          fs.copyFileSync(f.full, dest);
+          try {
+            const srcStat = fs.statSync(f.full);
+            fs.utimesSync(dest, srcStat.atime, srcStat.mtime);
+          } catch { /* non-critical: mtime preservation failed */ }
+        }
         copied++;
       } catch { /* skip unreadable */ }
     }
@@ -296,7 +332,7 @@ function createShadowCopy(projectDir, cfg, opts = {}) {
       return { status: 'empty', timestamp: ts };
     }
 
-    return { status: 'created', timestamp: ts, fileCount: copied, snapshotDir: snapDir };
+    return { status: 'created', timestamp: ts, fileCount: copied, linkedCount: linked, snapshotDir: snapDir };
   } catch (e) {
     return { status: 'error', error: e.message };
   }

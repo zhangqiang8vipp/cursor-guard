@@ -418,6 +418,30 @@ main {
   border-left: 3px solid var(--blue);
 }
 
+/* ── Summary inline file rows ────────────────────────────── */
+
+.summary-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.summary-file-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.summary-file-more {
+  padding: 2px 0;
+  font-style: italic;
+}
+
 /* ── Stats Row ────────────────────────────────────────────── */
 
 .stats-row {
@@ -749,6 +773,58 @@ main {
   line-height: 1.6;
 }
 
+/* ── Drawer: Files Table ──────────────────────────────────── */
+
+.drawer-files-container {
+  margin-top: 6px;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.drawer-files-loading {
+  padding: 16px;
+  text-align: center;
+}
+.drawer-files-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.drawer-files-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.drawer-sort-header { cursor: pointer; transition: color var(--transition); }
+.drawer-sort-header:hover { color: var(--blue); }
+.drawer-files-table td {
+  padding: 5px 12px;
+  border-bottom: 1px solid rgba(71,85,105,.15);
+  vertical-align: middle;
+}
+.drawer-file-path {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.drawer-file-changes {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
 /* ── Drawer: Doctor Checks ────────────────────────────────── */
 
 .check-item {
@@ -921,11 +997,26 @@ main {
   border-left: 3px solid var(--yellow);
 }
 
+.alert-history-toggle-wrap {
+  margin-top: 8px;
+}
+.alert-history-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color var(--transition);
+}
+.alert-history-toggle-btn:hover { color: var(--blue); }
+
 .alert-history {
-  margin-top: 12px;
+  margin-top: 8px;
   border-top: 1px solid var(--border-subtle);
   padding-top: 8px;
 }
+.alert-history.alert-history-collapsed { display: none; }
 .alert-history-label {
   font-size: 10px;
   font-weight: 700;

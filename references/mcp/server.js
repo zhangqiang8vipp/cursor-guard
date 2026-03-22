@@ -15,9 +15,34 @@ const { getBackupStatus } = require('../lib/core/status');
 const { getDashboard } = require('../lib/core/dashboard');
 const { loadActiveAlert } = require('../lib/core/anomaly');
 
-const { gitDir: getGitDir } = require('../lib/utils');
+const { loadConfig, gitDir: getGitDir } = require('../lib/utils');
 
 const pkg = require('../../package.json');
+
+// ── Auto-watch manager for always_watch mode ─────────────────
+
+const watchedProjects = new Map();
+
+function ensureWatcher(projectPath) {
+  if (watchedProjects.has(projectPath)) return;
+  const { cfg, loaded } = loadConfig(projectPath);
+  if (!loaded || !cfg.always_watch) return;
+  if (isWatcherRunning(projectPath)) {
+    watchedProjects.set(projectPath, { pid: null, external: true });
+    return;
+  }
+  try {
+    const { spawn } = require('child_process');
+    const watcherScript = path.join(__dirname, '..', 'bin', 'cursor-guard-backup.js');
+    const child = spawn(process.execPath, [watcherScript, '--path', projectPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.unref();
+    watchedProjects.set(projectPath, { pid: child.pid, external: false });
+  } catch { /* spawn failed — non-fatal */ }
+}
 
 // ── Alert injection helper ──────────────────────────────────────
 
@@ -78,6 +103,7 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, runDiagnostics(resolved));
     injectWatcherWarning(resolved, result);
     return {
@@ -102,6 +128,7 @@ server.tool(
   },
   async ({ path: projectPath, file, before, limit }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, listBackups(resolved, { file, before, limit }));
     return {
       content: [{
@@ -128,7 +155,7 @@ server.tool(
   },
   async ({ path: projectPath, strategy, message, scope, intent, agent, session }) => {
     const resolved = path.resolve(projectPath);
-    const { loadConfig } = require('../lib/utils');
+    ensureWatcher(resolved);
     const { cfg } = loadConfig(resolved);
 
     if (scope === 'all') {
@@ -182,6 +209,7 @@ server.tool(
   },
   async ({ path: projectPath, file, source, preserve_current }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, restoreFile(resolved, file, source, {
       preserveCurrent: preserve_current,
     }));
@@ -209,6 +237,7 @@ server.tool(
   },
   async ({ path: projectPath, source, preview, preserve_current, clean_untracked }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
 
     if (preview !== false) {
       const result = injectAlert(resolved, previewProjectRestore(resolved, source));
@@ -235,6 +264,7 @@ server.tool(
   },
   async ({ path: projectPath, dry_run }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, runFixes(resolved, { dryRun: !!dry_run }));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
@@ -250,6 +280,7 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, getBackupStatus(resolved));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
@@ -265,6 +296,7 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const result = injectAlert(resolved, getDashboard(resolved));
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
@@ -280,6 +312,7 @@ server.tool(
   },
   async ({ path: projectPath }) => {
     const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
     const alert = loadActiveAlert(resolved);
     const result = alert
       ? { active: true, alert }

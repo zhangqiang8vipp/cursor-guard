@@ -398,4 +398,65 @@ function cleanGitRetention(branchRef, gitDirPath, cfg, cwd) {
   return { kept: keepCount, pruned: total - keepCount, mode, rebuilt: true };
 }
 
-module.exports = { listBackups, cleanShadowRetention, cleanGitRetention, parseShadowTimestamp };
+// ── Get backup file details ─────────────────────────────────────
+
+/**
+ * Get structured file-level changes for a specific git backup commit.
+ * Runs diff-tree --numstat + --name-status against parent (or ls-tree for root).
+ *
+ * @param {string} projectDir
+ * @param {string} commitHash - Full or short commit hash
+ * @returns {{ files: Array<{path: string, action: string, added: number, deleted: number}>, error?: string }}
+ */
+function getBackupFiles(projectDir, commitHash) {
+  if (!isGitRepo(projectDir)) {
+    return { files: [], error: 'not a git repository' };
+  }
+
+  const resolved = git(['rev-parse', '--verify', commitHash], { cwd: projectDir, allowFail: true });
+  if (!resolved) {
+    return { files: [], error: `cannot resolve commit: ${commitHash}` };
+  }
+
+  const parentCheck = git(['rev-parse', '--verify', `${resolved}^`], { cwd: projectDir, allowFail: true });
+
+  if (!parentCheck) {
+    const lsOut = git(['ls-tree', '--name-only', '-r', resolved], { cwd: projectDir, allowFail: true });
+    if (!lsOut) return { files: [] };
+    return {
+      files: lsOut.split('\n').filter(Boolean).map(f => ({ path: f, action: 'added', added: 0, deleted: 0 })),
+    };
+  }
+
+  const nameStatusOut = git(['diff-tree', '--no-commit-id', '--name-status', '-r', `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
+  const numstatOut = git(['diff-tree', '--no-commit-id', '--numstat', '-r', `${resolved}^`, resolved], { cwd: projectDir, allowFail: true });
+
+  const stats = {};
+  if (numstatOut) {
+    for (const line of numstatOut.split('\n').filter(Boolean)) {
+      const [add, del, ...nameParts] = line.split('\t');
+      const fname = nameParts.join('\t');
+      stats[fname] = { added: add === '-' ? 0 : parseInt(add, 10), deleted: del === '-' ? 0 : parseInt(del, 10) };
+    }
+  }
+
+  const ACTION_MAP = { M: 'modified', A: 'added', D: 'deleted' };
+  const files = [];
+  if (nameStatusOut) {
+    for (const line of nameStatusOut.split('\n').filter(Boolean)) {
+      const tab = line.indexOf('\t');
+      if (tab < 0) continue;
+      const code = line.substring(0, tab).trim();
+      const filePart = line.substring(tab + 1);
+      const action = code.startsWith('R') ? 'renamed' : (ACTION_MAP[code] || 'modified');
+      const fileName = filePart.split('\t').pop();
+      const s = stats[fileName] || { added: 0, deleted: 0 };
+      files.push({ path: fileName, action, added: s.added, deleted: s.deleted });
+    }
+  }
+
+  files.sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+  return { files };
+}
+
+module.exports = { listBackups, getBackupFiles, cleanShadowRetention, cleanGitRetention, parseShadowTimestamp };

@@ -8,7 +8,7 @@ const path = require('path');
 
 const { getDashboard } = require('../lib/core/dashboard');
 const { runDiagnostics } = require('../lib/core/doctor');
-const { listBackups } = require('../lib/core/backups');
+const { listBackups, getBackupFiles } = require('../lib/core/backups');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DEFAULT_PORT = 3120;
@@ -169,6 +169,13 @@ function handleApi(pathname, query, registry, res) {
     } catch (e) {
       return json(res, { error: e.message }, 500);
     }
+  }
+
+  if (pathname === '/api/backup-files') {
+    const hash = query.get('hash');
+    if (!hash) return json(res, { error: 'Missing hash parameter' }, 400);
+    try { return json(res, getBackupFiles(pp, hash)); }
+    catch (e) { return json(res, { error: e.message }, 500); }
   }
 
   if (pathname === '/api/doctor') {

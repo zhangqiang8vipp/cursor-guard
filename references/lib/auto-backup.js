@@ -285,7 +285,8 @@ async function runBackup(projectDir, intervalOverride, opts = {}) {
     if (cfg.backup_strategy === 'shadow' || cfg.backup_strategy === 'both') {
       const shadowResult = createShadowCopy(projectDir, cfg, { backupDir });
       if (shadowResult.status === 'created') {
-        logger.log(`Shadow copy ${shadowResult.timestamp} (${shadowResult.fileCount} files)`);
+        const linkInfo = shadowResult.linkedCount ? ` [${shadowResult.linkedCount} hard-linked]` : '';
+        logger.log(`Shadow copy ${shadowResult.timestamp} (${shadowResult.fileCount} files${linkInfo})`);
         if (pendingManifest) {
           saveManifest(backupDir, pendingManifest);
           pendingManifest = null;

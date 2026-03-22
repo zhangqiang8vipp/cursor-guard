@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.5.2`（V4 最终版）  
-> **文档状态**：`V2` ~ `V4.5.2` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.5.4`（V4 最终版）  
+> **文档状态**：`V2` ~ `V4.5.4` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -460,6 +460,8 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | V4.4.1 | **安全硬化版（5 项审计修复 + UX 优化）**：见下方详细说明 | ✅ |
 | V4.5.0 | **V4 最终版（异常检测修复 + Dashboard 全面升级）**：见下方详细说明 | ✅ 收官 |
 | V4.5.2 | **告警结构化文件列表**：见下方详细说明 | ✅ |
+| V4.5.3 | **告警历史 UX 优化 + 备份结构化文件表格**：见下方详细说明 | ✅ |
+| V4.5.4 | **Shadow 硬链接增量优化 + always_watch 强保护模式**：见下方详细说明 | ✅ |
 
 #### V4.4.1 详细内容
 
@@ -527,6 +529,120 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 
 > 22 个文件被删除和 22 个文件被新增的风险完全不同——结构化文件列表让用户一眼判断严重程度。
 
+#### V4.5.3 详细内容
+
+**告警历史 UX 修复**：
+
+| 问题 | 修复 | 实现细节 |
+|------|------|----------|
+| 告警过期后，"无活跃告警"绿色状态下方直接展示历史记录，上面说没事、下面列了两条记录，信息矛盾 | 历史默认完全隐藏，只显示灰色"历史（N 条）"可点击文字，展开后才显示历史列表 | `renderAlertCard` 无活跃告警分支：新增 `alert-history-toggle-btn`（灰色 11px 可点击按钮）+ `.alert-history-collapsed`（CSS `display:none`）。事件委托 `[data-alert-history-toggle]` 绑定在 `#card-alert` 上，toggle `alert-history-collapsed` class |
+
+告警卡片状态设计：
+
+```
+无告警时：
+  ✅ 无活跃告警
+  历史（2 条）  ← 灰色小字，点击展开
+
+有告警时：
+  ⚠ 活跃告警
+  13:03:54 触发 · 剩余 1m 53s
+  22 个文件在 10 秒内变更（阈值：20）
+  [展开文件详情]
+```
+
+**备份结构化文件表格**：
+
+| 层 | 改动 | 说明 |
+|----|------|------|
+| Core | `backups.js` 新增 `getBackupFiles(projectDir, commitHash)` | 对指定 commit 运行 `diff-tree --numstat + --name-status`，返回 `[{path, action, added, deleted}]`，按变化量降序。支持 rename 解析（`R` 前缀→取 tab 分割的最后一段）。无 parent 时退化为 `ls-tree` 列出全部文件 |
+| Server | `GET /api/backup-files?id=<project>&hash=<commit>` | 懒加载端点，不在 `list_backups` 中批量计算（50 条备份×`diff-tree` 会很慢）。400 校验 `hash` 必填 |
+| Dashboard | `parseSummaryToFiles(summary)` | 解析 summary 文本格式 `"Modified 3: a.js (+2 -1), b.js (+0 -5), ...; Added 2: c.js (+10 -0)"` → `[{path, action, added, deleted}]`。正则匹配 `(Modified|Added|Deleted|Renamed) N:` 段头，逐文件解析 `filename (+N -M)`，自动跳过 `...` 截断标记 |
+| Dashboard | `fetchBackupFiles(hash)` | 调用 `/api/backup-files` 端点，返回完整文件数组。网络失败静默降级（返回空数组） |
+| Dashboard | 备份表 `formatSummaryCell` | 行内 mini 文件表格：`parseSummaryToFiles` 取前 3 个文件，每文件显示路径（mono 字体 11px，`max-width:220px` 省略号截断）+ 操作 badge（彩色）+ `+N -M`。超出显示"等 N 个文件…"（斜体灰色），`N` 取 `filesChanged` 字段（当 summary 有 `...` 截断时）或实际剩余数 |
+| Dashboard | 抽屉 `openRestoreDrawer` | summary 字段不再用 `<pre>` 文本，改为懒加载可排序文件表格。打开抽屉 → `fetchBackupFiles(hash)` → `renderDrawerFilesTable(files, sortKey)`。三列表头均可点击排序（path=字典序 / action=字母序 / changes=变化量降序），当前排序列高亮。API 失败时降级为 `parseSummaryToFiles` 本地解析 |
+| Dashboard | `renderDrawerFilesTable(files, sortKey)` | 可排序表格渲染函数：sticky 表头、340px 最大高度滚动区域、表头带 ↕ 排序指示器、行内复用 `formatFileActionBadge` 统一操作 badge |
+| Dashboard | i18n 补全 | 新增 `summary.andMore`（"and {n} more…" / "等 {n} 个文件…"）、`alert.historyCount`（"History ({n})" / "历史（{n} 条）"） |
+
+> 同一个 `getBackupFiles` 数据结构，告警详情和备份详情两个地方同时受益。备份表行内看 3 个关键文件，抽屉里看完整列表——信息层级清晰，不再一行文本挤 22 个文件名。
+
+#### V4.5.4 详细内容
+
+**Shadow 硬链接增量优化**：
+
+| 层 | 改动 | 说明 |
+|----|------|------|
+| Core | `snapshot.js` `findPreviousSnapshot(backupDir)` | 新增辅助函数。扫描 backupDir 下所有 `YYYYMMDD_HHMMSS` 格式目录，按时间戳降序排列，返回最新的 snapshot 目录路径（`isDirectory` 校验） |
+| Core | `snapshot.js` `createShadowCopy` 硬链接逻辑 | 备份循环中，对每个文件执行增量判断：① 读取源文件 `stat`（size + mtimeMs）② 读取上一个 snapshot 同路径文件 `stat` ③ 若 size 完全一致且 mtimeMs 差值 < 1ms → `fs.linkSync(prevFile, dest)` 硬链接 ④ 否则 → `fs.copyFileSync(src, dest)` + `fs.utimesSync(dest, atime, mtime)` 保留源文件时间戳 |
+| Core | mtime 保留策略 | 每次 `copyFileSync` 后立即 `utimesSync` 将源文件的 mtime 同步到目标。这确保下一次 shadow 备份时，"上一个 snapshot 的文件 mtime" = "当时源文件的 mtime"，硬链接比较才有基准。`utimesSync` 失败不阻塞备份（`try-catch` 静默） |
+| Core | 跨卷容错 | `fs.linkSync` 在跨文件系统（如 backupDir 在不同磁盘卷）或 FAT32 分区上会抛 `EXDEV` 错误。外层 `try-catch` 捕获后自动 fall back 到 `copyFileSync`，不影响备份正确性 |
+| Watcher | `auto-backup.js` 日志 | Shadow 日志增加硬链接统计：`Shadow copy 20260322_130000 (150 files [142 hard-linked])`。linkedCount = 0 时不显示 |
+| 返回值 | `createShadowCopy` 新增 `linkedCount` 字段 | 表示本次备份中通过硬链接节省 I/O 的文件数。用于日志、Dashboard 未来可展示 |
+
+性能对比：
+
+| 场景 | 文件总数 | 变更数 | 传统全量 copy | 硬链接增量 | 磁盘节省 |
+|------|---------|--------|--------------|-----------|---------|
+| 常规开发 | 150 | 8 | 150 次 copy | 8 copy + 142 link | ~95% I/O |
+| 大规模重构 | 150 | 50 | 150 次 copy | 50 copy + 100 link | ~67% I/O |
+| 首次备份 | 150 | 150 | 150 次 copy | 150 次 copy（无上一个 snapshot） | 0%（正常） |
+
+> 硬链接在 NTFS（Windows）和 ext4/APFS（Linux/macOS）上均支持。同一 inode 共享磁盘块，150 个文件只改 8 个时磁盘写入降 95%。
+
+**always_watch 强保护模式**：
+
+| 层 | 改动 | 说明 |
+|----|------|------|
+| Config | `utils.js` DEFAULT_CONFIG | 新增 `always_watch: false` 默认配置项 |
+| Config | `utils.js` loadConfig | 解析 `.cursor-guard.json` 中的 `always_watch` 布尔值。类型校验：非 `true`/`false` 值 → 警告 + 使用默认值 `false` |
+| MCP | `mcp/server.js` `watchedProjects` Map | 进程级 Map，`key = projectPath`，`value = { pid, external }`。追踪已启动/检测到的 watcher，防止重复 spawn |
+| MCP | `mcp/server.js` `ensureWatcher(projectPath)` | 自动 watcher 管理器，执行流程：① `watchedProjects.has(path)` → 已处理过则跳过 ② `loadConfig(path)` → 检查 `always_watch` 是否为 `true` ③ `isWatcherRunning(path)` → 已有外部 watcher 则标记 `external: true` 跳过 ④ `spawn(process.execPath, [cursor-guard-backup, --path, path])` → 创建 detached 子进程（`detached: true, stdio: 'ignore', windowsHide: true`） ⑤ `child.unref()` → 父进程退出不影响 watcher |
+| MCP | 所有 9 个 tool handler | 入口处统一调用 `ensureWatcher(resolved)`。仅首次调用触发实际逻辑，后续调用通过 Map 缓存直接跳过（O(1)） |
+| 安全 | 与现有锁文件机制兼容 | `ensureWatcher` 先检查 `isWatcherRunning`（读取 lock file + `process.kill(pid, 0)` PID 存活检测），不会在已有 watcher 时重复启动。手动启动的 watcher 和 auto-spawn 的 watcher 使用同一个 lock file，互斥保护 |
+
+用户配置方式：
+```json
+{
+  "always_watch": true
+}
+```
+
+两种保护模式对比：
+
+| | 轻量模式（默认） | 强保护模式 |
+|---|---|---|
+| 配置 | `always_watch: false`（或不设） | `always_watch: true` |
+| Watcher 启动 | 手动 `cursor-guard-backup` | MCP server 首次 tool 调用自动 spawn |
+| 保护覆盖 | AI 需手动 `snapshot_now` | 全程自动备份，零保护缺口 |
+| 适用场景 | 小项目、低频编辑 | 重要项目、高频 AI 协作 |
+| 资源开销 | 无后台进程 | 后台 watcher 进程（低 CPU，周期性扫描） |
+
+> 这个特性直接填补了 V4 最大的架构缺口——"Watcher 停止 = 裸奔"。详见下方"V4 遗留的架构缺口"中该条目已标记为 **已解决**。
+
+#### V4.5.x 新增配置参考
+
+| 字段 | 类型 | 默认值 | 引入版本 | 说明 |
+|------|------|--------|---------|------|
+| `always_watch` | `boolean` | `false` | V4.5.4 | 强保护模式。设为 `true` 后，MCP server 首次 tool 调用自动启动 watcher 进程 |
+
+完整 `.cursor-guard.json` 配置示例（含 V4.5.4 新增项）：
+
+```json
+{
+  "protect": ["src/**", "*.config.js"],
+  "ignore": ["node_modules/**", "dist/**"],
+  "backup_strategy": "git",
+  "auto_backup_interval_seconds": 60,
+  "always_watch": true,
+  "proactive_alert": true,
+  "alert_thresholds": {
+    "files_per_window": 20,
+    "window_seconds": 10,
+    "cooldown_seconds": 60
+  }
+}
+```
+
 ### V4 不做的事
 
 - 不做自动恢复（恢复永远需要人确认，这是产品底线）
@@ -537,13 +653,13 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 
 通过 V4.4.1 的安全审计和真实场景测试，发现以下架构层面的保护缺口。这些不是代码 bug，而是设计边界：
 
-| 缺口 | 现状 | 影响 | V5 改进方向 |
-|------|------|------|------------|
-| **Watcher 停止 = 裸奔** | Watcher 不运行期间的文件变更无任何自动备份 | 如果 AI agent 也没手动 snapshot，变更永久丢失 | **`always_watch` 配置项**：在 `.cursor-guard.json` 中设置 `"always_watch": true`，MCP server 启动时自动 fork watcher 进程。用户可选两种模式：轻量模式（默认，AI 手动 snapshot）和强保护模式（watcher 始终在后台） |
-| **保护依赖 AI 自觉** | SKILL.md 要求 AI 在写入前 snapshot，但没有强制机制 | AI 不遵守协议就直接写，保护形同虚设 | **embedded watcher + `begin_edit` 意图绑定**：MCP server 内嵌 watcher 循环 + 按文件路径匹配 intent，消除进程边界和并发竞争（详见 V5 设计） |
-| **自动备份无意图上下文** | auto-backup 只有 `trigger: auto`，不知道是谁改的、为什么改 | 事后回溯只能看到时间点快照，不知道操作意图 | **`begin_edit` → 文件路径绑定**：AI 编辑前声明意图和目标文件，embedded watcher 检测变更时按路径匹配 intent，自动备份也能带上下文 |
-| **无跨进程写拦截** | 当前 MCP 架构下无法拦截 Cursor 编辑器的文件写入 | 只能在写后检测，不能写前阻止 | 等待 MCP 协议支持 `notification` / `resource subscription`，或探索 fs watch + pre-commit 组合 |
-| **意图队列并发问题** | 曾考虑"意图队列"（AI 写文件 → watcher 读文件关联 intent），但存在 4 类并发竞态：多 Agent 竞争、意图-变更错位、意图堆积、空意图残留 | 文件 I/O 跨进程 + 时间顺序绑定 = 不可靠 | **同进程内存 Map + 文件路径绑定**：消灭进程边界后无 IPC，按路径而非时间匹配消除歧义（详见 V5 设计） |
+| 缺口 | 现状 | 影响 | V5 改进方向 | 状态 |
+|------|------|------|------------|------|
+| ~~**Watcher 停止 = 裸奔**~~ | ~~Watcher 不运行期间无自动备份~~ | ~~变更永久丢失~~ | ~~`always_watch` 配置项~~ | ✅ **V4.5.4 已解决**：`always_watch: true` 时 MCP server 首次 tool 调用自动 spawn watcher 进程，与现有锁文件互斥机制兼容 |
+| **保护依赖 AI 自觉** | SKILL.md 要求 AI 在写入前 snapshot，但没有强制机制 | AI 不遵守协议就直接写，保护形同虚设 | **embedded watcher + `begin_edit` 意图绑定**：MCP server 内嵌 watcher 循环 + 按文件路径匹配 intent，消除进程边界和并发竞争（详见 V5 设计） | 🔮 V5 |
+| **自动备份无意图上下文** | auto-backup 只有 `trigger: auto`，不知道是谁改的、为什么改 | 事后回溯只能看到时间点快照，不知道操作意图 | **`begin_edit` → 文件路径绑定**：AI 编辑前声明意图和目标文件，embedded watcher 检测变更时按路径匹配 intent，自动备份也能带上下文 | 🔮 V5 |
+| **无跨进程写拦截** | 当前 MCP 架构下无法拦截 Cursor 编辑器的文件写入 | 只能在写后检测，不能写前阻止 | 等待 MCP 协议支持 `notification` / `resource subscription`，或探索 fs watch + pre-commit 组合 | 🔮 V5+ |
+| **意图队列并发问题** | 曾考虑"意图队列"（AI 写文件 → watcher 读文件关联 intent），但存在 4 类并发竞态：多 Agent 竞争、意图-变更错位、意图堆积、空意图残留 | 文件 I/O 跨进程 + 时间顺序绑定 = 不可靠 | **同进程内存 Map + 文件路径绑定**：消灭进程边界后无 IPC，按路径而非时间匹配消除歧义（详见 V5 设计） | 🔮 V5 |
 
 ### 进入 V5 的衡量标准
 
