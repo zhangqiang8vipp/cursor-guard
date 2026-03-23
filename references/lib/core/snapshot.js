@@ -84,6 +84,17 @@ function removeSecretsFromIndex(secretsPatterns, cwd, env) {
 
 // ── Commit message builder ──────────────────────────────────────
 
+/** Single-line trailer value (no CR/LF; capped length). */
+function trailerScalar(val, maxLen = 500) {
+  if (val == null) return '';
+  return String(val)
+    .replace(/\r\n/g, ' ')
+    .replace(/\r/g, ' ')
+    .replace(/\n/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
 function buildCommitMessage(ts, opts) {
   if (opts.message && !opts.context) return opts.message;
 
@@ -93,11 +104,12 @@ function buildCommitMessage(ts, opts) {
 
   const trailers = [];
   if (ctx.changedFileCount != null) trailers.push(`Files-Changed: ${ctx.changedFileCount}`);
-  if (ctx.summary) trailers.push(`Summary: ${ctx.summary}`);
-  if (ctx.trigger) trailers.push(`Trigger: ${ctx.trigger}`);
-  if (ctx.intent) trailers.push(`Intent: ${ctx.intent}`);
-  if (ctx.agent) trailers.push(`Agent: ${ctx.agent}`);
-  if (ctx.session) trailers.push(`Session: ${ctx.session}`);
+  if (ctx.summary) trailers.push(`Summary: ${trailerScalar(ctx.summary, 2000)}`);
+  if (ctx.trigger) trailers.push(`Trigger: ${trailerScalar(ctx.trigger)}`);
+  if (ctx.intent) trailers.push(`Intent: ${trailerScalar(ctx.intent)}`);
+  if (ctx.agent) trailers.push(`Agent: ${trailerScalar(ctx.agent)}`);
+  if (ctx.session) trailers.push(`Session: ${trailerScalar(ctx.session)}`);
+  if (ctx.guardEvent) trailers.push(`Guard-Event: ${trailerScalar(ctx.guardEvent)}`);
 
   if (trailers.length === 0) return subject;
   return subject + '\n\n' + trailers.join('\n');
@@ -121,9 +133,10 @@ function buildCommitMessage(ts, opts) {
  * @param {string} [opts.context.intent] - Why this snapshot was created (e.g. "refactoring auth middleware")
  * @param {string} [opts.context.agent] - AI model identifier (e.g. "claude-4-opus")
  * @param {string} [opts.context.session] - Conversation/session ID
+ * @param {string} [opts.context.guardEvent] - Short MCP/audit event id (written as Guard-Event trailer)
  * @param {boolean} [opts.allowEmptyTree] - If true, still create a commit when the snapshot tree equals the previous ref (empty / bookmark commit). Auto-backup should omit this; explicit manual snapshots should set it.
  * @param {boolean} [opts.fullWorkspaceSnapshot] - If true, ignore `cfg.protect` when building the snapshot tree (still apply `ignore` / secrets). Use for IDE/MCP "snapshot everything" so edits outside protect patterns are not invisible to the snapshot.
- * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[] }}
+ * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[], bookmark?: boolean }}
  * @remarks For refs/guard/auto-backup and refs/guard/snapshot, the first parent is always the
  * newer of those two tips (by commit time), so incremental stats mean "since last Guard backup" in the human sense.
  */
@@ -171,6 +184,9 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     if (newTree === parentTree && !opts.allowEmptyTree) {
       return { status: 'skipped', reason: 'tree unchanged' };
     }
+
+    /** Manual snapshot (allowEmptyTree): same tree as parent → still create a Git commit so intent/time appear on the timeline. */
+    const isBookmarkCommit = !!(opts.allowEmptyTree && parentTree && newTree === parentTree);
 
     // Build incremental summary from actual tree diff (not working-dir status)
     let changedCount;
@@ -277,6 +293,14 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       opts.context.changedFileCount = changedCount;
     }
 
+    if (isBookmarkCommit && opts.context) {
+      const s = opts.context.summary;
+      if (s == null || String(s).trim() === '') {
+        opts.context.summary = 'No file changes since last Guard baseline (bookmark).';
+      }
+      if (opts.context.changedFileCount == null) opts.context.changedFileCount = 0;
+    }
+
     const ts = formatTimestamp(new Date());
     let msg = buildCommitMessage(ts, opts);
 
@@ -291,7 +315,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       else diffBaseLabel = 'other';
     }
     const scopeTrailer = narrowProtect ? 'narrow' : 'full';
-    const guardBlock = `Guard-Diff-Base: ${diffBaseLabel}\nGuard-Scope: ${scopeTrailer}`;
+    const guardBlock = `Guard-Diff-Base: ${diffBaseLabel}\nGuard-Scope: ${scopeTrailer}${isBookmarkCommit ? '\nGuard-Bookmark: true' : ''}`;
     msg = msg.includes('\n\n') ? `${msg}\n${guardBlock}` : `${msg}\n\n${guardBlock}`;
 
     const commitArgs = parentHash
@@ -317,6 +341,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       changedFiles,
       incrementalSummary,
       secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : undefined,
+      ...(isBookmarkCommit ? { bookmark: true } : {}),
     };
   } catch (e) {
     return { status: 'error', error: e.message };
@@ -413,4 +438,4 @@ function createShadowCopy(projectDir, cfg, opts = {}) {
   }
 }
 
-module.exports = { createGitSnapshot, createShadowCopy, formatTimestamp, removeSecretsFromIndex };
+module.exports = { createGitSnapshot, createShadowCopy, formatTimestamp, removeSecretsFromIndex, trailerScalar };

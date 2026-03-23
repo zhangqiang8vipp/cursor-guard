@@ -21,7 +21,7 @@ When Cursor's AI agent edits your files, there's a risk of accidental overwrites
 - **Configurable scope** — Protect only what matters via `.cursor-guard.json`
 - **Secrets filtering** — Sensitive files (`.env`, keys, certificates) are auto-excluded from backups
 - **Auto-backup script** — A cross-platform watcher (Node.js) that periodically snapshots to a dedicated Git branch without disturbing your working tree
-- **MCP tool calls (optional)** — 9 structured tools (diagnostics, snapshot, restore, status, dashboard, alerts, etc.) with JSON responses and lower token cost
+- **MCP tool calls (optional)** — 10 structured tools (diagnostics, snapshot, **record_guard_event** audit bookmark, restore, status, dashboard, alerts, etc.) with JSON responses and lower token cost
 - **Auto-fix diagnostics** — `doctor_fix` automatically patches missing configs, uninitialized Git repos, gitignore gaps, and stale locks
 - **Proactive change-velocity alerts (V4)** — Auto-detects abnormal file change patterns and raises risk warnings
 - **Pre-warning destructive edit guard (V4.9.7)** — Detects risky partial deletions before they quietly stick, with softer auto-continue review, sidebar language sync, and `popup` / `dashboard` / `silent` modes
@@ -135,7 +135,7 @@ After installation, your directory structure should look like this:
     │       ├── style.css
     │       └── app.js
     ├── mcp/
-    │   └── server.js                   # MCP Server (9 tools)
+    │   └── server.js                   # MCP Server (10 tools)
     ├── vscode-extension/               # IDE Extension (V4.7)
     │   ├── extension.js                # Extension entry point
     │   ├── package.json                # Extension manifest
@@ -189,7 +189,7 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 }
 ```
 
-This gives the AI agent 9 structured tools (diagnostics, snapshot, restore, dashboard, alerts, etc.) with JSON responses — faster, more reliable, and lower token cost. Everything works without MCP too.
+This gives the AI agent 10 structured tools (diagnostics, snapshot, record_guard_event, restore, dashboard, alerts, etc.) with JSON responses — faster, more reliable, and lower token cost. Everything works without MCP too.
 
 6. **(Optional) Run auto-backup** in a separate terminal:
 
@@ -447,7 +447,7 @@ The skill activates on these signals:
 | `SKILL.md` | Main skill instructions for the AI agent (with MCP dual-path) |
 | `ROADMAP.md` | Version evolution roadmap (V2-V7) |
 | `references/lib/core/` | Core layer: 9 pure-logic modules (doctor / doctor-fix / snapshot / backups / restore / status / anomaly / pre-warning / dashboard) |
-| `references/mcp/server.js` | MCP Server: 9 structured tools (optional) |
+| `references/mcp/server.js` | MCP Server: 10 structured tools (optional) |
 | `references/lib/auto-backup.js` | Auto-backup watcher (calls Core) |
 | `references/lib/guard-doctor.js` | Health check CLI shell (calls Core) |
 | `references/lib/utils.js` | Shared utilities (config, glob, git, manifest) |

@@ -9,7 +9,7 @@ const { StatusBarController } = require('./lib/status-bar');
 const { GuardTreeView } = require('./lib/tree-view');
 const { Poller } = require('./lib/poller');
 const { SidebarDashboardProvider } = require('./lib/sidebar-webview');
-const { autoSetup } = require('./lib/auto-setup');
+const { autoSetup, installAgentSkill, detectIdeDir, getExtensionRoot } = require('./lib/auto-setup');
 const { guardPath } = require('./lib/paths');
 const { getLocale } = require('./lib/locale');
 
@@ -372,9 +372,45 @@ async function _assessPreWarning(document) {
   _preWarningFingerprints.set(key, { fingerprint, at: Date.now(), suppressed: false });
 }
 
+/** After autoSetup: toast when something changed, or once when Skill path is ready (locale-aware). */
+function notifyGuardSkillSetup(vscode, context, setup) {
+  const locale = getLocale(context.globalState);
+  const isZh = locale === 'zh-CN';
+  const openLabel = isZh ? '打开 Skill 目录' : 'Open Skill Folder';
+  const { actions = [], skillPath } = setup || {};
+
+  const offerOpen = (msg) => {
+    if (!skillPath) {
+      vscode.window.showInformationMessage(msg);
+      return;
+    }
+    vscode.window.showInformationMessage(msg, openLabel).then((sel) => {
+      if (sel === openLabel) vscode.env.openExternal(vscode.Uri.file(skillPath));
+    });
+  };
+
+  if (actions.length > 0) {
+    const detail = actions.join(isZh ? '、' : ', ');
+    const msg = isZh
+      ? `Cursor Guard：已自动完成首装（${detail}）。Agent 可使用用户目录下的 cursor-guard Skill。`
+      : `Cursor Guard: first-time setup complete (${detail}). Agent Skill lives in your user skills folder (cursor-guard).`;
+    offerOpen(msg);
+    return;
+  }
+
+  if (skillPath && !context.globalState.get('cursorGuard.skillIdleHintShown')) {
+    void context.globalState.update('cursorGuard.skillIdleHintShown', true);
+    const msg = isZh
+      ? `Cursor Guard：Agent Skill 已在安装扩展时自动配置（${skillPath}）。命令面板可执行「Install Agent Skill」重新安装或打开目录。`
+      : `Cursor Guard: Agent Skill was auto-configured when you installed this extension (${skillPath}). Command Palette: "Install Agent Skill" to reinstall or open the folder.`;
+    offerOpen(msg);
+  }
+}
+
 async function activate(context) {
-  await autoSetup(context, vscode);
+  const setup = await autoSetup(context, vscode);
   _localeStorage = context.globalState;
+  notifyGuardSkillSetup(vscode, context, setup);
 
   dashMgr = new DashboardManager();
   poller = new Poller(dashMgr);
@@ -415,8 +451,9 @@ async function activate(context) {
       const result = await dashMgr.snapshotNow(projectPath);
       if (result?.status === 'created') {
         const n = result.changedCount ?? 0;
-        const msg =
-          n > 0
+        const msg = result.bookmark
+          ? 'Cursor Guard: bookmark snapshot saved (tree unchanged — timeline records intent & time).'
+          : n > 0
             ? `Cursor Guard: snapshot created (${n} file change(s))`
             : 'Cursor Guard: snapshot created (restore point saved; no file changes since last snapshot)';
         vscode.window.showInformationMessage(msg);
@@ -531,6 +568,45 @@ async function activate(context) {
         }
       } catch (e) {
         vscode.window.showErrorMessage(`Cursor Guard Doctor: ${e.message}`);
+      }
+    }),
+
+    vscode.commands.registerCommand('cursorGuard.setupSkill', async () => {
+      const extRoot = getExtensionRoot(context);
+      const { homePath, dirName } = detectIdeDir(vscode);
+      let r;
+      try {
+        r = installAgentSkill(extRoot, homePath, dirName);
+      } catch (e) {
+        vscode.window.showErrorMessage(`Cursor Guard: Install Agent Skill failed — ${e.message}`);
+        return;
+      }
+      const loc = getLocale(context.globalState);
+      const isZh = loc === 'zh-CN';
+      const openLabel = isZh ? '打开 Skill 目录' : 'Open Skill Folder';
+      if (!r.skillPath && r.actions.length === 0) {
+        vscode.window.showWarningMessage(
+          isZh
+            ? 'Cursor Guard：扩展包内未找到 SKILL.md，无法安装 Agent Skill。'
+            : 'Cursor Guard: bundled SKILL.md not found; cannot install Agent Skill.'
+        );
+        return;
+      }
+      if (r.actions.length > 0) {
+        const detail = r.actions.join(isZh ? '、' : ', ');
+        const msg = isZh
+          ? `Cursor Guard：已更新 Agent Skill（${detail}）。路径：${r.skillPath}`
+          : `Cursor Guard: Agent Skill updated (${detail}). Path: ${r.skillPath}`;
+        vscode.window.showInformationMessage(msg, openLabel).then((sel) => {
+          if (sel === openLabel && r.skillPath) vscode.env.openExternal(vscode.Uri.file(r.skillPath));
+        });
+      } else {
+        const msg = isZh
+          ? `Cursor Guard：Agent Skill 已就绪，无需变更（${r.skillPath}）。`
+          : `Cursor Guard: Agent Skill already up to date (${r.skillPath}).`;
+        vscode.window.showInformationMessage(msg, openLabel).then((sel) => {
+          if (sel === openLabel && r.skillPath) vscode.env.openExternal(vscode.Uri.file(r.skillPath));
+        });
       }
     }),
 

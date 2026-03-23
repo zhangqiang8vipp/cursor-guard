@@ -21,7 +21,7 @@
 - **可配置保护范围** — 通过 `.cursor-guard.json` 配置文件只保护你关心的文件
 - **敏感文件过滤** — `.env`、密钥、证书等敏感文件自动排除备份
 - **自动备份脚本** — 跨平台 (Node.js) 定期快照到独立 Git 分支，不干扰工作区
-- **MCP 工具调用（可选）** — 9 个标准化工具（诊断、快照、恢复、状态、看板、告警等），结构化 JSON 返回，低 token 消耗
+- **MCP 工具调用（可选）** — 10 个标准化工具（诊断、快照、**record_guard_event** 审计书签、恢复、状态、看板、告警等），结构化 JSON 返回，低 token 消耗
 - **自动诊断修复** — `doctor_fix` 一键修补缺失配置、未初始化 Git、gitignore 遗漏等常见问题
 - **主动变更频率告警（V4）** — 自动检测异常文件变更模式并发出风险预警
 - **事先预警删除风险（V4.9.7）** — 在危险的局部删除真正“悄悄生效”前先提醒你，支持更柔和的自动继续提示、侧边栏语言同步，以及 `popup` / `dashboard` / `silent` 三种模式
@@ -135,7 +135,7 @@ git clone https://github.com/zhangqiang8vipp/cursor-guard.git .cursor/skills/cur
     │       ├── style.css
     │       └── app.js
     ├── mcp/
-    │   └── server.js                   # MCP Server（9 个工具）
+    │   └── server.js                   # MCP Server（10 个工具）
     ├── vscode-extension/               # IDE 扩展（V4.7）
     │   ├── extension.js                # 扩展入口
     │   ├── package.json                # 扩展清单
@@ -189,7 +189,7 @@ cp .cursor/skills/cursor-guard/references/cursor-guard.example.json .cursor-guar
 }
 ```
 
-启用后 AI 代理可直接调用 9 个结构化工具（诊断、快照、恢复、看板、告警等），无需拼接 shell 命令，更快更省 token。不启用也完全不影响使用。
+启用后 AI 代理可直接调用 10 个结构化工具（诊断、快照、record_guard_event、恢复、看板、告警等），无需拼接 shell 命令，更快更省 token。不启用也完全不影响使用。
 
 6. **（可选）运行自动备份** — 在独立终端运行：
 
@@ -447,7 +447,7 @@ code --install-extension .
 | `SKILL.md` | AI 代理的主要技能指令（含 MCP 双路径逻辑） |
 | `ROADMAP.md` | 版本演进规划书（V2-V7） |
 | `references/lib/core/` | Core 层：9 个纯逻辑模块（doctor / doctor-fix / snapshot / backups / restore / status / anomaly / pre-warning / dashboard） |
-| `references/mcp/server.js` | MCP Server：9 个标准化工具（可选） |
+| `references/mcp/server.js` | MCP Server：10 个标准化工具（可选） |
 | `references/lib/auto-backup.js` | 自动备份 watcher（调用 Core） |
 | `references/lib/guard-doctor.js` | 健康检查 CLI 壳（调用 Core） |
 | `references/lib/utils.js` | 共享工具库（配置、glob、git、manifest） |

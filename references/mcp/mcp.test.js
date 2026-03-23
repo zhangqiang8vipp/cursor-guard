@@ -113,12 +113,12 @@ async function run() {
   // List tools
   const toolsResp = await rpc('tools/list', {});
 
-  await test('lists 9 tools', () => {
+  await test('lists 10 tools', () => {
     const tools = toolsResp.result.tools;
     if (!tools) throw new Error('no tools');
-    if (tools.length !== 9) throw new Error(`expected 9 tools, got ${tools.length}`);
+    if (tools.length !== 10) throw new Error(`expected 10 tools, got ${tools.length}`);
     const names = tools.map(t => t.name).sort();
-    const expected = ['alert_status', 'backup_status', 'dashboard', 'doctor', 'doctor_fix', 'list_backups', 'restore_file', 'restore_project', 'snapshot_now'].sort();
+    const expected = ['alert_status', 'backup_status', 'dashboard', 'doctor', 'doctor_fix', 'list_backups', 'record_guard_event', 'restore_file', 'restore_project', 'snapshot_now'].sort();
     if (JSON.stringify(names) !== JSON.stringify(expected)) {
       throw new Error(`tool names mismatch: ${JSON.stringify(names)}`);
     }
@@ -151,6 +151,20 @@ async function run() {
     if (data.git.status !== 'created' && data.git.status !== 'skipped') {
       throw new Error(`unexpected status: ${data.git.status}`);
     }
+  });
+
+  const recordEventResp = await rpc('tools/call', {
+    name: 'record_guard_event',
+    arguments: { path: tmpDir, event: 'list_backups:after_snapshot', detail: 'Audit bookmark after snapshot_now' },
+  });
+  await test('record_guard_event creates git bookmark with Guard-Event', () => {
+    const content = recordEventResp.result.content[0].text;
+    const data = JSON.parse(content);
+    if (!data.git) throw new Error('no git result');
+    if (data.git.status !== 'created') throw new Error(`expected created, got ${data.git.status}`);
+    const body = execFileSync('git', ['log', '-1', '--format=%B', data.git.commitHash], { cwd: tmpDir, encoding: 'utf8' });
+    if (!body.includes('Guard-Event: list_backups:after_snapshot')) throw new Error('Guard-Event trailer missing');
+    if (!body.includes('Trigger: mcp-event')) throw new Error('Trigger mcp-event missing');
   });
 
   // Call list_backups
@@ -313,11 +327,16 @@ async function run() {
   };
   fs.writeFileSync(alertFile, JSON.stringify(fakeAlert, null, 2));
 
-  const toolsWithAlert = ['doctor', 'list_backups', 'backup_status', 'dashboard', 'doctor_fix', 'snapshot_now'];
+  const toolsWithAlert = ['doctor', 'list_backups', 'backup_status', 'dashboard', 'doctor_fix', 'snapshot_now', 'record_guard_event'];
   for (const toolName of toolsWithAlert) {
     const resp = await rpc('tools/call', {
       name: toolName,
-      arguments: { path: tmpDir, ...(toolName === 'doctor_fix' ? { dry_run: true } : {}), ...(toolName === 'snapshot_now' ? { strategy: 'git' } : {}) },
+      arguments: {
+        path: tmpDir,
+        ...(toolName === 'doctor_fix' ? { dry_run: true } : {}),
+        ...(toolName === 'snapshot_now' ? { strategy: 'git' } : {}),
+        ...(toolName === 'record_guard_event' ? { event: 'mcp:test:alert_inject' } : {}),
+      },
     });
     await test(`${toolName} response contains _activeAlert when alert exists`, () => {
       const content = resp.result.content[0].text;

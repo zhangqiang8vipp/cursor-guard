@@ -189,8 +189,9 @@ npm run release:checklist
 | `scripts/print-release-checklist.js` | Implements `npm run release:checklist` |
 | `references/vscode-extension/build-vsix.js` | Assembles `dist/` and syncs version from root `package.json` |
 | `README.md` / `README.zh-CN.md` | Short “Release checklist” sections + link here |
+| `docs/SNAPSHOT-BOOKMARK.md` | Design note: bookmark commit when manual snapshot tree unchanged (intent timeline, event-restore friendly) |
 | `.gitignore` | Ignores `.release-notes-*.md` |
 
 ---
 
-*Last updated / 最后更新: 2026-03-22（v4.9.9：随包分发与 README 入口）*
+*Last updated / 最后更新: 2026-03-23（v4.9.13：补充 `docs/SNAPSHOT-BOOKMARK.md` 索引）*

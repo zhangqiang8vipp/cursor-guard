@@ -35594,7 +35594,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.9.12",
+      version: "4.9.15",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -35633,6 +35633,7 @@ var require_package = __commonJS({
         "README.md",
         "README.zh-CN.md",
         "docs/RELEASE.md",
+        "docs/SNAPSHOT-BOOKMARK.md",
         "ROADMAP.md",
         "LICENSE",
         "references/auto-backup.ps1",
@@ -36078,6 +36079,10 @@ var require_snapshot = __commonJS({
       }
       return excluded;
     }
+    function trailerScalar2(val, maxLen = 500) {
+      if (val == null) return "";
+      return String(val).replace(/\r\n/g, " ").replace(/\r/g, " ").replace(/\n/g, " ").trim().slice(0, maxLen);
+    }
     function buildCommitMessage(ts, opts) {
       if (opts.message && !opts.context) return opts.message;
       const ctx = opts.context || {};
@@ -36085,11 +36090,12 @@ var require_snapshot = __commonJS({
       const subject = opts.message || `guard: auto-backup ${ts}${countTag}`;
       const trailers = [];
       if (ctx.changedFileCount != null) trailers.push(`Files-Changed: ${ctx.changedFileCount}`);
-      if (ctx.summary) trailers.push(`Summary: ${ctx.summary}`);
-      if (ctx.trigger) trailers.push(`Trigger: ${ctx.trigger}`);
-      if (ctx.intent) trailers.push(`Intent: ${ctx.intent}`);
-      if (ctx.agent) trailers.push(`Agent: ${ctx.agent}`);
-      if (ctx.session) trailers.push(`Session: ${ctx.session}`);
+      if (ctx.summary) trailers.push(`Summary: ${trailerScalar2(ctx.summary, 2e3)}`);
+      if (ctx.trigger) trailers.push(`Trigger: ${trailerScalar2(ctx.trigger)}`);
+      if (ctx.intent) trailers.push(`Intent: ${trailerScalar2(ctx.intent)}`);
+      if (ctx.agent) trailers.push(`Agent: ${trailerScalar2(ctx.agent)}`);
+      if (ctx.session) trailers.push(`Session: ${trailerScalar2(ctx.session)}`);
+      if (ctx.guardEvent) trailers.push(`Guard-Event: ${trailerScalar2(ctx.guardEvent)}`);
       if (trailers.length === 0) return subject;
       return subject + "\n\n" + trailers.join("\n");
     }
@@ -36128,6 +36134,7 @@ var require_snapshot = __commonJS({
         if (newTree === parentTree && !opts.allowEmptyTree) {
           return { status: "skipped", reason: "tree unchanged" };
         }
+        const isBookmarkCommit = !!(opts.allowEmptyTree && parentTree && newTree === parentTree);
         let changedCount;
         let incrementalSummary;
         let changedFiles;
@@ -36216,6 +36223,13 @@ var require_snapshot = __commonJS({
         if (changedCount != null && opts.context) {
           opts.context.changedFileCount = changedCount;
         }
+        if (isBookmarkCommit && opts.context) {
+          const s = opts.context.summary;
+          if (s == null || String(s).trim() === "") {
+            opts.context.summary = "No file changes since last Guard baseline (bookmark).";
+          }
+          if (opts.context.changedFileCount == null) opts.context.changedFileCount = 0;
+        }
         const ts = formatTimestamp(/* @__PURE__ */ new Date());
         let msg = buildCommitMessage(ts, opts);
         const autoTip = git(["rev-parse", "--verify", REF_GUARD_AUTO_BACKUP], { cwd, allowFail: true });
@@ -36230,7 +36244,7 @@ var require_snapshot = __commonJS({
         }
         const scopeTrailer = narrowProtect ? "narrow" : "full";
         const guardBlock = `Guard-Diff-Base: ${diffBaseLabel}
-Guard-Scope: ${scopeTrailer}`;
+Guard-Scope: ${scopeTrailer}${isBookmarkCommit ? "\nGuard-Bookmark: true" : ""}`;
         msg = msg.includes("\n\n") ? `${msg}
 ${guardBlock}` : `${msg}
 
@@ -36251,7 +36265,8 @@ ${guardBlock}`;
           changedCount,
           changedFiles,
           incrementalSummary,
-          secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : void 0
+          secretsExcluded: secretsExcluded.length > 0 ? secretsExcluded : void 0,
+          ...isBookmarkCommit ? { bookmark: true } : {}
         };
       } catch (e) {
         return { status: "error", error: e.message };
@@ -36335,7 +36350,7 @@ ${guardBlock}`;
         return { status: "error", error: e.message };
       }
     }
-    module2.exports = { createGitSnapshot: createGitSnapshot2, createShadowCopy: createShadowCopy2, formatTimestamp, removeSecretsFromIndex };
+    module2.exports = { createGitSnapshot: createGitSnapshot2, createShadowCopy: createShadowCopy2, formatTimestamp, removeSecretsFromIndex, trailerScalar: trailerScalar2 };
   }
 });
 
@@ -36387,11 +36402,13 @@ var require_backups = __commonJS({
       "Intent": { key: "intent" },
       "Agent": { key: "agent" },
       "Session": { key: "session" },
+      "Guard-Event": { key: "guardEvent" },
       "From": { key: "from" },
       "Restore-To": { key: "restoreTo" },
       "File": { key: "restoreFile" },
       "Guard-Diff-Base": { key: "guardDiffBase" },
-      "Guard-Scope": { key: "guardScope" }
+      "Guard-Scope": { key: "guardScope" },
+      "Guard-Bookmark": { key: "guardBookmark", parse: (v) => String(v).trim().toLowerCase() === "true" }
     };
     function parseCommitTrailers(body) {
       if (!body) return {};
@@ -38101,7 +38118,7 @@ var { McpServer } = require_mcp();
 var { StdioServerTransport } = require_stdio2();
 var { z } = require_zod();
 var { runDiagnostics } = require_doctor();
-var { createGitSnapshot, createShadowCopy } = require_snapshot();
+var { createGitSnapshot, createShadowCopy, trailerScalar } = require_snapshot();
 var { listBackups } = require_backups();
 var { restoreFile, previewProjectRestore, executeProjectRestore } = require_restore();
 var { runFixes } = require_doctor_fix();
@@ -38223,7 +38240,7 @@ server.tool(
 );
 server.tool(
   "snapshot_now",
-  "Create an immediate backup snapshot of the current project state. Use before risky operations to preserve a restore point.",
+  "Create an immediate backup snapshot of the current project state. Use before risky operations to preserve a restore point. If the snapshot tree matches the previous Guard baseline (no file changes), a bookmark commit is still created on refs/guard/snapshot so intent/time stay visible \u2014 not silently skipped.",
   {
     path: z.string().describe("Absolute path to the project directory"),
     strategy: z.enum(["git", "shadow", "both"]).optional().describe('Backup strategy (default: from config, or "git")'),
@@ -38258,6 +38275,55 @@ server.tool(
     if (effectiveStrategy === "shadow" || effectiveStrategy === "both") {
       results.shadow = createShadowCopy(resolved, cfg);
     }
+    injectPreWarning(resolved, injectAlert(resolved, results));
+    injectWatcherWarning(resolved, results);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(results, null, 2)
+      }]
+    };
+  }
+);
+server.tool(
+  "record_guard_event",
+  "Create a Git bookmark on refs/guard/snapshot focused on MCP/agent audit: stores Guard-Event (what happened), optional detail/summary, intent, agent, session. When the tree matches the previous baseline, still creates a commit (same as snapshot_now) so the timeline shows the event with no silent skip. Use after other MCP calls when you need a visible record without relying on file diffs alone.",
+  {
+    path: z.string().describe("Absolute path to the project directory"),
+    event: z.string().describe("Short event label, e.g. restore_project:execute, doctor_fix, list_backups:query"),
+    detail: z.string().optional().describe("Longer text stored in Summary trailer (optional)"),
+    intent: z.string().optional().describe("Human-readable intent; defaults to event if omitted"),
+    agent: z.string().optional().describe("AI model identifier"),
+    session: z.string().optional().describe("Conversation or session ID")
+  },
+  async ({ path: projectPath, event, detail, intent, agent, session }) => {
+    const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
+    const { cfg } = loadConfig(resolved);
+    const ev = trailerScalar(event);
+    if (!ev) {
+      const err = { git: { status: "error", error: "event must be a non-empty string" } };
+      injectPreWarning(resolved, injectAlert(resolved, err));
+      injectWatcherWarning(resolved, err);
+      return { content: [{ type: "text", text: JSON.stringify(err, null, 2) }] };
+    }
+    const context = {
+      trigger: "mcp-event",
+      guardEvent: ev,
+      summary: detail ? trailerScalar(detail, 2e3) : `MCP event: ${ev}`
+    };
+    if (intent) context.intent = trailerScalar(intent);
+    if (agent) context.agent = trailerScalar(agent);
+    if (session) context.session = trailerScalar(session);
+    const results = {
+      git: createGitSnapshot(resolved, cfg, {
+        branchRef: "refs/guard/snapshot",
+        message: `guard: MCP event ${(/* @__PURE__ */ new Date()).toISOString()}`,
+        context,
+        allowEmptyTree: true,
+        fullWorkspaceSnapshot: true
+      })
+    };
     injectPreWarning(resolved, injectAlert(resolved, results));
     injectWatcherWarning(resolved, results);
     return {

@@ -7,7 +7,7 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const { z } = require('zod');
 
 const { runDiagnostics } = require('../lib/core/doctor');
-const { createGitSnapshot, createShadowCopy } = require('../lib/core/snapshot');
+const { createGitSnapshot, createShadowCopy, trailerScalar } = require('../lib/core/snapshot');
 const { listBackups } = require('../lib/core/backups');
 const { restoreFile, previewProjectRestore, executeProjectRestore } = require('../lib/core/restore');
 const { runFixes } = require('../lib/core/doctor-fix');
@@ -155,7 +155,7 @@ server.tool(
 
 server.tool(
   'snapshot_now',
-  'Create an immediate backup snapshot of the current project state. Use before risky operations to preserve a restore point.',
+  'Create an immediate backup snapshot of the current project state. Use before risky operations to preserve a restore point. If the snapshot tree matches the previous Guard baseline (no file changes), a bookmark commit is still created on refs/guard/snapshot so intent/time stay visible — not silently skipped.',
   {
     path: z.string().describe('Absolute path to the project directory'),
     strategy: z.enum(['git', 'shadow', 'both']).optional().describe('Backup strategy (default: from config, or "git")'),
@@ -196,6 +196,63 @@ server.tool(
     if (effectiveStrategy === 'shadow' || effectiveStrategy === 'both') {
       results.shadow = createShadowCopy(resolved, cfg);
     }
+
+    injectPreWarning(resolved, injectAlert(resolved, results));
+    injectWatcherWarning(resolved, results);
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(results, null, 2),
+      }],
+    };
+  }
+);
+
+// ── Tool 3b: record_guard_event (MCP audit bookmark) ─────────────
+
+server.tool(
+  'record_guard_event',
+  'Create a Git bookmark on refs/guard/snapshot focused on MCP/agent audit: stores Guard-Event (what happened), optional detail/summary, intent, agent, session. When the tree matches the previous baseline, still creates a commit (same as snapshot_now) so the timeline shows the event with no silent skip. Use after other MCP calls when you need a visible record without relying on file diffs alone.',
+  {
+    path: z.string().describe('Absolute path to the project directory'),
+    event: z.string().describe('Short event label, e.g. restore_project:execute, doctor_fix, list_backups:query'),
+    detail: z.string().optional().describe('Longer text stored in Summary trailer (optional)'),
+    intent: z.string().optional().describe('Human-readable intent; defaults to event if omitted'),
+    agent: z.string().optional().describe('AI model identifier'),
+    session: z.string().optional().describe('Conversation or session ID'),
+  },
+  async ({ path: projectPath, event, detail, intent, agent, session }) => {
+    const resolved = path.resolve(projectPath);
+    ensureWatcher(resolved);
+    const { cfg } = loadConfig(resolved);
+
+    const ev = trailerScalar(event);
+    if (!ev) {
+      const err = { git: { status: 'error', error: 'event must be a non-empty string' } };
+      injectPreWarning(resolved, injectAlert(resolved, err));
+      injectWatcherWarning(resolved, err);
+      return { content: [{ type: 'text', text: JSON.stringify(err, null, 2) }] };
+    }
+
+    const context = {
+      trigger: 'mcp-event',
+      guardEvent: ev,
+      summary: detail ? trailerScalar(detail, 2000) : `MCP event: ${ev}`,
+    };
+    if (intent) context.intent = trailerScalar(intent);
+    if (agent) context.agent = trailerScalar(agent);
+    if (session) context.session = trailerScalar(session);
+
+    const results = {
+      git: createGitSnapshot(resolved, cfg, {
+        branchRef: 'refs/guard/snapshot',
+        message: `guard: MCP event ${new Date().toISOString()}`,
+        context,
+        allowEmptyTree: true,
+        fullWorkspaceSnapshot: true,
+      }),
+    };
 
     injectPreWarning(resolved, injectAlert(resolved, results));
     injectWatcherWarning(resolved, results);

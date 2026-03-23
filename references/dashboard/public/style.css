@@ -469,6 +469,38 @@ main {
   color: var(--text-heading);
   font-variant-numeric: tabular-nums;
 }
+.summary-guard-event {
+  font-size: 12px;
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--orange);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.summary-guard-event-label {
+  font-weight: 600;
+  opacity: 0.85;
+}
+.summary-bookmark-row { margin-bottom: 4px; }
+.summary-bookmark-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--purple);
+  background: var(--purple-bg);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border-left: 3px solid var(--purple);
+  line-height: 1.35;
+}
 .summary-intent {
   font-size: 12px;
   color: var(--blue);

@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.9.12`
-> **文档状态**：`V2` ~ `V4.9.12` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.9.13`
+> **文档状态**：`V2` ~ `V4.9.13` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -750,6 +750,21 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | **备份列表可读性** | Git 提交 `Guard-Diff-Base` / `Guard-Scope` trailer；`listBackups` 解析 + 仪表盘「范围/基线」列；`refs/guard/snapshot` 完整历史；`Summary` trailer 去 `\r` + 列表行合计 `+/-` 行数 |
 | **5.x 后续（已记入下方 V5 规划）** | watcher 进程与仪表盘 **进程内/管道事件**、MCP `notifications`、统一事件总线——见「V5.x 深化：仪表盘与 watcher 联动」 |
 
+### V4.9.14：MCP `record_guard_event`（无树变更也可记「事件」）✅
+
+| 能力 | 说明 |
+|------|------|
+| **新工具** | **`record_guard_event`**：`event`（短标签）必填；可选 **`detail`**→Summary、**`intent`** / **`agent`** / **`session`**；**`Trigger: mcp-event`** + **`Guard-Event:`** trailer；与 `snapshot_now` 相同 **`allowEmptyTree` + `refs/guard/snapshot`**，树未变仍出书签提交 |
+| **用途** | Agent 在调用其他 MCP 后显式留痕（如 `restore_project:execute`），时间轴可见 **事件名**，不依赖文件 diff |
+
+### V4.9.13：手动快照「书签」提交（树未变仍留痕）✅
+
+| 能力 | 说明 |
+|------|------|
+| **书签提交** | `allowEmptyTree` 路径下树与父相同仍 `commit-tree`：写入 **`Guard-Bookmark: true`**、默认 **Summary**（无用户 summary 时）、**`bookmark: true`** 返回值；**Intent / Agent / Session** 照常进 trailer |
+| **动机与取舍** | 见 **`docs/SNAPSHOT-BOOKMARK.md`**：跳过 ≠ 对用户不可见；不改写历史；为后续 **按事件 / 按 hash 关联意图** 提供稳定锚点 |
+| **自动备份** | 仍 **`tree unchanged` 跳过**，避免噪声 |
+
 ### V4.9.12：仪表盘 Intent 展示修复 ✅
 
 | 能力 | 说明 |
@@ -1069,7 +1084,7 @@ V5 不是"三个方向选一个"，而是把下面这条链路做完整：
 | `audit store` | 审计事件存储与查询 | ✅ V4.3.0-V4.3.3：Git commit trailer 持久化（trigger/intent/agent/session），`listBackups` 可解析 | 升级为独立 JSONL 审计存储，支持按事件 ID / 文件 / 会话 / 风险级别查询 |
 | `restore by event` | 从审计事件直接恢复 | — | 新增：`restore_from_event(event_id)` → 定位 `before_ref` → 执行恢复 |
 | `impact set` | 记录变更波及范围 | ✅ V4.5.2：告警携带结构化文件列表 `[{path, action, added, deleted}]` | 升级：增加符号级分析（导出/引用变更检测） |
-| `MCP / CLI surface` | 变更控制接口 | ✅ V4：9 个 MCP 工具（doctor / list_backups / snapshot_now / restore_file / restore_project / doctor_fix / backup_status / dashboard / alert_status） | 新增：`begin_edit` / `end_edit` / `audit_query` / `get_event` / `restore_from_event` |
+| `MCP / CLI surface` | 变更控制接口 | ✅ V4：10 个 MCP 工具（含 **`record_guard_event`** 审计书签；doctor / list_backups / snapshot_now / restore_file / restore_project / doctor_fix / backup_status / dashboard / alert_status） | 新增：`begin_edit` / `end_edit` / `audit_query` / `get_event` / `restore_from_event` |
 | `dashboard / doctor` | 看板和诊断 | ✅ V4.2-V4.5.3：完整 Web 仪表盘，告警卡片+历史、备份表格+抽屉、诊断面板、结构化文件表格 | 扩展：活跃会话面板、冲突告警卡片、AI 事件时间线 |
 | `always_watch` | 强保护模式 | ✅ **V4.5.4 已完整实现**：`always_watch: true` → MCP server 首次 tool 调用自动 spawn watcher 进程，`ensureWatcher()` + `watchedProjects` Map + 锁文件互斥兼容 | V5 进一步升级为 embedded watcher（同进程内嵌，非独立进程） |
 | `embedded watcher` | 同进程 watcher 循环 | 部分：V4.5.4 `always_watch` 通过 spawn 独立子进程实现（解决了"裸奔"问题，但仍是跨进程） | **核心差异**：MCP server 内嵌 watcher 循环，同进程=无 IPC、无竞争。检测变更时按文件路径匹配 `begin_edit` 中的 intent |
@@ -1661,7 +1676,9 @@ V4.3.5 ─────  ✅ Summary 增量 diff-tree 修复 + 变更列堆叠布
 V4.4.0 ─────  ✅ V4 收官：首次快照 summary + doctor 完整性/retention 检查 + init 升级检测
 V4.9.0 ─────  ✅ 事件驱动 watcher + 实时侧边栏计时
 V4.9.5 ─────  ✅ 修复 `.git` 写入导致的疯狂自触发备份
-V4.9.12 ────  ✅ 仪表盘变更列：Intent 仅被真正的恢复前快照类型让位给 From→Restore-To；常规备份正确显示 Intent  ← 当前版本
+V4.9.14 ────  ✅ MCP record_guard_event + Guard-Event trailer；仪表盘事件行；Trigger mcp-event  ← 当前版本
+V4.9.13 ────  ✅ 手动快照树未变仍写书签提交 + Guard-Bookmark；仪表盘书签徽标；设计说明 docs/SNAPSHOT-BOOKMARK.md
+V4.9.12 ────  ✅ 仪表盘变更列：Intent 仅被真正的恢复前快照类型让位给 From→Restore-To；常规备份正确显示 Intent
 V4.9.11 ────  ✅ 仪表盘 SSE + fs.watch 推送；Poller 事件驱动；告警忽略；Guard trailer 列；Summary/列表行数；snapshot 历史列表
 V4.9.10 ────  ✅ 扩展版本线与根包对齐（VSIX 发版链）
 V4.9.9 ─────  ✅ docs/RELEASE.md 发版指南（人 + AI）+ gh UTF-8 说明
@@ -1755,4 +1772,4 @@ V7 的"可验证治理"是这条产品线的逻辑终点——该保护的都保
 ---
 
 *最后更新：2026-03-23*
-*版本：v1.11（V4.9.12：仪表盘 Intent 列修复；V4.9.11 起 SSE/fs.watch、Poller 事件驱动等；历史含 V4.9.9 发版指南、V4.9.0 事件驱动 watcher、`pre_warning` 等）*
+*版本：v1.13（V4.9.14：MCP record_guard_event + Guard-Event；V4.9.13 书签提交；历史含发版指南、`pre_warning` 等）*

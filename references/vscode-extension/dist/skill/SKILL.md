@@ -102,7 +102,7 @@ On first trigger in a session, check if the workspace root contains `.cursor-gua
 
 cursor-guard provides an **MCP server** (`cursor-guard-mcp`) as an optional enhancement. When available, prefer MCP tool calls over shell commands — they are faster, return structured JSON, and consume fewer tokens.
 
-**Detection**: at the start of a session, check if the following MCP tools are available in your tool list: `doctor`, `list_backups`, `snapshot_now`, `restore_file`, `restore_project`, `dashboard`, `alert_status`. If **any** of them exists, use MCP for that operation; otherwise, fall back to shell commands as described in the sections below.
+**Detection**: at the start of a session, check if the following MCP tools are available in your tool list: `doctor`, `list_backups`, `snapshot_now`, `record_guard_event`, `restore_file`, `restore_project`, `dashboard`, `alert_status`. If **any** of them exists, use MCP for that operation; otherwise, fall back to shell commands as described in the sections below.
 
 **Routing table** (MCP tool → replaces which shell workflow):
 
@@ -169,6 +169,8 @@ When the target file of an edit **falls outside the protected scope**, the agent
 > }
 > ```
 > The `intent`, `agent`, and `session` fields are stored as Git commit trailers and displayed in the dashboard restore-point list and detail drawer.
+>
+> **After other MCP tools** (e.g. `restore_project` execute, `doctor_fix`, or a read-only call you want on the timeline): if you need a **visible audit entry** even when **no files changed**, call **`record_guard_event`** with a short **`event`** label (e.g. `restore_project:execute`) and optional **`detail`**, **`intent`**, **`agent`**, **`session`**. It writes **`Guard-Event:`** and **`Trigger: mcp-event`** on `refs/guard/snapshot` with **`allowEmptyTree`** — same bookmark behavior as `snapshot_now` when the tree matches the baseline.
 >
 > **Timeline the user sees**: manual snapshot with intent ("AI准备重构 calculator.js") → auto-backup with file changes ("Modified 2: src/app.js (+15 -3)"). The causal relationship is clear from ordering — the manual snapshot explains WHY, the auto-backup shows WHAT changed.
 
@@ -614,7 +616,7 @@ Skip the block for unrelated turns.
 - Auto-backup (Node.js core): [references/lib/auto-backup.js](references/lib/auto-backup.js)
 - Guard doctor (Node.js core): [references/lib/guard-doctor.js](references/lib/guard-doctor.js)
 - Core modules: [references/lib/core/](references/lib/core/) (doctor, doctor-fix, snapshot, backups, restore, status, anomaly, pre-warning, dashboard)
-- MCP server: [references/mcp/server.js](references/mcp/server.js) (9 tools: doctor, doctor_fix, backup_status, list_backups, snapshot_now, restore_file, restore_project, dashboard, alert_status)
+- MCP server: [references/mcp/server.js](references/mcp/server.js) (10 tools: doctor, doctor_fix, backup_status, list_backups, snapshot_now, **record_guard_event**, restore_file, restore_project, dashboard, alert_status)
 - Web dashboard: [references/dashboard/](references/dashboard/) (local read-only web UI — `node references/dashboard/server.js --path <project>`)
 - Shared utilities: [references/lib/utils.js](references/lib/utils.js)
 - Config JSON Schema: [references/cursor-guard.schema.json](references/cursor-guard.schema.json)
@@ -658,4 +660,4 @@ If your Cursor config supports MCP, add `cursor-guard` as an MCP server for lowe
 }
 ```
 
-Once configured, the 9 tools (`doctor`, `doctor_fix`, `backup_status`, `list_backups`, `snapshot_now`, `restore_file`, `restore_project`, `dashboard`, `alert_status`) are available as MCP tool calls. See §0a for routing logic.
+Once configured, the 10 tools (`doctor`, `doctor_fix`, `backup_status`, `list_backups`, `snapshot_now`, `record_guard_event`, `restore_file`, `restore_project`, `dashboard`, `alert_status`) are available as MCP tool calls. Use **`record_guard_event`** after other tools when you need a **timeline bookmark** with **`Guard-Event`** (tree may be unchanged). See §0a for routing logic.

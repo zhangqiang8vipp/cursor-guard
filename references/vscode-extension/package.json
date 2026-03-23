@@ -2,7 +2,7 @@
   "name": "cursor-guard-ide",
   "displayName": "Cursor Guard",
   "description": "AI code protection dashboard embedded in your IDE — real-time alerts, backup history, one-click snapshots",
-  "version": "4.9.12",
+  "version": "4.9.15",
   "publisher": "zhangqiang8vipp",
   "license": "BUSL-1.1",
   "engines": {
@@ -57,6 +57,12 @@
         "title": "Run Diagnostics",
         "category": "Cursor Guard",
         "icon": "$(search)"
+      },
+      {
+        "command": "cursorGuard.setupSkill",
+        "title": "Install Agent Skill",
+        "category": "Cursor Guard",
+        "icon": "$(book)"
       },
       {
         "command": "cursorGuard.addToProtect",

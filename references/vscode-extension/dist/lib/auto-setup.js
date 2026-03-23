@@ -49,22 +49,26 @@ async function autoSetup(context, vscode) {
   const wsRoot = workspaceFolders?.[0]?.uri.fsPath;
 
   const actions = [];
+  let skillPath = null;
 
-  try { actions.push(...autoInstallSkill(extRoot, homePath, dirName)); } catch { /* non-critical */ }
+  try {
+    const skillResult = installAgentSkill(extRoot, homePath, dirName);
+    actions.push(...skillResult.actions);
+    skillPath = skillResult.skillPath;
+  } catch { /* non-critical */ }
   try { actions.push(...autoRegisterMcp(extRoot, homePath, wsRoot)); } catch { /* non-critical */ }
   if (wsRoot) {
     try { actions.push(...autoCreateConfig(extRoot, wsRoot)); } catch { /* non-critical */ }
   }
 
-  if (actions.length > 0) {
-    vscode.window.showInformationMessage(`Cursor Guard: auto-setup complete — ${actions.join(', ')}`);
-  }
+  return { actions, skillPath };
 }
 
-function autoInstallSkill(extRoot, homePath, dirName) {
+/** Copy / link bundled Agent Skill into ~/.cursor/skills/cursor-guard (or IDE-specific home). */
+function installAgentSkill(extRoot, homePath, dirName) {
   const actions = [];
   const skillSrc = findBundledSkill(extRoot);
-  if (!skillSrc) return actions;
+  if (!skillSrc) return { actions, skillPath: null };
 
   const skillTarget = path.join(homePath, 'skills', 'cursor-guard');
   fs.mkdirSync(skillTarget, { recursive: true });
@@ -115,7 +119,7 @@ function autoInstallSkill(extRoot, homePath, dirName) {
     }
   }
 
-  return actions;
+  return { actions, skillPath: skillTarget };
 }
 
 function _isSymlinkOrJunction(p) {
@@ -189,4 +193,9 @@ function autoCreateConfig(extRoot, wsRoot) {
   return actions;
 }
 
-module.exports = { autoSetup, detectIdeDir };
+module.exports = {
+  autoSetup,
+  detectIdeDir,
+  installAgentSkill,
+  getExtensionRoot,
+};

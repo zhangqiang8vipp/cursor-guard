@@ -195,15 +195,53 @@ test('skips when tree is unchanged', () => {
   }
 });
 
+test('createGitSnapshot writes Guard-Event trailer for MCP audit', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    createGitSnapshot(tmpDir, cfg);
+    const r = createGitSnapshot(tmpDir, cfg, {
+      allowEmptyTree: true,
+      context: {
+        trigger: 'mcp-event',
+        guardEvent: 'restore_project:preview',
+        summary: 'User asked for restore preview',
+      },
+    });
+    assert.strictEqual(r.status, 'created');
+    const body = execFileSync('git', ['log', '-1', '--format=%B', r.commitHash], { cwd: tmpDir, encoding: 'utf8' });
+    assert.match(body, /Guard-Event: restore_project:preview/);
+    assert.match(body, /Trigger: mcp-event/);
+    const { listBackups } = require('./backups');
+    const row = listBackups(tmpDir, { limit: 10 }).sources.find(s => s.commitHash === r.commitHash);
+    assert.strictEqual(row.guardEvent, 'restore_project:preview');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 test('allowEmptyTree creates bookmark commit when tree unchanged', () => {
   const tmpDir = createTempGitRepo();
   try {
     const { loadConfig } = require('../utils');
     const { cfg } = loadConfig(tmpDir);
     createGitSnapshot(tmpDir, cfg);
-    const result2 = createGitSnapshot(tmpDir, cfg, { allowEmptyTree: true });
+    const result2 = createGitSnapshot(tmpDir, cfg, {
+      allowEmptyTree: true,
+      context: { trigger: 'manual', intent: 'user clicked snapshot with no tree delta' },
+    });
     assert.strictEqual(result2.status, 'created');
+    assert.strictEqual(result2.bookmark, true);
     assert.ok(result2.commitHash);
+    const body = execFileSync('git', ['log', '-1', '--format=%B', result2.commitHash], { cwd: tmpDir, encoding: 'utf8' });
+    assert.match(body, /Guard-Bookmark: true/);
+    assert.match(body, /Intent: user clicked snapshot with no tree delta/);
+    assert.match(body, /No file changes since last Guard baseline \(bookmark\)/);
+    const { listBackups } = require('./backups');
+    const tip = listBackups(tmpDir, { limit: 5 }).sources.find(s => s.commitHash === result2.commitHash);
+    assert.ok(tip);
+    assert.strictEqual(tip.guardBookmark, true);
   } finally {
     cleanupDir(tmpDir);
   }

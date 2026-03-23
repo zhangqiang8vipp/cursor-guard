@@ -91,6 +91,8 @@ const I18N = {
     'backups.col.meta':         'Scope / baseline',
     'backups.col.ref':          'Ref / Hash',
     'backups.meta.legacyHint':  'Commit predates Guard scope/baseline trailers',
+    'backups.bookmarkBadge':    'Bookmark (no tree change)',
+    'backups.bookmarkTitle':    'Same tree as previous Guard baseline; commit still records intent and timestamp on the timeline.',
 
     'backups.scope.full':       'Full workspace',
     'backups.scope.narrow':     'Protect patterns only',
@@ -141,9 +143,12 @@ const I18N = {
     'drawer.field.trigger': 'Trigger',
     'drawer.field.guardScope': 'Snapshot scope',
     'drawer.field.guardDiffBase': 'Diff baseline',
+    'drawer.field.bookmark':   'Bookmark snapshot',
+    'drawer.field.guardEvent': 'MCP / audit event',
     'trigger.auto':         'Auto (scheduled)',
     'trigger.manual':       'Manual (agent)',
     'trigger.pre-restore':  'Pre-Restore',
+    'trigger.mcp-event':    'MCP audit event',
     'backups.col.summary':  'Changes',
     'backups.search':       'Search files…',
     'summary.modified':     'Modified',
@@ -344,6 +349,8 @@ const I18N = {
     'backups.col.meta':         '范围 / 基线',
     'backups.col.ref':          '引用 / Hash',
     'backups.meta.legacyHint':  '该提交早于 Guard 范围/基线 trailer',
+    'backups.bookmarkBadge':    '书签（无文件变更）',
+    'backups.bookmarkTitle':    '与上一 Guard 基线树相同；仍生成提交，用于记录意图与时间。',
 
     'backups.scope.full':       '全工作区',
     'backups.scope.narrow':     '仅 protect 规则内',
@@ -394,9 +401,12 @@ const I18N = {
     'drawer.field.trigger': '触发方式',
     'drawer.field.guardScope': '快照范围',
     'drawer.field.guardDiffBase': '差异基线',
+    'drawer.field.bookmark':   '书签快照',
+    'drawer.field.guardEvent': 'MCP / 审计事件',
     'trigger.auto':         '自动（定时）',
     'trigger.manual':       '手动（Agent）',
     'trigger.pre-restore':  '恢复前快照',
+    'trigger.mcp-event':    'MCP 审计事件',
     'backups.col.summary':  '变更',
     'backups.search':       '搜索文件…',
     'summary.modified':     '修改',
@@ -1334,6 +1344,10 @@ function formatFileActionBadge(action) {
 }
 
 function formatSummaryCell(b) {
+  const bookmarkHtml = b.guardBookmark
+    ? `<div class="summary-bookmark-row"><span class="summary-bookmark-badge" title="${esc(t('backups.bookmarkTitle'))}">${esc(t('backups.bookmarkBadge'))}</span></div>`
+    : '';
+
   const deltaTotals = sumDeltaFromSummary(b.summary);
   const deltaHtml = deltaTotals
     ? `<span class="summary-line-delta text-mono" title="${esc(t('summary.linesHint'))}">+${deltaTotals.added} -${deltaTotals.deleted}</span>`
@@ -1352,12 +1366,20 @@ function formatSummaryCell(b) {
   if (isPreRestoreType && b.from && b.restoreTo) {
     const label = b.restoreFile ? `${esc(b.restoreFile)}: ` : '';
     line2 = `<div class="summary-restore-ctx">${label}<span class="text-mono">${esc(b.from)}</span> → <span class="text-mono">${esc(b.restoreTo)}</span></div>`;
-  } else if (b.intent) {
-    const intentShort = b.intent.length > 70 ? b.intent.substring(0, 67) + '...' : b.intent;
-    line2 = `<div class="summary-intent"><span class="summary-intent-label">${t('drawer.field.intent')}:</span> ${esc(intentShort)}</div>`;
-  } else if (b.message && !b.message.startsWith('guard:')) {
-    const msgShort = b.message.length > 70 ? b.message.substring(0, 67) + '...' : b.message;
-    line2 = `<div class="summary-message">${esc(msgShort)}</div>`;
+  } else {
+    const parts = [];
+    if (b.guardEvent) {
+      const evShort = b.guardEvent.length > 72 ? b.guardEvent.substring(0, 69) + '...' : b.guardEvent;
+      parts.push(`<div class="summary-guard-event"><span class="summary-guard-event-label">${t('drawer.field.guardEvent')}:</span> ${esc(evShort)}</div>`);
+    }
+    if (b.intent && (!b.guardEvent || b.intent !== b.guardEvent)) {
+      const intentShort = b.intent.length > 70 ? b.intent.substring(0, 67) + '...' : b.intent;
+      parts.push(`<div class="summary-intent"><span class="summary-intent-label">${t('drawer.field.intent')}:</span> ${esc(intentShort)}</div>`);
+    } else if (!b.guardEvent && b.message && !b.message.startsWith('guard:')) {
+      const msgShort = b.message.length > 70 ? b.message.substring(0, 67) + '...' : b.message;
+      parts.push(`<div class="summary-message">${esc(msgShort)}</div>`);
+    }
+    line2 = parts.join('');
   }
   if (b.trigger && !line2) {
     line2 = `<div class="summary-trigger text-sm text-muted">${t('trigger.' + b.trigger)}</div>`;
@@ -1382,8 +1404,8 @@ function formatSummaryCell(b) {
     }
   }
 
-  if (!line1 && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
-  return `<div class="summary-stack">${line1}${line2}${line3}</div>`;
+  if (!bookmarkHtml && !line1 && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
+  return `<div class="summary-stack">${bookmarkHtml}${line1}${line2}${line3}</div>`;
 }
 
 function formatGuardScopeLabel(scope) {
@@ -1431,6 +1453,7 @@ function renderBackupTable(backups) {
       (b.summary && b.summary.toLowerCase().includes(q)) ||
       (b.message && b.message.toLowerCase().includes(q)) ||
       (b.intent && b.intent.toLowerCase().includes(q)) ||
+      (b.guardEvent && b.guardEvent.toLowerCase().includes(q)) ||
       (b.restoreFile && b.restoreFile.toLowerCase().includes(q)) ||
       (b.guardScope && String(b.guardScope).toLowerCase().includes(q)) ||
       (b.guardDiffBase && String(b.guardDiffBase).toLowerCase().includes(q))
@@ -1651,6 +1674,12 @@ function openRestoreDrawer(backup) {
   }
   if (backup.guardDiffBase != null) {
     fields.push({ key: 'drawer.field.guardDiffBase', val: formatGuardBaselineLabel(backup.guardDiffBase) });
+  }
+  if (backup.guardBookmark) {
+    fields.push({ key: 'drawer.field.bookmark', val: t('backups.bookmarkTitle') });
+  }
+  if (backup.guardEvent) {
+    fields.push({ key: 'drawer.field.guardEvent', val: backup.guardEvent });
   }
   if (backup.filesChanged != null) fields.push({ key: 'drawer.field.filesChanged', val: String(backup.filesChanged) });
   if (backup.ref) fields.push({ key: 'drawer.field.ref', val: backup.ref });

@@ -48,11 +48,13 @@ const TRAILER_MAP = {
   'Intent':        { key: 'intent' },
   'Agent':         { key: 'agent' },
   'Session':       { key: 'session' },
+  'Guard-Event':   { key: 'guardEvent' },
   'From':          { key: 'from' },
   'Restore-To':   { key: 'restoreTo' },
   'File':          { key: 'restoreFile' },
   'Guard-Diff-Base': { key: 'guardDiffBase' },
   'Guard-Scope':     { key: 'guardScope' },
+  'Guard-Bookmark':  { key: 'guardBookmark', parse: v => String(v).trim().toLowerCase() === 'true' },
 };
 
 function parseCommitTrailers(body) {
