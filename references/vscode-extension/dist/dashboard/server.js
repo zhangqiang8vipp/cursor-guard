@@ -14,6 +14,7 @@ function coreDeps() {
     runDiagnostics: require('../lib/core/doctor').runDiagnostics,
     listBackups: require('../lib/core/backups').listBackups,
     getBackupFiles: require('../lib/core/backups').getBackupFiles,
+    clearAlert: require('../lib/core/anomaly').clearAlert,
   };
 }
 
@@ -196,7 +197,21 @@ function handleApi(pathname, query, registry, res, req) {
     return json(res, { error: `Project directory not accessible: ${project.pathLabel}` }, 500);
   }
 
-  const { getDashboard, runDiagnostics, listBackups, getBackupFiles } = coreDeps();
+  const { getDashboard, runDiagnostics, listBackups, getBackupFiles, clearAlert } = coreDeps();
+
+  if (pathname === '/api/dismiss-alert') {
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      return res.end('Method Not Allowed');
+    }
+    try {
+      clearAlert(pp);
+      if (_instance?.hub && id) broadcastGuardChanged(_instance.hub, id);
+      return json(res, { ok: true });
+    } catch (e) {
+      return json(res, { ok: false, error: e.message }, 500);
+    }
+  }
 
   if (pathname === '/api/page-data') {
     const scope = query.get('scope');
@@ -245,6 +260,164 @@ function handleApi(pathname, query, registry, res, req) {
   return notFound(res);
 }
 
+/* ── Live push (SSE) + fs.watch on Guard refs / backups ─────── */
+
+function broadcastGuardChanged(hub, projectId) {
+  if (!hub?.sseClients?.size) return;
+  const line = `data: ${JSON.stringify({ type: 'guard-changed', projectId })}\n\n`;
+  for (const c of hub.sseClients) {
+    try {
+      if (c.projectId && c.projectId !== projectId) continue;
+      c.res.write(line);
+    } catch {
+      hub.sseClients.delete(c);
+    }
+  }
+}
+
+function teardownGuardWatchersOnly(hub) {
+  if (hub._reattachTimer) {
+    clearTimeout(hub._reattachTimer);
+    hub._reattachTimer = null;
+  }
+  if (hub.guardDebounce) {
+    for (const t of hub.guardDebounce.values()) clearTimeout(t);
+    hub.guardDebounce.clear();
+  }
+  for (const w of hub.guardWatchers) {
+    try { w.close(); } catch { /* ignore */ }
+  }
+  hub.guardWatchers = [];
+}
+
+function tryWatchDirRecursive(dir, cb) {
+  try {
+    return fs.watch(dir, { recursive: true }, cb);
+  } catch {
+    try {
+      return fs.watch(dir, cb);
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * When Git refs under refs/guard/, shadow backup dir, or alert/lock change, notify SSE clients.
+ */
+function attachGuardWatchers(hub) {
+  const { isGitRepo, gitDir: getGitDir } = require('../lib/utils');
+  teardownGuardWatchersOnly(hub);
+  if (!hub.guardDebounce) hub.guardDebounce = new Map();
+
+  function schedule(projectId) {
+    const prev = hub.guardDebounce.get(projectId);
+    if (prev) clearTimeout(prev);
+    hub.guardDebounce.set(projectId, setTimeout(() => {
+      hub.guardDebounce.delete(projectId);
+      broadcastGuardChanged(hub, projectId);
+    }, 400));
+  }
+
+  for (const proj of hub.registry.values()) {
+    const pp = proj._path;
+    const pid = proj.id;
+
+    if (isGitRepo(pp)) {
+      const gDir = getGitDir(pp);
+      if (gDir && fs.existsSync(gDir)) {
+        try {
+          const w = fs.watch(gDir, (ev, fname) => {
+            if (fname === 'cursor-guard-alert.json' || fname === 'cursor-guard.lock') schedule(pid);
+          });
+          hub.guardWatchers.push(w);
+        } catch { /* ignore */ }
+
+        const refsDir = path.join(gDir, 'refs');
+        if (fs.existsSync(refsDir)) {
+          try {
+            const w = fs.watch(refsDir, (ev, fname) => {
+              if (!fname) return;
+              if (fname === 'guard' || fname.startsWith('guard')) {
+                schedule(pid);
+                if (!hub._reattachTimer) {
+                  hub._reattachTimer = setTimeout(() => {
+                    hub._reattachTimer = null;
+                    attachGuardWatchers(hub);
+                  }, 600);
+                }
+              }
+            });
+            hub.guardWatchers.push(w);
+          } catch { /* ignore */ }
+        }
+
+        const guardDir = path.join(gDir, 'refs', 'guard');
+        if (fs.existsSync(guardDir)) {
+          const w = tryWatchDirRecursive(guardDir, () => schedule(pid));
+          if (w) hub.guardWatchers.push(w);
+          const preRestoreDir = path.join(guardDir, 'pre-restore');
+          if (fs.existsSync(preRestoreDir)) {
+            const w2 = tryWatchDirRecursive(preRestoreDir, () => schedule(pid));
+            if (w2) hub.guardWatchers.push(w2);
+          }
+        }
+      }
+    }
+
+    const backupDir = path.join(pp, '.cursor-guard-backup');
+    if (fs.existsSync(backupDir)) {
+      const w = tryWatchDirRecursive(backupDir, () => schedule(pid));
+      if (w) hub.guardWatchers.push(w);
+    }
+  }
+}
+
+function teardownLivePush(hub) {
+  teardownGuardWatchersOnly(hub);
+  for (const c of hub.sseClients) {
+    try { c.res.end(); } catch { /* ignore */ }
+  }
+  hub.sseClients.clear();
+  if (hub.ssePingTimer) {
+    clearInterval(hub.ssePingTimer);
+    hub.ssePingTimer = null;
+  }
+}
+
+function openSseStream(query, hub, res, req) {
+  const subscribeId = query.get('id') || null;
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.write(': connected\n\n');
+  const client = { res, projectId: subscribeId };
+  hub.sseClients.add(client);
+  req.on('close', () => {
+    hub.sseClients.delete(client);
+    if (hub.sseClients.size === 0 && hub.ssePingTimer) {
+      clearInterval(hub.ssePingTimer);
+      hub.ssePingTimer = null;
+    }
+  });
+  if (!hub.ssePingTimer) {
+    hub.ssePingTimer = setInterval(() => {
+      if (hub.sseClients.size === 0) return;
+      for (const c of hub.sseClients) {
+        try {
+          c.res.write(': ping\n\n');
+        } catch {
+          hub.sseClients.delete(c);
+        }
+      }
+    }, 25000);
+  }
+}
+
 /* ── Server (singleton) ─────────────────────────────────────── */
 
 let _instance = null;
@@ -280,8 +453,11 @@ function _mergeProjects(registry, paths) {
 function startDashboardServer(paths, opts = {}) {
   if (_instance) {
     const added = _mergeProjects(_instance.registry, paths);
-    if (added > 0 && !opts.silent) {
-      console.log(`  [dashboard] Hot-added ${added} project(s) — total: ${_instance.registry.size} on port ${_instance.port}`);
+    if (added > 0) {
+      attachGuardWatchers(_instance.hub);
+      if (!opts.silent) {
+        console.log(`  [dashboard] Hot-added ${added} project(s) — total: ${_instance.registry.size} on port ${_instance.port}`);
+      }
     }
     return Promise.resolve(_instance);
   }
@@ -290,6 +466,14 @@ function startDashboardServer(paths, opts = {}) {
   const silent = opts.silent || false;
   const registry = buildRegistry(paths);
   const token = crypto.randomBytes(16).toString('hex');
+  const hub = {
+    registry,
+    token,
+    sseClients: new Set(),
+    guardWatchers: [],
+    guardDebounce: new Map(),
+    ssePingTimer: null,
+  };
 
   return new Promise((resolve, reject) => {
     let currentPort = port;
@@ -326,6 +510,13 @@ function startDashboardServer(paths, opts = {}) {
           res.writeHead(403);
           return res.end('Forbidden: invalid token');
         }
+        if (parsed.pathname === '/api/events') {
+          if (req.method !== 'GET') {
+            res.writeHead(405);
+            return res.end('Method Not Allowed');
+          }
+          return openSseStream(parsed.searchParams, hub, res, req);
+        }
         handleApi(parsed.pathname, parsed.searchParams, registry, res, req);
       } else {
         if (req.method !== 'GET') { res.writeHead(405); return res.end('Method Not Allowed'); }
@@ -345,7 +536,8 @@ function startDashboardServer(paths, opts = {}) {
 
     server.on('listening', () => {
       const addr = server.address();
-      _instance = { server, port: addr.port, registry, token };
+      _instance = { server, port: addr.port, registry, token, hub };
+      attachGuardWatchers(hub);
       if (!silent) {
         console.log('');
         console.log('  Cursor Guard Dashboard');
@@ -371,6 +563,7 @@ async function restartDashboard() {
   const paths = [..._instance.registry.values()].map(p => p._path);
   const port = _instance.port;
 
+  if (_instance.hub) teardownLivePush(_instance.hub);
   _instance.server.close();
   _instance = null;
 

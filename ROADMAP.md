@@ -3,8 +3,8 @@
 > 本文档描述 cursor-guard 从 V2 到 V7 的长期演进方向。
 > 每一代向下兼容，低版本功能永远不废弃。
 >
-> **当前版本**：`V4.9.9`
-> **文档状态**：`V2` ~ `V4.9.9` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
+> **当前版本**：`V4.9.12`
+> **文档状态**：`V2` ~ `V4.9.12` 已完成交付（含 V5 intent/audit 基础），`V5` 主体规划中
 
 ## 阅读导航
 
@@ -740,6 +740,28 @@ V4 经过 4 轮系统性代码审查，修复了以下关键问题：
 | **docs/RELEASE.md** | 中英双语完整发版流程：版本源、VSIX、Git、GitHub Release、npm OTP；**Windows 下 `gh` 须用 UTF-8 文件 + `--notes-file`** 避免 Release 正文乱码；专设「给其他 AI 助手」摘要 |
 | **入口** | README / README.zh-CN 顶部与发版小节链接；`print-release-checklist.js` 末尾提示；`package.json` `files` 纳入该文档以便 npm  tarball 携带 |
 
+### V4.9.11：仪表盘推送同步 + 备份元数据/交互收口 ✅
+
+| 能力 | 说明 |
+|------|------|
+| **推送优先于轮询** | Dashboard HTTP：`GET /api/events`（SSE）+ `fs.watch` 监听 `refs/guard/*`、`.cursor-guard-backup/`、`.git` 下 `cursor-guard-alert.json` / `cursor-guard.lock`；`refs` 下首次出现 `guard` 时自动重挂 watcher。前端 `EventSource` 收 `guard-changed` 即刷新；仅保留 3min（前台）/ 10min（后台标签）兜底拉取 |
+| **扩展 Poller** | 以 `fs.watch` 同上路径触发 `forceRefresh`，HTTP 心跳改为约 **3min** 兜底（不再高频轮询） |
+| **活跃告警忽略** | `POST /api/dismiss-alert` + 仪表盘/侧边栏「忽略」；dismiss 后主动 SSE 广播 |
+| **备份列表可读性** | Git 提交 `Guard-Diff-Base` / `Guard-Scope` trailer；`listBackups` 解析 + 仪表盘「范围/基线」列；`refs/guard/snapshot` 完整历史；`Summary` trailer 去 `\r` + 列表行合计 `+/-` 行数 |
+| **5.x 后续（已记入下方 V5 规划）** | watcher 进程与仪表盘 **进程内/管道事件**、MCP `notifications`、统一事件总线——见「V5.x 深化：仪表盘与 watcher 联动」 |
+
+### V4.9.12：仪表盘 Intent 展示修复 ✅
+
+| 能力 | 说明 |
+|------|------|
+| **变更列 Intent** | 仅当备份类型为 **`git-pre-restore` / `shadow-pre-restore`** 时使用 `From` + `Restore-To` 琥珀色恢复条；自动备份与手动快照不再被误解析的 `from`/`restoreTo` 抢占，**Intent** 蓝条正常显示 |
+
+### V4.9.10：扩展版本线对齐 ✅
+
+| 说明 |
+|------|
+| IDE 扩展与根目录 `package.json` 版本对齐发版（VSIX 构建链 `build-vsix.js` 以根版本为准）。 |
+
 ### V4.9.8：发版流程文档化 + 侧边栏品牌占位 ✅
 | 能力 | 说明 |
 |------|------|
@@ -1142,6 +1164,19 @@ Phase 2 (V5.x):
   ├── end_edit → 产生 intent_released 事件
   └── 完整审计链闭环，支持 restore_from_event
 ```
+
+### V5.x 深化：仪表盘与 watcher 联动（建议纳入 5.x 更新）
+
+> V4.9.11 已用 **文件系统监听 + SSE** 实现「备份/告警变更 → 仪表盘几乎实时更新」，无需依赖高频 HTTP 轮询。以下能力适合在 **V5.x** 与 embedded watcher / 审计事件链一并演进：
+
+| 方向 | 说明 |
+|------|------|
+| **跨进程显式通知** | 独立 `auto-backup` 子进程在 snapshot 成功后，通过 **本地 socket / 命名管道 / 向 dashboard 进程发 UDP** 等方式推送 `backup_completed`（含 project root、shortHash、timestamp），补全 `fs.watch` 在少数 OS/网络盘上的漏事件 |
+| **MCP / LSP 式通知** | 若 MCP 宿主支持 `notifications`，由 server 在备份/告警状态变化时向客户端推送，IDE 与 Web 共用同一语义字段 |
+| **统一事件模型** | 将 `guard-changed`、intent 事件、审计 JSONL 写入映射到同一 **event type + payload schema**，便于 dashboard 时间线与 `restore_from_event` 对齐 |
+| **可观测性** | 可选：推送失败降级策略、SSE 连接数上限、watch 句柄泄漏检测（长会话桌面环境） |
+
+**原则**：V4.9.x 保持「零新常驻依赖 + 本地回环」；V5.x 可在确认架构（embedded watcher）后引入更重的 IPC，且不破坏现有 SSE/Watch 降级路径。
 
 #### 与"意图队列"方案的本质区别
 
@@ -1626,7 +1661,10 @@ V4.3.5 ─────  ✅ Summary 增量 diff-tree 修复 + 变更列堆叠布
 V4.4.0 ─────  ✅ V4 收官：首次快照 summary + doctor 完整性/retention 检查 + init 升级检测
 V4.9.0 ─────  ✅ 事件驱动 watcher + 实时侧边栏计时
 V4.9.5 ─────  ✅ 修复 `.git` 写入导致的疯狂自触发备份
-V4.9.9 ─────  ✅ docs/RELEASE.md 发版指南（人 + AI）+ gh UTF-8 说明  ← 当前版本
+V4.9.12 ────  ✅ 仪表盘变更列：Intent 仅被真正的恢复前快照类型让位给 From→Restore-To；常规备份正确显示 Intent  ← 当前版本
+V4.9.11 ────  ✅ 仪表盘 SSE + fs.watch 推送；Poller 事件驱动；告警忽略；Guard trailer 列；Summary/列表行数；snapshot 历史列表
+V4.9.10 ────  ✅ 扩展版本线与根包对齐（VSIX 发版链）
+V4.9.9 ─────  ✅ docs/RELEASE.md 发版指南（人 + AI）+ gh UTF-8 说明
 V4.9.8 ─────  ✅ 发版清单（README 双语 + checklist 脚本）+ 侧边栏品牌图
 V4.9.7 ─────  ✅ 预警体验打磨 + 语言同步 + watcher 单例保护
                │
@@ -1716,5 +1754,5 @@ V7 的"可验证治理"是这条产品线的逻辑终点——该保护的都保
 
 ---
 
-*最后更新：2026-03-22*
-*版本：v1.9（V4.9.9，增加 docs/RELEASE.md 双语发版指南与 README 入口；历史含 V4.9.8 发版清单与侧边栏品牌、事件驱动 watcher、`pre_warning` 等）*
+*最后更新：2026-03-23*
+*版本：v1.11（V4.9.12：仪表盘 Intent 列修复；V4.9.11 起 SSE/fs.watch、Poller 事件驱动等；历史含 V4.9.9 发版指南、V4.9.0 事件驱动 watcher、`pre_warning` 等）*

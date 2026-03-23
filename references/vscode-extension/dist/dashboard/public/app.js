@@ -61,6 +61,8 @@ const I18N = {
     'alert.action.renamed':  'Renamed',
     'alert.breakdown':       '{added} added, {modified} modified, {deleted} deleted',
     'alert.suggestion':      'Check recent changes and consider creating a manual snapshot',
+    'alert.dismiss':         'Dismiss alert',
+    'alert.dismissBusy':     'Dismissing…',
     'alert.viewFiles':       'View file details ({n} files)',
     'preWarning.title':      'Pre-Warning',
     'preWarning.none':       'No destructive edit risk detected',
@@ -86,7 +88,19 @@ const I18N = {
     'backups.noBackups':        'No restore points found',
     'backups.col.time':         'Time',
     'backups.col.type':         'Type',
+    'backups.col.meta':         'Scope / baseline',
     'backups.col.ref':          'Ref / Hash',
+    'backups.meta.legacyHint':  'Commit predates Guard scope/baseline trailers',
+
+    'backups.scope.full':       'Full workspace',
+    'backups.scope.narrow':     'Protect patterns only',
+    'backups.scope.unknown':    'Unknown',
+
+    'backups.baseline.autoBackup': 'Δ vs last auto-backup tip',
+    'backups.baseline.snapshot':   'Δ vs last manual snapshot tip',
+    'backups.baseline.initial':    'First Guard commit (no parent)',
+    'backups.baseline.other':      'Δ vs custom ref',
+    'backups.baseline.unknown':    'Unknown baseline',
 
     'type.git-auto-backup':     'Git Auto-Backup',
     'type.git-pre-restore':     'Git Pre-Restore',
@@ -125,6 +139,8 @@ const I18N = {
     'drawer.field.filesChanged': 'Files Changed',
     'drawer.field.summary': 'Change Summary',
     'drawer.field.trigger': 'Trigger',
+    'drawer.field.guardScope': 'Snapshot scope',
+    'drawer.field.guardDiffBase': 'Diff baseline',
     'trigger.auto':         'Auto (scheduled)',
     'trigger.manual':       'Manual (agent)',
     'trigger.pre-restore':  'Pre-Restore',
@@ -135,6 +151,7 @@ const I18N = {
     'summary.deleted':      'Deleted',
     'summary.renamed':      'Renamed',
     'summary.files':        'files',
+    'summary.linesHint':    'Total lines added / deleted in this backup (from Summary)',
     'summary.andMore':      'and {n} more…',
     'drawer.field.intent':  'Intent',
     'drawer.field.agent':   'Agent',
@@ -297,6 +314,8 @@ const I18N = {
     'alert.action.renamed':  '重命名',
     'alert.breakdown':       '新增 {added} · 修改 {modified} · 删除 {deleted}',
     'alert.suggestion':      '建议检查近期变更，并考虑手动创建快照',
+    'alert.dismiss':         '忽略此告警',
+    'alert.dismissBusy':     '正在忽略…',
     'alert.viewFiles':       '查看文件详情（{n} 个文件）',
     'preWarning.title':      '事先预警',
     'preWarning.none':       '未检测到破坏性编辑风险',
@@ -322,7 +341,19 @@ const I18N = {
     'backups.noBackups':        '暂无恢复点',
     'backups.col.time':         '时间',
     'backups.col.type':         '类型',
+    'backups.col.meta':         '范围 / 基线',
     'backups.col.ref':          '引用 / Hash',
+    'backups.meta.legacyHint':  '该提交早于 Guard 范围/基线 trailer',
+
+    'backups.scope.full':       '全工作区',
+    'backups.scope.narrow':     '仅 protect 规则内',
+    'backups.scope.unknown':    '未知',
+
+    'backups.baseline.autoBackup': '相对上次自动备份 tip',
+    'backups.baseline.snapshot':   '相对上次手动快照 tip',
+    'backups.baseline.initial':    '首条 Guard 提交（无父提交）',
+    'backups.baseline.other':      '相对自定义引用',
+    'backups.baseline.unknown':    '基线未知',
 
     'type.git-auto-backup':     'Git 自动备份',
     'type.git-pre-restore':     'Git 恢复前快照',
@@ -361,6 +392,8 @@ const I18N = {
     'drawer.field.filesChanged': '变更文件数',
     'drawer.field.summary': '变更摘要',
     'drawer.field.trigger': '触发方式',
+    'drawer.field.guardScope': '快照范围',
+    'drawer.field.guardDiffBase': '差异基线',
     'trigger.auto':         '自动（定时）',
     'trigger.manual':       '手动（Agent）',
     'trigger.pre-restore':  '恢复前快照',
@@ -371,6 +404,7 @@ const I18N = {
     'summary.deleted':      '删除',
     'summary.renamed':      '重命名',
     'summary.files':        '个文件',
+    'summary.linesHint':    '本条备份新增/删除行数合计（来自 Summary）',
     'summary.andMore':      '等 {n} 个文件…',
     'drawer.field.intent':  '操作意图',
     'drawer.field.agent':   'AI 模型',
@@ -496,9 +530,13 @@ const state = {
   drawerOpen: null,
   alertHistory: loadAlertHistory(),
   alertExpiresAt: null,
+  /** Server-Sent Events for push refresh (see /api/events); closed on project switch */
+  eventSource: null,
 };
 
-const REFRESH_MS = 15000;
+/** Rare fallback poll if SSE misses (OS watcher gaps); primary updates come from EventSource. */
+const FALLBACK_POLL_MS_VISIBLE = 180000;
+const FALLBACK_POLL_MS_HIDDEN = 600000;
 const ALERT_HISTORY_KEY = 'cursorGuard_alertHistory';
 
 function loadAlertHistory() {
@@ -714,6 +752,38 @@ async function fetchJson(url) {
   }
 }
 
+/** POST JSON API (same token query as GET). */
+async function postJson(url) {
+  const base = window.__GUARD_BASE_URL__ || '';
+  const sep = url.includes('?') ? '&' : '?';
+  const tokenParam = window.__GUARD_TOKEN__ ? `${sep}token=${encodeURIComponent(window.__GUARD_TOKEN__)}` : '';
+  const r = await fetch(base + url + tokenParam, { method: 'POST' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  _fetchFailCount = 0;
+  return r.json();
+}
+
+async function dismissActiveAlert() {
+  if (!state.currentProjectId) return;
+  const btn = document.querySelector('[data-dismiss-active-alert]');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t('alert.dismissBusy');
+  }
+  try {
+    await postJson(`/api/dismiss-alert?id=${encodeURIComponent(state.currentProjectId)}`);
+    await loadPageData();
+    renderAll();
+  } catch (e) {
+    showGlobalError(e.message || String(e));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t('alert.dismiss');
+    }
+  }
+}
+
 async function loadProjects() {
   state.projects = await fetchJson('/api/projects');
   if (state.projects.length > 0 && !state.currentProjectId) {
@@ -764,17 +834,56 @@ async function loadPageData(opts = {}) {
 
 /* ── Refresh ──────────────────────────────────────────────── */
 
+function fallbackPollIntervalMs() {
+  return (typeof document !== 'undefined' && document.hidden) ? FALLBACK_POLL_MS_HIDDEN : FALLBACK_POLL_MS_VISIBLE;
+}
+
 function startRefresh() {
   stopRefresh();
   state.refreshTimer = setInterval(async () => {
     try { await loadPageData(); renderAll(); } catch { /* keep existing */ }
-  }, REFRESH_MS);
+  }, fallbackPollIntervalMs());
   state.tickTimer = setInterval(updateRefreshDisplay, 1000);
 }
 
 function stopRefresh() {
   if (state.refreshTimer) { clearInterval(state.refreshTimer); state.refreshTimer = null; }
   if (state.tickTimer) { clearInterval(state.tickTimer); state.tickTimer = null; }
+}
+
+function disconnectLivePush() {
+  if (state.eventSource) {
+    try { state.eventSource.close(); } catch { /* ignore */ }
+    state.eventSource = null;
+  }
+}
+
+/** Subscribe to server push (fs.watch → SSE). No token in page = skip (dev mode). */
+function connectLivePush() {
+  disconnectLivePush();
+  if (!state.currentProjectId || typeof EventSource === 'undefined') return;
+  if (!window.__GUARD_TOKEN__) return;
+  const base = window.__GUARD_BASE_URL__ || '';
+  const id = encodeURIComponent(state.currentProjectId);
+  const tk = encodeURIComponent(window.__GUARD_TOKEN__);
+  const url = `${base}/api/events?id=${id}&token=${tk}`;
+  try {
+    const es = new EventSource(url);
+    state.eventSource = es;
+    es.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'guard-changed' && msg.projectId === state.currentProjectId) {
+          void (async () => {
+            try {
+              await loadPageData();
+              renderAll();
+            } catch { /* keep existing UI */ }
+          })();
+        }
+      } catch { /* ignore non-json */ }
+    };
+  } catch { /* ignore */ }
 }
 
 async function manualRefresh() {
@@ -785,6 +894,7 @@ async function manualRefresh() {
   catch (e) { showGlobalError(e.message); }
   if (icon) icon.classList.remove('icon-spin-active');
   startRefresh();
+  connectLivePush();
 }
 
 function updateRefreshDisplay() {
@@ -1079,7 +1189,10 @@ function renderAlertCard(alerts) {
       ${alertFileBreakdown(files) ? `<div class="alert-detail-row alert-breakdown text-sm">${esc(alertFileBreakdown(files))}</div>` : ''}
       <div class="alert-detail-row alert-suggestion text-sm text-muted">${t('alert.suggestion')}</div>
     </div>
-    ${filesHtml}
+    <div class="alert-card-actions">
+      ${filesHtml}
+      <button type="button" class="btn-alert-dismiss" data-dismiss-active-alert>${t('alert.dismiss')}</button>
+    </div>
     ${buildAlertHistoryHtml()}
   `;
 }
@@ -1147,26 +1260,56 @@ function translateSummary(raw) {
     .replace(/\bRenamed (\d+)/g, (_, n) => `${t('summary.renamed')} ${n}`);
 }
 
+/** Strip CR / normalize newlines so per-line trailers and Summary parse reliably on Windows. */
+function normalizeSummaryText(summary) {
+  if (!summary) return '';
+  return String(summary).replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+}
+
+/**
+ * Sum all (+added -deleted) hunks in a Guard Summary line (same semantics as inline file rows).
+ * @returns {{ added: number, deleted: number, matches: number }|null}
+ */
+function sumDeltaFromSummary(summary) {
+  const s = normalizeSummaryText(summary);
+  if (!s) return null;
+  let added = 0;
+  let deleted = 0;
+  let matches = 0;
+  const re = /\(\+(\d+)\s*-\s*(\d+)\)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    added += parseInt(m[1], 10) || 0;
+    deleted += parseInt(m[2], 10) || 0;
+    matches++;
+  }
+  if (matches === 0) return null;
+  return { added, deleted, matches };
+}
+
 /**
  * Parse summary text into structured file array for inline preview.
  * Format: "Modified 3: a.js (+2 -1), b.js (+0 -5), ...; Added 2: c.js (+10 -0), d.js (+3 -0)"
  */
 function parseSummaryToFiles(summary) {
-  if (!summary) return [];
+  const normalized = normalizeSummaryText(summary);
+  if (!normalized) return [];
   const ACTION_MAP = { Modified: 'modified', Added: 'added', Deleted: 'deleted', Renamed: 'renamed' };
   const files = [];
-  for (const segment of summary.split('; ')) {
-    const headerMatch = segment.match(/^(Modified|Added|Deleted|Renamed)\s+\d+:\s*/);
+  for (const segment of normalized.split('; ')) {
+    const seg = segment.trim();
+    const headerMatch = seg.match(/^(Modified|Added|Deleted|Renamed)\s+\d+:\s*/);
     if (!headerMatch) continue;
     const action = ACTION_MAP[headerMatch[1]] || 'modified';
-    const rest = segment.slice(headerMatch[0].length);
+    const rest = seg.slice(headerMatch[0].length);
     for (const part of rest.split(/,\s*/)) {
-      if (part === '...') continue;
-      const fileMatch = part.match(/^(.+?)\s*\(\+(\d+)\s+-(\d+)\)$/);
+      const p = part.trim();
+      if (!p || p === '...') continue;
+      const fileMatch = p.match(/^(.+?)\s*\(\+(\d+)\s*-\s*(\d+)\)\s*$/);
       if (fileMatch) {
-        files.push({ path: fileMatch[1], action, added: parseInt(fileMatch[2], 10), deleted: parseInt(fileMatch[3], 10) });
-      } else if (part.trim()) {
-        files.push({ path: part.trim(), action, added: 0, deleted: 0 });
+        files.push({ path: fileMatch[1].trim(), action, added: parseInt(fileMatch[2], 10), deleted: parseInt(fileMatch[3], 10) });
+      } else {
+        files.push({ path: p, action, added: 0, deleted: 0 });
       }
     }
   }
@@ -1191,13 +1334,22 @@ function formatFileActionBadge(action) {
 }
 
 function formatSummaryCell(b) {
+  const deltaTotals = sumDeltaFromSummary(b.summary);
+  const deltaHtml = deltaTotals
+    ? `<span class="summary-line-delta text-mono" title="${esc(t('summary.linesHint'))}">+${deltaTotals.added} -${deltaTotals.deleted}</span>`
+    : '';
+
   let line1 = '';
   if (b.filesChanged != null) {
-    line1 = `<div class="summary-meta"><span class="summary-files">${b.filesChanged} ${t('summary.files')}</span></div>`;
+    line1 = `<div class="summary-meta"><span class="summary-files">${b.filesChanged} ${t('summary.files')}</span>${deltaHtml}</div>`;
+  } else if (deltaHtml) {
+    line1 = `<div class="summary-meta">${deltaHtml}</div>`;
   }
 
   let line2 = '';
-  if (b.from && b.restoreTo) {
+  // From / Restore-To 仅用于「恢复前快照」语义；自动备份/手动快照若误带同名 trailer（如 Summary 换行），不应抢走 Intent 展示。
+  const isPreRestoreType = b.type === 'git-pre-restore' || b.type === 'shadow-pre-restore';
+  if (isPreRestoreType && b.from && b.restoreTo) {
     const label = b.restoreFile ? `${esc(b.restoreFile)}: ` : '';
     line2 = `<div class="summary-restore-ctx">${label}<span class="text-mono">${esc(b.from)}</span> → <span class="text-mono">${esc(b.restoreTo)}</span></div>`;
   } else if (b.intent) {
@@ -1225,13 +1377,43 @@ function formatSummaryCell(b) {
       const moreHtml = (remaining > 0 || truncated) ? `<div class="summary-file-more text-sm text-muted">${t('summary.andMore', { n: moreCount > 0 ? moreCount : '…' })}</div>` : '';
       line3 = visible + moreHtml;
     } else {
-      const categories = b.summary.split('; ').map(s => translateSummary(s));
+      const categories = normalizeSummaryText(b.summary).split('; ').map(s => translateSummary(s.trim())).filter(Boolean);
       line3 = categories.slice(0, 2).map(c => `<div class="summary-detail-line">${esc(c)}</div>`).join('');
     }
   }
 
   if (!line1 && !line2 && !line3) return '<span class="text-muted text-sm">-</span>';
   return `<div class="summary-stack">${line1}${line2}${line3}</div>`;
+}
+
+function formatGuardScopeLabel(scope) {
+  if (scope === 'full') return t('backups.scope.full');
+  if (scope === 'narrow') return t('backups.scope.narrow');
+  return t('backups.scope.unknown');
+}
+
+function formatGuardBaselineLabel(base) {
+  const map = {
+    'auto-backup': 'backups.baseline.autoBackup',
+    snapshot: 'backups.baseline.snapshot',
+    initial: 'backups.baseline.initial',
+    other: 'backups.baseline.other',
+  };
+  const k = map[base];
+  return k ? t(k) : t('backups.baseline.unknown');
+}
+
+/** Git backup rows only: scope + shared-baseline hint from commit trailers */
+function formatBackupHumanMeta(b) {
+  const show = b.type === 'git-auto-backup' || b.type === 'git-snapshot';
+  if (!show) return '<span class="text-muted text-sm">-</span>';
+  if (b.guardScope == null && b.guardDiffBase == null) {
+    return `<span class="text-muted text-sm" title="${esc(t('backups.meta.legacyHint'))}">-</span>`;
+  }
+  const lines = [];
+  if (b.guardScope != null) lines.push(`<span class="backup-meta-line">${esc(formatGuardScopeLabel(b.guardScope))}</span>`);
+  if (b.guardDiffBase != null) lines.push(`<span class="backup-meta-line">${esc(formatGuardBaselineLabel(b.guardDiffBase))}</span>`);
+  return `<div class="backup-human-meta">${lines.join('')}</div>`;
 }
 
 function renderBackupTable(backups) {
@@ -1249,7 +1431,9 @@ function renderBackupTable(backups) {
       (b.summary && b.summary.toLowerCase().includes(q)) ||
       (b.message && b.message.toLowerCase().includes(q)) ||
       (b.intent && b.intent.toLowerCase().includes(q)) ||
-      (b.restoreFile && b.restoreFile.toLowerCase().includes(q))
+      (b.restoreFile && b.restoreFile.toLowerCase().includes(q)) ||
+      (b.guardScope && String(b.guardScope).toLowerCase().includes(q)) ||
+      (b.guardDiffBase && String(b.guardDiffBase).toLowerCase().includes(q))
     );
   }
   state.filteredBackups = filtered;
@@ -1262,9 +1446,11 @@ function renderBackupTable(backups) {
   const rows = state.filteredBackups.map((b, i) => {
     const badgeClass = b.type.startsWith('git') ? (b.type.includes('pre') ? 'badge-pre' : 'badge-git') : (b.type.includes('pre') ? 'badge-pre' : 'badge-shadow');
     const summaryCell = formatSummaryCell(b);
+    const metaCell = formatBackupHumanMeta(b);
     return `<tr data-bi="${i}">
       <td><div>${esc(formatTime(b.timestamp))}</div><div class="text-muted text-sm">${esc(relativeTime(b.timestamp))}</div></td>
       <td><span class="badge ${badgeClass}">${t('type.' + b.type)}</span></td>
+      <td class="backup-meta-cell">${metaCell}</td>
       <td class="text-mono">${esc(b.shortHash || b.timestamp || '-')}</td>
       <td class="backup-summary-cell">${summaryCell}</td>
     </tr>`;
@@ -1275,6 +1461,7 @@ function renderBackupTable(backups) {
       <thead><tr>
         <th>${t('backups.col.time')}</th>
         <th>${t('backups.col.type')}</th>
+        <th>${t('backups.col.meta')}</th>
         <th>${t('backups.col.ref')}</th>
         <th>${t('backups.col.summary')}</th>
       </tr></thead>
@@ -1459,6 +1646,12 @@ function openRestoreDrawer(backup) {
     { key: 'drawer.field.type', val: t('type.' + backup.type) },
   ];
   if (backup.trigger) fields.push({ key: 'drawer.field.trigger', val: t('trigger.' + backup.trigger) });
+  if (backup.guardScope != null) {
+    fields.push({ key: 'drawer.field.guardScope', val: formatGuardScopeLabel(backup.guardScope) });
+  }
+  if (backup.guardDiffBase != null) {
+    fields.push({ key: 'drawer.field.guardDiffBase', val: formatGuardBaselineLabel(backup.guardDiffBase) });
+  }
   if (backup.filesChanged != null) fields.push({ key: 'drawer.field.filesChanged', val: String(backup.filesChanged) });
   if (backup.ref) fields.push({ key: 'drawer.field.ref', val: backup.ref });
   if (backup.commitHash) fields.push({ key: 'drawer.field.hash', val: backup.commitHash });
@@ -1634,15 +1827,35 @@ function setupEvents() {
   $('#project-select').addEventListener('change', async (e) => {
     state.currentProjectId = e.target.value;
     state.backupFilter = 'all';
+    disconnectLivePush();
     stopRefresh();
     showSkeleton();
     try { await loadPageData(); renderAll(); }
     catch (err) { showGlobalError(err.message); }
     startRefresh();
+    connectLivePush();
   });
 
   $('#refresh-btn').addEventListener('click', manualRefresh);
   $('#error-retry').addEventListener('click', manualRefresh);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!state.currentProjectId) return;
+    if (document.hidden) {
+      stopRefresh();
+      startRefresh();
+      return;
+    }
+    void (async () => {
+      try {
+        await loadPageData();
+        renderAll();
+      } catch { /* keep existing UI */ }
+    })();
+    stopRefresh();
+    startRefresh();
+    connectLivePush();
+  });
 
   $('#lang-toggle').addEventListener('click', () => {
     setLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN');
@@ -1702,6 +1915,10 @@ function setupEvents() {
         openFileModal(t('modal.alertFiles'), files, proj, hash);
       }
       return;
+    }
+    if (e.target.closest('[data-dismiss-active-alert]')) {
+      e.preventDefault();
+      dismissActiveAlert();
     }
   });
 
@@ -1820,6 +2037,7 @@ async function init() {
     await loadPageData({ progressive: true });
     renderAll();
     startRefresh();
+    connectLivePush();
     checkServerVersion();
   } catch (e) {
     showGlobalError(e.message);

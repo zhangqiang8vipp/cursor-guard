@@ -442,9 +442,27 @@ main {
 .badge-intent  { background: var(--blue-bg); color: var(--blue); font-size: 0.7rem; border-color: rgba(59,130,246,.18); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
 
 .backup-summary-cell { max-width: 420px; min-width: 180px; }
+.summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+.summary-line-delta {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.summary-file-row .text-muted {
+  font-weight: 600;
+}
+.backup-meta-cell { max-width: 220px; min-width: 140px; vertical-align: top; }
+.backup-human-meta { display: flex; flex-direction: column; gap: 3px; font-size: 11px; line-height: 1.35; color: var(--text-secondary); }
+.backup-meta-line { display: block; }
 
 .summary-stack { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }
-.summary-meta { display: flex; align-items: center; gap: 8px; }
 .summary-files {
   font-size: 13px;
   font-weight: 700;
@@ -1270,6 +1288,43 @@ main {
   transition: color var(--transition);
 }
 .alert-files-toggle:hover { color: var(--text-heading); }
+
+.alert-card-actions {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.alert-card-actions .alert-files-section {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.btn-alert-dismiss {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 90%, var(--muted));
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.btn-alert-dismiss:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--muted) 40%, var(--border));
+  color: var(--text-primary);
+}
+.btn-alert-dismiss:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
 
 .alert-files-table-wrap {
   margin-top: 8px;

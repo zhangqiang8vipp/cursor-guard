@@ -14,6 +14,36 @@ function formatTimestamp(d) {
   return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+const REF_GUARD_AUTO_BACKUP = 'refs/guard/auto-backup';
+const REF_GUARD_SNAPSHOT = 'refs/guard/snapshot';
+
+/**
+ * Parent commit for the next Guard Git snapshot (first parent of `commit-tree`).
+ *
+ * For **refs/guard/auto-backup** and **refs/guard/snapshot** only: pick whichever tip is
+ * **newer in commit time** between the two refs. That matches the human reading: "changes
+ * since the **last** Guard backup, automatic or manual" — one shared baseline for +/- and file counts.
+ *
+ * For any **other** `branchRef` (e.g. tests using refs/guard/test-*): chain that ref only.
+ */
+function resolveGuardParentHash(cwd, branchRef) {
+  if (branchRef !== REF_GUARD_AUTO_BACKUP && branchRef !== REF_GUARD_SNAPSHOT) {
+    return git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
+  }
+  const autoH = git(['rev-parse', '--verify', REF_GUARD_AUTO_BACKUP], { cwd, allowFail: true });
+  const snapH = git(['rev-parse', '--verify', REF_GUARD_SNAPSHOT], { cwd, allowFail: true });
+  if (!autoH && !snapH) return null;
+  if (!autoH) return snapH;
+  if (!snapH) return autoH;
+  const commitUnix = h => {
+    const s = git(['log', '-1', '--format=%ct', h], { cwd, allowFail: true });
+    return s ? parseInt(String(s).trim(), 10) : 0;
+  };
+  const tAuto = commitUnix(autoH);
+  const tSnap = commitUnix(snapH);
+  return tSnap > tAuto ? snapH : autoH;
+}
+
 function listIndexFiles(cwd, env) {
   try {
     const out = execFileSync('git', ['ls-files', '--cached'], {
@@ -94,6 +124,8 @@ function buildCommitMessage(ts, opts) {
  * @param {boolean} [opts.allowEmptyTree] - If true, still create a commit when the snapshot tree equals the previous ref (empty / bookmark commit). Auto-backup should omit this; explicit manual snapshots should set it.
  * @param {boolean} [opts.fullWorkspaceSnapshot] - If true, ignore `cfg.protect` when building the snapshot tree (still apply `ignore` / secrets). Use for IDE/MCP "snapshot everything" so edits outside protect patterns are not invisible to the snapshot.
  * @returns {{ status: 'created'|'skipped'|'error', commitHash?: string, shortHash?: string, fileCount?: number, reason?: string, error?: string, secretsExcluded?: string[] }}
+ * @remarks For refs/guard/auto-backup and refs/guard/snapshot, the first parent is always the
+ * newer of those two tips (by commit time), so incremental stats mean "since last Guard backup" in the human sense.
  */
 function createGitSnapshot(projectDir, cfg, opts = {}) {
   const branchRef = opts.branchRef || 'refs/guard/auto-backup';
@@ -111,7 +143,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
   try { fs.unlinkSync(guardIndexLock); } catch { /* doesn't exist */ }
 
   try {
-    const parentHash = git(['rev-parse', '--verify', branchRef], { cwd, allowFail: true });
+    const parentHash = resolveGuardParentHash(cwd, branchRef);
 
     if (narrowProtect) {
       // protect uses strict matching (full path only, no basename fallback)
@@ -120,7 +152,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
       pruneIndexFiles(cwd, env, f => !matchesAny(cfg.protect, f, { strict: true }));
     } else {
       if (parentHash) {
-        execFileSync('git', ['read-tree', branchRef], { cwd, env, stdio: 'pipe' });
+        execFileSync('git', ['read-tree', parentHash], { cwd, env, stdio: 'pipe' });
       }
       execFileSync('git', ['add', '-A'], { cwd, env, stdio: 'pipe' });
     }
@@ -133,7 +165,7 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
 
     const newTree = execFileSync('git', ['write-tree'], { cwd, env, stdio: 'pipe', encoding: 'utf-8' }).trim();
     const parentTree = parentHash
-      ? git(['rev-parse', `${branchRef}^{tree}`], { cwd, allowFail: true })
+      ? git(['rev-parse', `${parentHash}^{tree}`], { cwd, allowFail: true })
       : null;
 
     if (newTree === parentTree && !opts.allowEmptyTree) {
@@ -246,7 +278,22 @@ function createGitSnapshot(projectDir, cfg, opts = {}) {
     }
 
     const ts = formatTimestamp(new Date());
-    const msg = buildCommitMessage(ts, opts);
+    let msg = buildCommitMessage(ts, opts);
+
+    const autoTip = git(['rev-parse', '--verify', REF_GUARD_AUTO_BACKUP], { cwd, allowFail: true });
+    const snapTip = git(['rev-parse', '--verify', REF_GUARD_SNAPSHOT], { cwd, allowFail: true });
+    const autoTipTrim = autoTip ? String(autoTip).trim() : '';
+    const snapTipTrim = snapTip ? String(snapTip).trim() : '';
+    let diffBaseLabel = 'initial';
+    if (parentHash) {
+      if (parentHash === autoTipTrim) diffBaseLabel = 'auto-backup';
+      else if (parentHash === snapTipTrim) diffBaseLabel = 'snapshot';
+      else diffBaseLabel = 'other';
+    }
+    const scopeTrailer = narrowProtect ? 'narrow' : 'full';
+    const guardBlock = `Guard-Diff-Base: ${diffBaseLabel}\nGuard-Scope: ${scopeTrailer}`;
+    msg = msg.includes('\n\n') ? `${msg}\n${guardBlock}` : `${msg}\n\n${guardBlock}`;
+
     const commitArgs = parentHash
       ? ['commit-tree', newTree, '-p', parentHash, '-m', msg]
       : ['commit-tree', newTree, '-m', msg];

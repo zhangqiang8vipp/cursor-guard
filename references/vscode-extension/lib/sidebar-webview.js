@@ -2,6 +2,7 @@
 
 const vscode = require('vscode');
 const { getLocale, setLocale } = require('./locale');
+const { guardPath } = require('./paths');
 
 class SidebarDashboardProvider {
   constructor(poller, context) {
@@ -41,6 +42,19 @@ class SidebarDashboardProvider {
         this._postLocale();
       }
       if (msg.cmd === 'exec') vscode.commands.executeCommand(msg.command);
+      if (msg.cmd === 'clearAlert' && msg.projectId) {
+        (async () => {
+          try {
+            const reg = this._poller._dashMgr?.registry;
+            const entry = reg?.get(msg.projectId);
+            if (entry?._path) {
+              const { clearAlert } = require(guardPath('lib', 'core', 'anomaly'));
+              clearAlert(entry._path);
+              await this._poller.forceRefresh();
+            }
+          } catch { /* ignore */ }
+        })();
+      }
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -1058,6 +1072,7 @@ const I18N = {
     'actions.openDashboard': '打开看板',
     'actions.restore': '恢复',
     'actions.viewDetails': '查看详情',
+    'actions.dismissAlert': '忽略告警',
     'actions.snapshot': '立即快照',
     'actions.watcherOn': '停止 Watcher',
     'actions.watcherOff': '启动 Watcher',
@@ -1288,6 +1303,13 @@ function render(projects) {
   root.querySelectorAll('[data-cmd]').forEach(btn => {
     btn.addEventListener('click', () => {
       vscode.postMessage({ cmd: 'exec', command: btn.dataset.cmd });
+    });
+  });
+
+  root.querySelectorAll('[data-dismiss-alert]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pid = btn.getAttribute('data-dismiss-alert');
+      if (pid) vscode.postMessage({ cmd: 'clearAlert', projectId: pid });
     });
   });
 }

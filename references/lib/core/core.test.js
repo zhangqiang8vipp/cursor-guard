@@ -161,6 +161,26 @@ test('creates git snapshot and returns structured result', () => {
   }
 });
 
+test('createGitSnapshot embeds Guard-Diff-Base and Guard-Scope trailers', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    const result = createGitSnapshot(tmpDir, cfg);
+    assert.strictEqual(result.status, 'created');
+    const body = execFileSync('git', ['log', '-1', '--format=%B', result.commitHash], { cwd: tmpDir, encoding: 'utf8' });
+    assert.match(body, /Guard-Diff-Base: initial/);
+    assert.match(body, /Guard-Scope: full/);
+    fs.appendFileSync(path.join(tmpDir, 'hello.txt'), '\nline2');
+    const r2 = createGitSnapshot(tmpDir, cfg);
+    assert.strictEqual(r2.status, 'created');
+    const body2 = execFileSync('git', ['log', '-1', '--format=%B', r2.commitHash], { cwd: tmpDir, encoding: 'utf8' });
+    assert.match(body2, /Guard-Diff-Base: auto-backup/);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
 test('skips when tree is unchanged', () => {
   const tmpDir = createTempGitRepo();
   try {
@@ -208,6 +228,66 @@ test('fullWorkspaceSnapshot sees edits outside protect patterns', () => {
     });
     assert.strictEqual(r3.status, 'created');
     assert.ok((r3.changedCount || 0) >= 1);
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('refs/guard/auto-backup uses newer snapshot tip when manual was last (shared baseline)', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({}));
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, { branchRef: 'refs/guard/auto-backup' }).status, 'created');
+    fs.appendFileSync(path.join(tmpDir, 'hello.txt'), '\nbefore manual');
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, {
+      branchRef: 'refs/guard/snapshot',
+      allowEmptyTree: true,
+      fullWorkspaceSnapshot: true,
+      message: 'manual',
+    }).status, 'created');
+    fs.appendFileSync(path.join(tmpDir, 'hello.txt'), '\nafter manual');
+    const autoAfter = createGitSnapshot(tmpDir, cfg, { branchRef: 'refs/guard/auto-backup' });
+    assert.strictEqual(autoAfter.status, 'created');
+    assert.ok(
+      (autoAfter.changedCount || 0) <= 2,
+      `auto should diff vs newer snapshot tip, got changedCount=${autoAfter.changedCount}`,
+    );
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('refs/guard/snapshot parents from newer auto-backup tip when snapshot is stale', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    fs.writeFileSync(path.join(tmpDir, '.cursor-guard.json'), JSON.stringify({}));
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    const autoRef = 'refs/guard/auto-backup';
+    const snapRef = 'refs/guard/snapshot';
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, { branchRef: autoRef }).status, 'created');
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, {
+      branchRef: snapRef,
+      allowEmptyTree: true,
+      fullWorkspaceSnapshot: true,
+      message: 'first manual',
+    }).status, 'created');
+    fs.appendFileSync(path.join(tmpDir, 'hello.txt'), '\nauto line');
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, { branchRef: autoRef }).status, 'created');
+    fs.appendFileSync(path.join(tmpDir, 'hello.txt'), '\nmanual line');
+    const manual = createGitSnapshot(tmpDir, cfg, {
+      branchRef: snapRef,
+      allowEmptyTree: true,
+      fullWorkspaceSnapshot: true,
+      message: 'second manual',
+    });
+    assert.strictEqual(manual.status, 'created');
+    assert.ok(
+      (manual.changedCount || 0) <= 2,
+      `expected small incremental diff vs newer auto tip, got changedCount=${manual.changedCount}`,
+    );
   } finally {
     cleanupDir(tmpDir);
   }
@@ -270,6 +350,33 @@ test('listBackups finds git auto-backup after snapshot', () => {
     assert.ok(autoBackups.length > 0, 'should find auto-backup after snapshot');
     assert.ok(autoBackups[0].commitHash);
     assert.ok(autoBackups[0].shortHash);
+    assert.strictEqual(autoBackups[0].guardDiffBase, 'initial');
+    assert.strictEqual(autoBackups[0].guardScope, 'full');
+  } finally {
+    cleanupDir(tmpDir);
+  }
+});
+
+test('listBackups lists multiple commits on refs/guard/snapshot', () => {
+  const tmpDir = createTempGitRepo();
+  try {
+    const { loadConfig } = require('../utils');
+    const { cfg } = loadConfig(tmpDir);
+    const snapRef = 'refs/guard/snapshot';
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, {
+      branchRef: snapRef,
+      allowEmptyTree: true,
+      fullWorkspaceSnapshot: true,
+      message: 'guard: snap-a',
+    }).status, 'created');
+    assert.strictEqual(createGitSnapshot(tmpDir, cfg, {
+      branchRef: snapRef,
+      allowEmptyTree: true,
+      fullWorkspaceSnapshot: true,
+      message: 'guard: snap-b',
+    }).status, 'created');
+    const snaps = listBackups(tmpDir, { limit: 30 }).sources.filter(s => s.type === 'git-snapshot');
+    assert.ok(snaps.length >= 2, `expected >=2 snapshot rows, got ${snaps.length}`);
   } finally {
     cleanupDir(tmpDir);
   }

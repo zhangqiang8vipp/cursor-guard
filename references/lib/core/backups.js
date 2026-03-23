@@ -51,6 +51,8 @@ const TRAILER_MAP = {
   'From':          { key: 'from' },
   'Restore-To':   { key: 'restoreTo' },
   'File':          { key: 'restoreFile' },
+  'Guard-Diff-Base': { key: 'guardDiffBase' },
+  'Guard-Scope':     { key: 'guardScope' },
 };
 
 function parseCommitTrailers(body) {
@@ -61,7 +63,9 @@ function parseCommitTrailers(body) {
     const m = line.match(pattern);
     if (m) {
       const def = TRAILER_MAP[m[1]];
-      result[def.key] = def.parse ? def.parse(m[2]) : m[2];
+      const raw = m[2].replace(/\r/g, '');
+      const val = def.parse ? def.parse(raw) : raw.trim();
+      result[def.key] = typeof val === 'string' ? val.trim() : val;
     }
   }
   return result;
@@ -158,26 +162,37 @@ function listBackups(projectDir, opts = {}) {
       }
     }
 
-    // Agent snapshot ref
-    const snapshotHash = git(['rev-parse', '--verify', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
-    if (snapshotHash) {
-      const snapLog = git(['log', '-1', '--format=%aI\x1f%B', 'refs/guard/snapshot'], { cwd: projectDir, allowFail: true });
-      const snapParts = snapLog ? snapLog.split('\x1f') : [];
-      const ts = snapParts[0] || null;
-      const snapBody = snapParts[1] || '';
-      const snapTrailers = parseCommitTrailers(snapBody);
-      const snapSubject = snapBody.split('\n')[0] || '';
-      const include = !beforeDate || (ts && Date.parse(ts) <= beforeDate.getTime());
-      if (include) {
-        sources.push({
-          type: 'git-snapshot',
-          ref: 'refs/guard/snapshot',
-          commitHash: snapshotHash,
-          shortHash: snapshotHash.substring(0, 7),
-          timestamp: ts,
-          message: snapSubject || undefined,
-          ...snapTrailers,
-        });
+    // Manual / IDE snapshot ref (full history on dedicated ref; no subject grep so test/custom messages still list)
+    const snapRef = 'refs/guard/snapshot';
+    const snapshotExists = git(['rev-parse', '--verify', snapRef], { cwd: projectDir, allowFail: true });
+    if (snapshotExists) {
+      const snapLogArgs = ['log', snapRef, '--format=%H\x1f%aI\x1f%B\x1e', `-${limit}`];
+      if (opts.before) snapLogArgs.push(`--before=${opts.before}`);
+      if (opts.file) snapLogArgs.push('--', opts.file);
+      const snapOut = git(snapLogArgs, { cwd: projectDir, allowFail: true });
+      if (snapOut) {
+        for (const record of snapOut.split('\x1e').filter(r => r.trim())) {
+          const parts = record.split('\x1f');
+          if (parts.length < 3) continue;
+          const hash = parts[0].trim();
+          const timestamp = parts[1];
+          const body = parts[2];
+          const subject = body.split('\n')[0];
+          const trailers = parseCommitTrailers(body);
+          if (beforeDate && timestamp) {
+            const ms = Date.parse(timestamp);
+            if (!isNaN(ms) && ms > beforeDate.getTime()) continue;
+          }
+          sources.push({
+            type: 'git-snapshot',
+            ref: snapRef,
+            commitHash: hash,
+            shortHash: hash.substring(0, 7),
+            timestamp,
+            message: subject || undefined,
+            ...trailers,
+          });
+        }
       }
     }
   }

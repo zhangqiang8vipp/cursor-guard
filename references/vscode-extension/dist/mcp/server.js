@@ -35594,7 +35594,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "cursor-guard",
-      version: "4.9.9",
+      version: "4.9.12",
       description: "Protects code from accidental AI overwrite or deletion in Cursor IDE \u2014 mandatory pre-write snapshots, review-before-apply, local Git safety net, and deterministic recovery. | \u4FDD\u62A4\u4EE3\u7801\u514D\u53D7 Cursor AI \u4EE3\u7406\u610F\u5916\u8986\u5199\u6216\u5220\u9664\u2014\u2014\u5F3A\u5236\u5199\u524D\u5FEB\u7167\u3001\u9884\u89C8\u518D\u6267\u884C\u3001\u672C\u5730 Git \u5B89\u5168\u7F51\u3001\u786E\u5B9A\u6027\u6062\u590D\u3002",
       keywords: [
         "cursor",
@@ -36014,6 +36014,25 @@ var require_snapshot = __commonJS({
       const pad = (n) => String(n).padStart(2, "0");
       return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
     }
+    var REF_GUARD_AUTO_BACKUP = "refs/guard/auto-backup";
+    var REF_GUARD_SNAPSHOT = "refs/guard/snapshot";
+    function resolveGuardParentHash(cwd, branchRef) {
+      if (branchRef !== REF_GUARD_AUTO_BACKUP && branchRef !== REF_GUARD_SNAPSHOT) {
+        return git(["rev-parse", "--verify", branchRef], { cwd, allowFail: true });
+      }
+      const autoH = git(["rev-parse", "--verify", REF_GUARD_AUTO_BACKUP], { cwd, allowFail: true });
+      const snapH = git(["rev-parse", "--verify", REF_GUARD_SNAPSHOT], { cwd, allowFail: true });
+      if (!autoH && !snapH) return null;
+      if (!autoH) return snapH;
+      if (!snapH) return autoH;
+      const commitUnix = (h) => {
+        const s = git(["log", "-1", "--format=%ct", h], { cwd, allowFail: true });
+        return s ? parseInt(String(s).trim(), 10) : 0;
+      };
+      const tAuto = commitUnix(autoH);
+      const tSnap = commitUnix(snapH);
+      return tSnap > tAuto ? snapH : autoH;
+    }
     function listIndexFiles(cwd, env) {
       try {
         const out = execFileSync("git", ["ls-files", "--cached"], {
@@ -36092,20 +36111,20 @@ var require_snapshot = __commonJS({
       } catch {
       }
       try {
-        const parentHash = git(["rev-parse", "--verify", branchRef], { cwd, allowFail: true });
+        const parentHash = resolveGuardParentHash(cwd, branchRef);
         if (narrowProtect) {
           execFileSync("git", ["add", "-A"], { cwd, env, stdio: "pipe" });
           pruneIndexFiles(cwd, env, (f) => !matchesAny(cfg.protect, f, { strict: true }));
         } else {
           if (parentHash) {
-            execFileSync("git", ["read-tree", branchRef], { cwd, env, stdio: "pipe" });
+            execFileSync("git", ["read-tree", parentHash], { cwd, env, stdio: "pipe" });
           }
           execFileSync("git", ["add", "-A"], { cwd, env, stdio: "pipe" });
         }
         pruneIndexFiles(cwd, env, (f) => matchesAny(cfg.ignore, f));
         const secretsExcluded = removeSecretsFromIndex(cfg.secrets_patterns, cwd, env);
         const newTree = execFileSync("git", ["write-tree"], { cwd, env, stdio: "pipe", encoding: "utf-8" }).trim();
-        const parentTree = parentHash ? git(["rev-parse", `${branchRef}^{tree}`], { cwd, allowFail: true }) : null;
+        const parentTree = parentHash ? git(["rev-parse", `${parentHash}^{tree}`], { cwd, allowFail: true }) : null;
         if (newTree === parentTree && !opts.allowEmptyTree) {
           return { status: "skipped", reason: "tree unchanged" };
         }
@@ -36198,7 +36217,24 @@ var require_snapshot = __commonJS({
           opts.context.changedFileCount = changedCount;
         }
         const ts = formatTimestamp(/* @__PURE__ */ new Date());
-        const msg = buildCommitMessage(ts, opts);
+        let msg = buildCommitMessage(ts, opts);
+        const autoTip = git(["rev-parse", "--verify", REF_GUARD_AUTO_BACKUP], { cwd, allowFail: true });
+        const snapTip = git(["rev-parse", "--verify", REF_GUARD_SNAPSHOT], { cwd, allowFail: true });
+        const autoTipTrim = autoTip ? String(autoTip).trim() : "";
+        const snapTipTrim = snapTip ? String(snapTip).trim() : "";
+        let diffBaseLabel = "initial";
+        if (parentHash) {
+          if (parentHash === autoTipTrim) diffBaseLabel = "auto-backup";
+          else if (parentHash === snapTipTrim) diffBaseLabel = "snapshot";
+          else diffBaseLabel = "other";
+        }
+        const scopeTrailer = narrowProtect ? "narrow" : "full";
+        const guardBlock = `Guard-Diff-Base: ${diffBaseLabel}
+Guard-Scope: ${scopeTrailer}`;
+        msg = msg.includes("\n\n") ? `${msg}
+${guardBlock}` : `${msg}
+
+${guardBlock}`;
         const commitArgs = parentHash ? ["commit-tree", newTree, "-p", parentHash, "-m", msg] : ["commit-tree", newTree, "-m", msg];
         const commitHash = execFileSync("git", commitArgs, { cwd, stdio: "pipe", encoding: "utf-8" }).trim();
         if (!commitHash) {
@@ -36353,7 +36389,9 @@ var require_backups = __commonJS({
       "Session": { key: "session" },
       "From": { key: "from" },
       "Restore-To": { key: "restoreTo" },
-      "File": { key: "restoreFile" }
+      "File": { key: "restoreFile" },
+      "Guard-Diff-Base": { key: "guardDiffBase" },
+      "Guard-Scope": { key: "guardScope" }
     };
     function parseCommitTrailers(body) {
       if (!body) return {};
@@ -36363,7 +36401,9 @@ var require_backups = __commonJS({
         const m = line.match(pattern);
         if (m) {
           const def = TRAILER_MAP[m[1]];
-          result[def.key] = def.parse ? def.parse(m[2]) : m[2];
+          const raw = m[2].replace(/\r/g, "");
+          const val = def.parse ? def.parse(raw) : raw.trim();
+          result[def.key] = typeof val === "string" ? val.trim() : val;
         }
       }
       return result;
@@ -36438,25 +36478,36 @@ var require_backups = __commonJS({
             sources.push(entry);
           }
         }
-        const snapshotHash = git(["rev-parse", "--verify", "refs/guard/snapshot"], { cwd: projectDir, allowFail: true });
-        if (snapshotHash) {
-          const snapLog = git(["log", "-1", "--format=%aI%B", "refs/guard/snapshot"], { cwd: projectDir, allowFail: true });
-          const snapParts = snapLog ? snapLog.split("") : [];
-          const ts = snapParts[0] || null;
-          const snapBody = snapParts[1] || "";
-          const snapTrailers = parseCommitTrailers(snapBody);
-          const snapSubject = snapBody.split("\n")[0] || "";
-          const include = !beforeDate || ts && Date.parse(ts) <= beforeDate.getTime();
-          if (include) {
-            sources.push({
-              type: "git-snapshot",
-              ref: "refs/guard/snapshot",
-              commitHash: snapshotHash,
-              shortHash: snapshotHash.substring(0, 7),
-              timestamp: ts,
-              message: snapSubject || void 0,
-              ...snapTrailers
-            });
+        const snapRef = "refs/guard/snapshot";
+        const snapshotExists = git(["rev-parse", "--verify", snapRef], { cwd: projectDir, allowFail: true });
+        if (snapshotExists) {
+          const snapLogArgs = ["log", snapRef, "--format=%H%aI%B", `-${limit}`];
+          if (opts.before) snapLogArgs.push(`--before=${opts.before}`);
+          if (opts.file) snapLogArgs.push("--", opts.file);
+          const snapOut = git(snapLogArgs, { cwd: projectDir, allowFail: true });
+          if (snapOut) {
+            for (const record of snapOut.split("").filter((r) => r.trim())) {
+              const parts = record.split("");
+              if (parts.length < 3) continue;
+              const hash = parts[0].trim();
+              const timestamp = parts[1];
+              const body = parts[2];
+              const subject = body.split("\n")[0];
+              const trailers = parseCommitTrailers(body);
+              if (beforeDate && timestamp) {
+                const ms = Date.parse(timestamp);
+                if (!isNaN(ms) && ms > beforeDate.getTime()) continue;
+              }
+              sources.push({
+                type: "git-snapshot",
+                ref: snapRef,
+                commitHash: hash,
+                shortHash: hash.substring(0, 7),
+                timestamp,
+                message: subject || void 0,
+                ...trailers
+              });
+            }
           }
         }
       }
